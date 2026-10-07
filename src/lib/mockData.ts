@@ -64,7 +64,8 @@ export const DEFAULT_MENU: MenuItem[] = [
     price: 15,
     category: 'tea',
     emoji: '☕',
-    description: 'Fresh brewed ginger & cardamom spiced tea'
+    description: 'Fresh brewed ginger & cardamom spiced tea',
+    shopId: 'shop-chayakkada'
   },
   {
     id: 'item-ginger-tea',
@@ -72,7 +73,8 @@ export const DEFAULT_MENU: MenuItem[] = [
     price: 20,
     category: 'tea',
     emoji: '🍵',
-    description: 'Extra strong grated ginger chai'
+    description: 'Extra strong grated ginger chai',
+    shopId: 'shop-chayakkada'
   },
   {
     id: 'item-elaichi-tea',
@@ -80,7 +82,8 @@ export const DEFAULT_MENU: MenuItem[] = [
     price: 20,
     category: 'tea',
     emoji: '🌿',
-    description: 'Fragrant cardamom infused tea'
+    description: 'Fragrant cardamom infused tea',
+    shopId: 'shop-chayakkada'
   },
   {
     id: 'item-filter-coffee',
@@ -88,7 +91,8 @@ export const DEFAULT_MENU: MenuItem[] = [
     price: 25,
     category: 'coffee',
     emoji: '☕',
-    description: 'Traditional hot frothy filter kaapi'
+    description: 'Traditional hot frothy filter kaapi',
+    shopId: 'shop-chayakkada'
   },
   {
     id: 'item-samosa',
@@ -96,7 +100,8 @@ export const DEFAULT_MENU: MenuItem[] = [
     price: 20,
     category: 'snacks',
     emoji: '🥟',
-    description: 'Fresh piping hot aloo samosa with mint dip'
+    description: 'Fresh piping hot aloo samosa with mint dip',
+    shopId: 'shop-chayakkada'
   },
   {
     id: 'item-bun-maska',
@@ -104,7 +109,8 @@ export const DEFAULT_MENU: MenuItem[] = [
     price: 35,
     category: 'quick-bites',
     emoji: '🍞',
-    description: 'Soft Irani bun with generous butter slab'
+    description: 'Soft Irani bun with generous butter slab',
+    shopId: 'shop-chayakkada'
   },
   {
     id: 'item-sandwich',
@@ -112,7 +118,8 @@ export const DEFAULT_MENU: MenuItem[] = [
     price: 60,
     category: 'quick-bites',
     emoji: '🥪',
-    description: 'Loaded cheese & veggie toasted sandwich'
+    description: 'Loaded cheese & veggie toasted sandwich',
+    shopId: 'shop-chayakkada'
   },
   {
     id: 'item-biscuits',
@@ -120,7 +127,8 @@ export const DEFAULT_MENU: MenuItem[] = [
     price: 10,
     category: 'snacks',
     emoji: '🍪',
-    description: 'Crisp bakery butter biscuits to dip'
+    description: 'Crisp bakery butter biscuits to dip',
+    shopId: 'shop-chayakkada'
   },
   {
     id: 'item-vada',
@@ -128,7 +136,8 @@ export const DEFAULT_MENU: MenuItem[] = [
     price: 25,
     category: 'snacks',
     emoji: '🧆',
-    description: 'Mumbai style spicy potato vada in pao'
+    description: 'Mumbai style spicy potato vada in pao',
+    shopId: 'shop-chayakkada'
   },
   {
     id: 'item-cold-coffee',
@@ -136,7 +145,8 @@ export const DEFAULT_MENU: MenuItem[] = [
     price: 55,
     category: 'drinks',
     emoji: '🧋',
-    description: 'Thick creamy blended coffee'
+    description: 'Thick creamy blended coffee',
+    shopId: 'shop-chayakkada'
   }
 ]
 

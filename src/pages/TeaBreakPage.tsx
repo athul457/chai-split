@@ -39,6 +39,7 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
     addItemToMember,
     removeItemFromMember,
     menuItems,
+    getMenuItemsForShop,
     generateWhatsAppSummary
   } = useExpense()
 
@@ -193,10 +194,16 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
     })
   }, [activeSession, currentUser?.id])
 
-  // Sort menu items by price in ascending order
+  // Target shop for this tea break session
+  const breakShopId = activeSession?.shopId || group.shopId || 'shop-chayakkada'
+  const shopMenuItems = useMemo(() => {
+    return getMenuItemsForShop(breakShopId)
+  }, [getMenuItemsForShop, breakShopId, menuItems])
+
+  // Sort menu items by price in ascending order (only for this specific shop)
   const sortedMenuItems = useMemo(() => {
-    return [...menuItems].sort((a, b) => a.price - b.price)
-  }, [menuItems])
+    return [...shopMenuItems].sort((a, b) => a.price - b.price)
+  }, [shopMenuItems])
 
   if (!activeSession) {
     return (
@@ -360,7 +367,7 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
                     <span className="font-bold text-[11px] px-1">{item.quantity}</span>
                     <button
                       onClick={() => {
-                        const mi = menuItems.find(m => m.id === item.menuItemId)
+                        const mi = shopMenuItems.find(m => m.id === item.menuItemId) || menuItems.find(m => m.id === item.menuItemId)
                         if (mi) handleSelfAddItem(mi)
                       }}
                       className="w-5 h-5 rounded flex items-center justify-center hover:bg-stone-200 dark:hover:bg-stone-600 text-stone-600 dark:text-stone-300 cursor-pointer"
@@ -385,35 +392,41 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
               Select Tea &amp; Snacks to Add:
             </span>
             <span className="text-[10px] text-stone-400">
-              {menuItems.length} choices
+              {shopMenuItems.length} choices
             </span>
           </div>
 
-          <div className="grid grid-cols-2 gap-2 max-h-56 overflow-y-auto pr-0.5">
-            {sortedMenuItems.map(item => (
-              <button
-                key={item.id}
-                onClick={() => handleSelfAddItem(item)}
-                className="p-2 rounded-xl border border-stone-200/80 dark:border-stone-800 bg-stone-50/60 dark:bg-stone-800/40 hover:border-amber-500 hover:bg-amber-50/50 dark:hover:bg-amber-950/20 text-left transition-all cursor-pointer active:scale-95 group flex items-center justify-between"
-              >
-                <div className="truncate pr-1">
-                  <div className="flex items-center gap-1.5 truncate">
-                    <span className="text-sm shrink-0">{item.emoji}</span>
-                    <span className="font-semibold text-xs text-stone-900 dark:text-stone-100 truncate group-hover:text-amber-700 dark:group-hover:text-amber-300">
-                      {item.name}
-                    </span>
+          {shopMenuItems.length === 0 ? (
+            <div className="p-4 text-center text-xs text-stone-400 bg-stone-50 dark:bg-stone-800/40 rounded-xl border border-dashed border-stone-200 dark:border-stone-800">
+              No items available in {activeSession.shopName} menu yet.
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 gap-2 max-h-56 overflow-y-auto pr-0.5">
+              {sortedMenuItems.map(item => (
+                <button
+                  key={item.id}
+                  onClick={() => handleSelfAddItem(item)}
+                  className="p-2 rounded-xl border border-stone-200/80 dark:border-stone-800 bg-stone-50/60 dark:bg-stone-800/40 hover:border-amber-500 hover:bg-amber-50/50 dark:hover:bg-amber-950/20 text-left transition-all cursor-pointer active:scale-95 group flex items-center justify-between"
+                >
+                  <div className="truncate pr-1">
+                    <div className="flex items-center gap-1.5 truncate">
+                      <span className="text-sm shrink-0">{item.emoji}</span>
+                      <span className="font-semibold text-xs text-stone-900 dark:text-stone-100 truncate group-hover:text-amber-700 dark:group-hover:text-amber-300">
+                        {item.name}
+                      </span>
+                    </div>
+                    <div className="text-[11px] font-bold text-amber-700 dark:text-amber-400 pl-5">
+                      ₹{item.price}
+                    </div>
                   </div>
-                  <div className="text-[11px] font-bold text-amber-700 dark:text-amber-400 pl-5">
-                    ₹{item.price}
-                  </div>
-                </div>
 
-                <div className="w-5 h-5 rounded-full bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300 flex items-center justify-center shrink-0 group-hover:bg-amber-600 group-hover:text-white transition-colors">
-                  <Plus className="w-3 h-3" />
-                </div>
-              </button>
-            ))}
-          </div>
+                  <div className="w-5 h-5 rounded-full bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300 flex items-center justify-center shrink-0 group-hover:bg-amber-600 group-hover:text-white transition-colors">
+                    <Plus className="w-3 h-3" />
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       </div>
 
@@ -628,7 +641,7 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
                                   <button
                                     onClick={(e) => {
                                       e.stopPropagation()
-                                      const mi = menuItems.find(m => m.id === item.menuItemId)
+                                      const mi = shopMenuItems.find(m => m.id === item.menuItemId) || menuItems.find(m => m.id === item.menuItemId)
                                       if (mi) addItemToMember(expense.memberId, mi)
                                     }}
                                     className="w-4 h-4 rounded flex items-center justify-center hover:bg-stone-200 dark:hover:bg-stone-700 text-stone-600 dark:text-stone-300 cursor-pointer"
@@ -865,7 +878,7 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
                         </button>
                         <button
                           onClick={() => {
-                            const mi = menuItems.find(m => m.id === item.menuItemId)
+                            const mi = shopMenuItems.find(m => m.id === item.menuItemId) || menuItems.find(m => m.id === item.menuItemId)
                             if (mi) handleAdminAssignItem(mi)
                           }}
                           className="w-3.5 h-3.5 rounded hover:bg-stone-100 dark:hover:bg-stone-700 flex items-center justify-center text-stone-400 hover:text-emerald-600 cursor-pointer"
@@ -886,18 +899,23 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
                   Tap to add to {selectedAssignee?.name}'s cup:
                 </span>
                 <span className="text-[10px] text-stone-400 font-medium">
-                  {menuItems.length} choices
+                  {shopMenuItems.length} choices
                 </span>
               </div>
 
               {/* Menu items grid */}
-              <div className="grid grid-cols-2 gap-1.5 overflow-y-auto max-h-48 pr-0.5">
-                {sortedMenuItems.map(item => (
-                  <button
-                    key={item.id}
-                    onClick={() => handleAdminAssignItem(item)}
-                    className="p-2 rounded-xl bg-stone-50 dark:bg-stone-800/50 border border-stone-200 dark:border-stone-700/60 hover:border-amber-500 hover:bg-amber-50/40 dark:hover:bg-amber-950/20 text-left cursor-pointer active:scale-95 transition-all flex items-center justify-between group shadow-2xs"
-                  >
+              {shopMenuItems.length === 0 ? (
+                <div className="p-4 text-center text-xs text-stone-400 bg-stone-50 dark:bg-stone-800/40 rounded-xl border border-dashed border-stone-200 dark:border-stone-800">
+                  No items listed for {activeSession.shopName} yet.
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 gap-1.5 overflow-y-auto max-h-48 pr-0.5">
+                  {sortedMenuItems.map(item => (
+                    <button
+                      key={item.id}
+                      onClick={() => handleAdminAssignItem(item)}
+                      className="p-2 rounded-xl bg-stone-50 dark:bg-stone-800/50 border border-stone-200 dark:border-stone-700/60 hover:border-amber-500 hover:bg-amber-50/40 dark:hover:bg-amber-950/20 text-left cursor-pointer active:scale-95 transition-all flex items-center justify-between group shadow-2xs"
+                    >
                     <div className="truncate pr-1">
                       <div className="flex items-center gap-1 truncate">
                         <span className="text-xs shrink-0">{item.emoji}</span>
@@ -916,7 +934,8 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
                   </button>
                 ))}
               </div>
-            </div>
+            )}
+          </div>
 
             {/* Modal Footer */}
             <div className="pt-2 border-t border-stone-100 dark:border-stone-800 flex items-center justify-end">

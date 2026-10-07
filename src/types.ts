@@ -15,6 +15,7 @@ export interface MenuItem {
   category: 'tea' | 'coffee' | 'snacks' | 'quick-bites' | 'drinks'
   emoji: string
   description?: string
+  shopId?: string
 }
 
 export interface OrderItem {

@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useMemo } from 'react'
 import {
   ArrowLeft,
   Plus,
@@ -28,10 +28,16 @@ export const ShopItemsPage: React.FC<ShopItemsPageProps> = ({
 }) => {
   const {
     menuItems,
+    getMenuItemsForShop,
     updateMenuItemPrice,
     deleteMenuItem,
     addCustomMenuItem
   } = useExpense()
+
+  // Shop-specific menu items
+  const shopMenuItems = useMemo(() => {
+    return getMenuItemsForShop(shop.id)
+  }, [getMenuItemsForShop, shop.id, menuItems])
 
   // State
   const [editingItemId, setEditingItemId] = useState<string | null>(null)
@@ -70,7 +76,7 @@ export const ShopItemsPage: React.FC<ShopItemsPageProps> = ({
     e.preventDefault()
     if (!newItemName.trim()) return
     const priceNum = Math.max(0, Math.round(parseFloat(newItemPrice) || 15))
-    addCustomMenuItem(newItemName.trim(), priceNum, newItemEmoji, newItemCategory)
+    addCustomMenuItem(newItemName.trim(), priceNum, newItemEmoji, newItemCategory, shop.id)
     setShowAddItemModal(false)
     showToast(`Added "${newItemName.trim()}" (₹${priceNum}) to ${shop.name}!`)
     setNewItemName('')
@@ -109,7 +115,7 @@ export const ShopItemsPage: React.FC<ShopItemsPageProps> = ({
             {shop.name} Menu
           </h2>
           <span className="text-[10px] text-stone-400 font-medium">
-            {menuItems.length} Items Available
+            {shopMenuItems.length} Items Available
           </span>
         </div>
 
@@ -170,7 +176,7 @@ export const ShopItemsPage: React.FC<ShopItemsPageProps> = ({
       <div className="flex items-center justify-between text-xs px-1">
         <span className="font-bold text-stone-700 dark:text-stone-300 flex items-center gap-1">
           <Sparkles className="w-3.5 h-3.5 text-amber-600" />
-          <span>Menu Items ({menuItems.length})</span>
+          <span>Menu Items ({shopMenuItems.length})</span>
         </span>
         <span className="text-[10px] text-stone-400 font-medium">
           Edit price or delete any item
@@ -178,9 +184,9 @@ export const ShopItemsPage: React.FC<ShopItemsPageProps> = ({
       </div>
 
       {/* Items List */}
-      {menuItems.length === 0 ? (
+      {shopMenuItems.length === 0 ? (
         <div className="p-8 text-center bg-white dark:bg-stone-900 rounded-2xl border border-stone-200 dark:border-stone-800 text-stone-400 text-xs space-y-2">
-          <p>No items in menu yet.</p>
+          <p>No items in {shop.name} menu yet.</p>
           <button
             onClick={() => setShowAddItemModal(true)}
             className="text-amber-600 hover:underline font-bold text-xs"
@@ -190,7 +196,7 @@ export const ShopItemsPage: React.FC<ShopItemsPageProps> = ({
         </div>
       ) : (
         <div className="space-y-2">
-          {menuItems.map(item => {
+          {shopMenuItems.map(item => {
             const isEditing = editingItemId === item.id
 
             return (

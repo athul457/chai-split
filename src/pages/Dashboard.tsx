@@ -38,10 +38,12 @@ export const Dashboard: React.FC<DashboardProps> = () => {
     activeSession,
     pastSessions,
     menuItems,
+    getMenuItemsForShop,
     addItemToMember,
     removeItemFromMember,
     toggleMemberPaid,
     setPayer,
+    addNewSession,
     settleActiveSession,
     addMemberToSession,
     addCustomMenuItem,
@@ -96,7 +98,23 @@ export const Dashboard: React.FC<DashboardProps> = () => {
   }, [activeGroupId])
 
   // Shops tab state
-  const [shops, setShops] = useState<Shop[]>(DEFAULT_SHOPS)
+  const [shops, setShops] = useState<Shop[]>(() => {
+    try {
+      const saved = localStorage.getItem('chaisplit_shops_list_v2')
+      return saved ? JSON.parse(saved) : DEFAULT_SHOPS
+    } catch {
+      return DEFAULT_SHOPS
+    }
+  })
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('chaisplit_shops_list_v2', JSON.stringify(shops))
+    } catch (e) {
+      console.error('Failed to save shops', e)
+    }
+  }, [shops])
+
   const [showAddShopModal, setShowAddShopModal] = useState(false)
   const [newShopName, setNewShopName] = useState('')
   const [newShopLocation, setNewShopLocation] = useState('')
@@ -121,17 +139,16 @@ export const Dashboard: React.FC<DashboardProps> = () => {
     handleCopy(text, 'bill summary')
   }
 
-
-
-
   // Handle add custom item
   const handleCreateCustomItem = (e: React.FormEvent) => {
     e.preventDefault()
     if (!customItemName.trim()) return
     const priceNum = Math.max(0, Math.round(parseFloat(customItemPrice) || 15))
-    addCustomMenuItem(customItemName.trim(), priceNum, customItemEmoji, customItemCategory)
+    const targetShopId = activeSession?.shopId || 'shop-chayakkada'
+    const targetShopName = activeSession?.shopName || 'shop'
+    addCustomMenuItem(customItemName.trim(), priceNum, customItemEmoji, customItemCategory, targetShopId)
     setShowAddItemModal(false)
-    setCopyNotice(`Added "${customItemName.trim()}" (₹${priceNum}) to Chayakkada!`)
+    setCopyNotice(`Added "${customItemName.trim()}" (₹${priceNum}) to ${targetShopName}!`)
     setTimeout(() => setCopyNotice(null), 3000)
     setCustomItemName('')
     setCustomItemPrice('20')
@@ -1085,6 +1102,21 @@ export const Dashboard: React.FC<DashboardProps> = () => {
             <ShopItemsPage
               shop={viewingShopItems}
               onBack={() => setViewingShopItems(null)}
+              onStartBreak={(shop) => {
+                const targetGroup = groups.find(g => g.id === activeGroupId) || groups[0] || DEFAULT_GROUP
+                addNewSession(
+                  `${targetGroup.name} Chai Break ☕`,
+                  shop.name,
+                  targetGroup.members,
+                  targetGroup.id,
+                  targetGroup.name,
+                  user?.id,
+                  shop.id
+                )
+                setViewingShopItems(null)
+                setActiveTab('groups')
+                setViewingBreakGroupId(targetGroup.id)
+              }}
             />
           ) : (
             /* Shops List */
@@ -1132,7 +1164,7 @@ export const Dashboard: React.FC<DashboardProps> = () => {
                               {shop.name}
                             </h3>
                             <span className="px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300 font-bold text-[10px]">
-                              {menuItems.length} items
+                              {getMenuItemsForShop(shop.id).length} items
                             </span>
                           </div>
                           <div className="flex items-center gap-1 text-[11px] text-stone-500 dark:text-stone-400 mt-0.5">

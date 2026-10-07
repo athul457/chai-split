@@ -24,7 +24,14 @@ interface ExpenseContextType {
   cancelActiveSession: () => void
   settleActiveSession: () => void
   addMemberToSession: (user: User) => void
-  addCustomMenuItem: (name: string, price: number, emoji?: string, category?: MenuItem['category']) => void
+  getMenuItemsForShop: (shopId?: string) => MenuItem[]
+  addCustomMenuItem: (
+    name: string,
+    price: number,
+    emoji?: string,
+    category?: MenuItem['category'],
+    shopId?: string
+  ) => void
   updateMenuItemPrice: (itemId: string, newPrice: number) => void
   deleteMenuItem: (itemId: string) => void
   getShopItemSummary: () => { name: string; emoji: string; count: number; totalCost: number }[]
@@ -43,7 +50,14 @@ export const ExpenseProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const [menuItems, setMenuItems] = useState<MenuItem[]>(() => {
     try {
       const saved = localStorage.getItem(MENU_ITEMS_KEY)
-      return saved ? JSON.parse(saved) : DEFAULT_MENU
+      if (saved) {
+        const parsed: MenuItem[] = JSON.parse(saved)
+        return parsed.map(item => ({
+          ...item,
+          shopId: item.shopId || 'shop-chayakkada'
+        }))
+      }
+      return DEFAULT_MENU
     } catch {
       return DEFAULT_MENU
     }
@@ -371,14 +385,27 @@ export const ExpenseProvider: React.FC<{ children: React.ReactNode }> = ({ child
     setActiveSession(null)
   }
 
-  const addCustomMenuItem = (name: string, price: number, emoji?: string, category?: MenuItem['category']) => {
+  const getMenuItemsForShop = (shopId?: string): MenuItem[] => {
+    const targetShopId = shopId || 'shop-chayakkada'
+    return menuItems.filter(item => (item.shopId || 'shop-chayakkada') === targetShopId)
+  }
+
+  const addCustomMenuItem = (
+    name: string,
+    price: number,
+    emoji?: string,
+    category?: MenuItem['category'],
+    shopId?: string
+  ) => {
+    const effectiveShopId = shopId || activeSession?.shopId || 'shop-chayakkada'
     const newItem: MenuItem = {
-      id: `custom-${Date.now()}`,
+      id: `custom-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
       name: name.trim(),
       price: Math.max(0, Number(price)),
       category: category || 'snacks',
       emoji: emoji || '☕',
-      description: 'Chayakkada menu item'
+      description: 'Shop menu item',
+      shopId: effectiveShopId
     }
     setMenuItems(prev => [...prev, newItem])
   }
@@ -450,6 +477,7 @@ export const ExpenseProvider: React.FC<{ children: React.ReactNode }> = ({ child
         activeSession,
         pastSessions,
         menuItems,
+        getMenuItemsForShop,
         addItemToMember,
         removeItemFromMember,
         toggleMemberPaid,
