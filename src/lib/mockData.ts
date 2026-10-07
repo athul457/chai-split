@@ -174,6 +174,8 @@ export const INITIAL_ACTIVE_SESSION: TeaSession = {
   payerId: 'user-amit',
   payerName: 'Amit Verma',
   payerUpi: 'amit.verma@paytm',
+  creatorId: 'user-athul',
+  creatorName: 'Athul Sukumaran',
   totalAmount: 170,
   status: 'active',
   notes: 'Tapri near Building B gate',

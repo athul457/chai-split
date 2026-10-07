@@ -42,14 +42,25 @@ export const Header: React.FC<HeaderProps> = ({ currentPage, onNavigate }) => {
 
         {/* Right: Actions */}
         <div className="flex items-center gap-1.5">
-          {/* Theme Toggle (Light mode = white bg, Dark mode = black bg) */}
+          {/* Theme Toggle (Dark vs White Mode) */}
           <button
             onClick={toggleTheme}
             id="theme-toggle-btn"
-            title={isDark ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
-            className="p-1.5 rounded-lg text-stone-500 dark:text-stone-400 hover:text-amber-600 dark:hover:text-amber-400 hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors cursor-pointer"
+            title={isDark ? 'Switch to White Mode' : 'Switch to Dark Mode'}
+            aria-label={isDark ? 'Switch to White Mode' : 'Switch to Dark Mode'}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border border-stone-200 dark:border-stone-700/80 bg-stone-100/90 dark:bg-stone-800/90 hover:bg-amber-100/80 dark:hover:bg-amber-950/60 transition-all cursor-pointer shadow-2xs active:scale-95 group"
           >
-            {isDark ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4 text-stone-600" />}
+            {isDark ? (
+              <>
+                <Sun className="w-3.5 h-3.5 text-amber-400 group-hover:rotate-45 transition-transform duration-300" />
+                <span className="text-[11px] font-bold text-stone-200">White</span>
+              </>
+            ) : (
+              <>
+                <Moon className="w-3.5 h-3.5 text-stone-700 group-hover:-rotate-12 transition-transform duration-300" />
+                <span className="text-[11px] font-bold text-stone-800">Dark</span>
+              </>
+            )}
           </button>
 
           {isAuthenticated && user ? (

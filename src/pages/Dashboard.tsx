@@ -798,7 +798,7 @@ export const Dashboard: React.FC<DashboardProps> = () => {
                   No Active Tea Break
                 </h3>
                 <p className="text-xs text-stone-500 max-w-xs mx-auto">
-                  Tea breaks are started from your group page by the Group Admin. Visit your group to start a break and add items!
+                  Tea breaks can be started from your group page by any member. Visit your group to start a break and add items!
                 </p>
                 <button
                   onClick={() => {
@@ -1104,6 +1104,22 @@ export const Dashboard: React.FC<DashboardProps> = () => {
               onBack={() => setViewingShopItems(null)}
               onStartBreak={(shop) => {
                 const targetGroup = groups.find(g => g.id === activeGroupId) || groups[0] || DEFAULT_GROUP
+                if (activeSession && activeSession.status === 'active') {
+                  const isOwner = !activeSession.creatorId || activeSession.creatorId === user?.id
+                  alert(
+                    `An active tea break is already running ("${activeSession.title}")!\n\n` +
+                    (isOwner
+                      ? 'You created this break. Please delete it first from the group page if you want to start a new one.'
+                      : `Only the creator (${activeSession.creatorName || 'owner'}) can delete the existing break before a new one can be started.`)
+                  )
+                  setViewingShopItems(null)
+                  setActiveTab('groups')
+                  if (activeSession.groupId) {
+                    setViewingBreakGroupId(activeSession.groupId)
+                  }
+                  return
+                }
+
                 addNewSession(
                   `${targetGroup.name} Chai Break ☕`,
                   shop.name,
@@ -1111,7 +1127,9 @@ export const Dashboard: React.FC<DashboardProps> = () => {
                   targetGroup.id,
                   targetGroup.name,
                   user?.id,
-                  shop.id
+                  shop.id,
+                  user?.id,
+                  user?.name
                 )
                 setViewingShopItems(null)
                 setActiveTab('groups')

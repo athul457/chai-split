@@ -1,25 +1,27 @@
-import React, { useState, useMemo } from 'react'
 import {
-  ArrowLeft,
-  Plus,
-  Minus,
-  Crown,
-  Coffee,
-  Sparkles,
-  Share2,
-  Clock,
-  ShoppingBag,
-  Flame,
-  X,
-  CheckCircle2,
-  UserPlus,
-  Receipt,
-  Users,
-  ChevronDown,
-  ChevronUp
+    ArrowLeft,
+    CheckCircle2,
+    ChevronDown,
+    ChevronUp,
+    Clock,
+    Coffee,
+    Crown,
+    Flame,
+    Minus,
+    Plus,
+    Receipt,
+    Share2,
+    ShoppingBag,
+    Sparkles,
+    UserPlus,
+    Users,
+    X,
+    Lock,
+    Trash2
 } from 'lucide-react'
+import React, { useMemo, useState } from 'react'
 import { useExpense } from '../context/ExpenseContext'
-import type { Group, User, MenuItem } from '../types'
+import type { Group, MenuItem, User } from '../types'
 
 interface TeaBreakPageProps {
   group: Group
@@ -73,6 +75,14 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
   const effectiveAdminId = group.adminId || group.members[0]?.id || currentUser?.id
   const isAdmin = currentUser?.id === effectiveAdminId
 
+  // Break Creator / Owner detection (only who created the break can delete it)
+  const isBreakOwner = Boolean(
+    activeSession && (
+      currentUser?.id === activeSession.creatorId ||
+      (!activeSession.creatorId && (currentUser?.id === activeSession.payerId || isAdmin))
+    )
+  )
+
   // Selected colleague for admin assigning items
   const [selectedAssigneeId, setSelectedAssigneeId] = useState<string>(() => {
     const firstOther = group.members.find(m => m.id !== currentUser?.id)
@@ -101,21 +111,31 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
     showToast(`Assigned ${item.name} to ${selectedAssignee?.name || 'teammate'}! 🥟`)
   }
 
-  // Settle break (admin)
+  // Settle break (owner or admin)
   const handleSettleBreak = () => {
-    if (!isAdmin) return
+    if (!isBreakOwner) {
+      showToast(`Only ${activeSession?.creatorName || 'the creator'} can settle this break.`)
+      return
+    }
     settleActiveSession()
     showToast(`Tea break bill settled successfully! 🎉`)
     onBack()
   }
 
-  // Cancel break (admin)
+  // Delete / End break (only who created the break)
   const handleCancelBreak = () => {
-    if (!isAdmin) return
-    cancelActiveSession()
+    if (!isBreakOwner) {
+      showToast(`Only ${activeSession?.creatorName || 'the creator'} can delete this break.`)
+      return
+    }
+    const res = cancelActiveSession(currentUser?.id)
     setShowCancelConfirm(false)
-    showToast(`Tea break ended.`)
-    onBack()
+    if (res) {
+      showToast(`Tea break deleted. Anyone can now start a new break!`)
+      onBack()
+    } else {
+      showToast(`Only ${activeSession?.creatorName || 'the creator'} can delete this break.`)
+    }
   }
 
   // WhatsApp share
@@ -706,16 +726,16 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
           </div>
 
           {/* Option for End Task - Strictly visible only here */}
-          {isAdmin ? (
+          {isBreakOwner ? (
             <div className="flex items-center gap-2 pt-1">
               <button
                 type="button"
                 onClick={() => setShowCancelConfirm(true)}
                 id="end-task-btn"
-                className="flex-1 py-2.5 px-3 rounded-xl border border-stone-300 dark:border-stone-700 hover:border-rose-400 bg-stone-50 dark:bg-stone-800/80 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 font-bold text-xs flex items-center justify-center gap-1.5 active:scale-95 transition-all cursor-pointer shadow-2xs"
+                className="flex-1 py-2.5 px-3 rounded-xl border border-rose-300 dark:border-rose-800 hover:border-rose-500 bg-rose-50/80 dark:bg-rose-950/40 text-rose-600 dark:text-rose-300 hover:bg-rose-100 dark:hover:bg-rose-950/60 font-bold text-xs flex items-center justify-center gap-1.5 active:scale-95 transition-all cursor-pointer shadow-2xs"
               >
-                <X className="w-4 h-4 text-rose-500" />
-                <span>End Task</span>
+                <Trash2 className="w-3.5 h-3.5 text-rose-500" />
+                <span>Delete / End Task</span>
               </button>
 
               <button
@@ -729,8 +749,11 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
               </button>
             </div>
           ) : (
-            <div className="text-center text-[11px] text-stone-400 pt-1">
-              Admin ({group.members.find(m => m.id === effectiveAdminId)?.name || 'Admin'}) can end this task when break is done.
+            <div className="p-2.5 rounded-xl bg-stone-50 dark:bg-stone-800/50 border border-stone-200 dark:border-stone-800 text-center text-[11px] text-stone-500 dark:text-stone-400 flex items-center justify-center gap-2">
+              <Lock className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+              <span>
+                Only the break creator (<strong>{activeSession.creatorName || 'Break Owner'}</strong>) can delete or end this task.
+              </span>
             </div>
           )}
         </div>
@@ -740,16 +763,16 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
       {showCancelConfirm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-900/50 backdrop-blur-xs animate-in fade-in">
           <div className="w-full max-w-sm bg-white dark:bg-stone-900 rounded-2xl shadow-2xl border border-stone-200 dark:border-stone-800 p-5 space-y-4 text-center">
-            <div className="w-12 h-12 rounded-full bg-amber-100 dark:bg-amber-950 text-amber-600 flex items-center justify-center mx-auto text-xl">
-              ☕
+            <div className="w-12 h-12 rounded-full bg-rose-100 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400 flex items-center justify-center mx-auto text-xl">
+              <Trash2 className="w-6 h-6" />
             </div>
 
             <div className="space-y-1">
               <h3 className="font-heading font-bold text-base text-stone-900 dark:text-stone-100">
-                End Current Tea Break Task?
+                Delete &amp; End Tea Break Task?
               </h3>
               <p className="text-xs text-stone-500 dark:text-stone-400">
-                This will end the active chai break for {group.name}.
+                You created this tea break. Deleting it will end this session and allow you or any group member to start a new tea break.
               </p>
             </div>
 
@@ -764,9 +787,11 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
               <button
                 type="button"
                 onClick={handleCancelBreak}
-                className="px-4 py-2 rounded-xl text-xs font-semibold bg-rose-600 hover:bg-rose-700 text-white shadow-xs cursor-pointer active:scale-95 transition-all"
+                id="confirm-end-task-btn"
+                className="px-4 py-2 rounded-xl text-xs font-semibold bg-rose-600 hover:bg-rose-700 text-white shadow-xs cursor-pointer active:scale-95 transition-all flex items-center gap-1.5"
               >
-                Yes, End Task
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Yes, Delete Task</span>
               </button>
             </div>
           </div>

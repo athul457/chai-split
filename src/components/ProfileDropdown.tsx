@@ -1,6 +1,7 @@
 import { useState } from 'react'
-import { Check } from 'lucide-react'
+import { Check, Sun, Moon } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
+import { useTheme } from '../context/ThemeContext'
 import type { PageRoute } from '../types'
 
 interface ProfileDropdownProps {
@@ -11,6 +12,7 @@ interface ProfileDropdownProps {
 
 export const ProfileDropdown: React.FC<ProfileDropdownProps> = ({ isOpen, onClose, onNavigate }) => {
   const { user, logout } = useAuth()
+  const { isDark, toggleTheme } = useTheme()
   const [copied, setCopied] = useState(false)
 
   if (!isOpen || !user) return null
@@ -86,6 +88,24 @@ export const ProfileDropdown: React.FC<ProfileDropdownProps> = ({ isOpen, onClos
               ) : (
                 <span className="text-sm" role="img" aria-label="copy">📋</span>
               )}
+            </button>
+          </div>
+        </div>
+
+        {/* Theme / Appearance Row */}
+        <div className="mt-3 pt-3 border-t border-stone-100 dark:border-stone-800/80">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-medium text-stone-600 dark:text-stone-400 flex items-center gap-1.5">
+              {isDark ? <Sun className="w-3.5 h-3.5 text-amber-400" /> : <Moon className="w-3.5 h-3.5 text-stone-600" />}
+              <span>Appearance</span>
+            </span>
+
+            <button
+              onClick={toggleTheme}
+              id="profile-theme-toggle-btn"
+              className="px-2.5 py-1 rounded-lg text-xs font-bold border border-stone-200 dark:border-stone-700 bg-stone-100 dark:bg-stone-800 text-stone-800 dark:text-stone-200 hover:border-amber-500 cursor-pointer transition-colors flex items-center gap-1"
+            >
+              <span>{isDark ? '☀️ White Mode' : '🌙 Dark Mode'}</span>
             </button>
           </div>
         </div>

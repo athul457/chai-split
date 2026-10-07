@@ -48,6 +48,8 @@ export interface TeaSession {
   payerId: string
   payerName: string
   payerUpi?: string
+  creatorId?: string
+  creatorName?: string
   totalAmount: number
   expenses: MemberExpense[]
   status: 'active' | 'settled'

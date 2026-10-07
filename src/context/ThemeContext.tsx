@@ -3,6 +3,7 @@ import React, { createContext, useContext, useState, useEffect } from 'react'
 interface ThemeContextType {
   isDark: boolean
   toggleTheme: () => void
+  setTheme: (theme: 'dark' | 'light') => void
 }
 
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined)
@@ -26,9 +27,11 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const root = document.documentElement
     if (isDark) {
       root.classList.add('dark')
+      root.style.colorScheme = 'dark'
       localStorage.setItem(THEME_KEY, 'dark')
     } else {
       root.classList.remove('dark')
+      root.style.colorScheme = 'light'
       localStorage.setItem(THEME_KEY, 'light')
     }
   }, [isDark])
@@ -37,8 +40,12 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setIsDark(prev => !prev)
   }
 
+  const setTheme = (theme: 'dark' | 'light') => {
+    setIsDark(theme === 'dark')
+  }
+
   return (
-    <ThemeContext.Provider value={{ isDark, toggleTheme }}>
+    <ThemeContext.Provider value={{ isDark, toggleTheme, setTheme }}>
       {children}
     </ThemeContext.Provider>
   )

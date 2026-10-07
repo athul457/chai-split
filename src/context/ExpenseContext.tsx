@@ -19,9 +19,12 @@ interface ExpenseContextType {
     groupId?: string,
     groupName?: string,
     payerId?: string,
-    shopId?: string
-  ) => void
-  cancelActiveSession: () => void
+    shopId?: string,
+    creatorId?: string,
+    creatorName?: string
+  ) => boolean
+  cancelActiveSession: (userId?: string) => boolean
+  deleteActiveSession: (userId?: string) => { success: boolean; message: string }
   settleActiveSession: () => void
   addMemberToSession: (user: User) => void
   getMenuItemsForShop: (shopId?: string) => MenuItem[]
@@ -70,6 +73,10 @@ export const ExpenseProvider: React.FC<{ children: React.ReactNode }> = ({ child
         const parsed = JSON.parse(saved)
         if (parsed?.shopName?.includes('Sharma')) {
           parsed.shopName = 'Chayakkada'
+        }
+        if (!parsed.creatorId) {
+          parsed.creatorId = parsed.payerId || 'user-athul'
+          parsed.creatorName = parsed.payerName || 'Athul Sukumaran'
         }
         return parsed
       }
@@ -311,13 +318,29 @@ export const ExpenseProvider: React.FC<{ children: React.ReactNode }> = ({ child
     })
   }
 
-  const cancelActiveSession = () => {
+  const deleteActiveSession = (userId?: string): { success: boolean; message: string } => {
+    if (!activeSession) {
+      return { success: false, message: 'No active tea break found.' }
+    }
+    const isOwner = !activeSession.creatorId || !userId || activeSession.creatorId === userId
+    if (!isOwner) {
+      return {
+        success: false,
+        message: `Only the creator (${activeSession.creatorName || 'owner'}) can delete this tea break.`
+      }
+    }
     setActiveSession(null)
     try {
       localStorage.removeItem(ACTIVE_SESSION_KEY)
     } catch (e) {
       console.error('Failed to clear active session', e)
     }
+    return { success: true, message: 'Tea break deleted successfully.' }
+  }
+
+  const cancelActiveSession = (userId?: string): boolean => {
+    const res = deleteActiveSession(userId)
+    return res.success
   }
 
   const addNewSession = (
@@ -327,13 +350,24 @@ export const ExpenseProvider: React.FC<{ children: React.ReactNode }> = ({ child
     groupId?: string,
     groupName?: string,
     payerId?: string,
-    shopId?: string
-  ) => {
+    shopId?: string,
+    creatorId?: string,
+    creatorName?: string
+  ): boolean => {
+    if (activeSession && activeSession.status === 'active') {
+      console.warn('Cannot create new session while an active session already exists.')
+      return false
+    }
+
     const sessionMembers = members && members.length > 0 ? members : allUsers.slice(0, 4)
     const effectivePayerId = payerId || sessionMembers[0]?.id || allUsers[0]?.id || 'unknown'
     const payerUser = allUsers.find(u => u.id === effectivePayerId) || sessionMembers.find(u => u.id === effectivePayerId)
     const payerName = payerUser?.name || 'Admin'
     const payerUpi = payerUser?.upiId || 'office@upi'
+
+    const effectiveCreatorId = creatorId || effectivePayerId
+    const creatorUser = allUsers.find(u => u.id === effectiveCreatorId) || sessionMembers.find(u => u.id === effectiveCreatorId)
+    const effectiveCreatorName = creatorName || creatorUser?.name || payerName
 
     const newSess: TeaSession = {
       id: `session-${Date.now()}`,
@@ -346,6 +380,8 @@ export const ExpenseProvider: React.FC<{ children: React.ReactNode }> = ({ child
       payerId: effectivePayerId,
       payerName,
       payerUpi,
+      creatorId: effectiveCreatorId,
+      creatorName: effectiveCreatorName,
       totalAmount: 0,
       status: 'active',
       expenses: sessionMembers.map(u => ({
@@ -358,6 +394,7 @@ export const ExpenseProvider: React.FC<{ children: React.ReactNode }> = ({ child
       }))
     }
     setActiveSession(newSess)
+    return true
   }
 
   const settleActiveSession = () => {
@@ -484,6 +521,7 @@ export const ExpenseProvider: React.FC<{ children: React.ReactNode }> = ({ child
         setPayer,
         addNewSession,
         cancelActiveSession,
+        deleteActiveSession,
         settleActiveSession,
         addMemberToSession,
         addCustomMenuItem,

@@ -81,10 +81,10 @@ const MainApp: React.FC = () => {
   }
 
   return (
-    // Outer viewport: pure white in color/light mode, pure black in dark mode
-    <div className="min-h-screen w-full bg-white dark:bg-black text-stone-900 dark:text-stone-100 flex justify-center items-start transition-colors">
+    // Outer viewport: clean neutral in white/light mode, pitch black in dark mode
+    <div className="min-h-screen w-full bg-stone-100 dark:bg-black text-stone-900 dark:text-stone-100 flex justify-center items-start transition-colors">
       {/* Mobile view frame: always max 430px wide, centered, full height */}
-      <div className="w-full max-w-[430px] min-h-screen bg-stone-50/70 dark:bg-stone-900 border-x border-stone-200/90 dark:border-stone-800 shadow-2xl flex flex-col relative transition-colors">
+      <div className="w-full max-w-[430px] min-h-screen bg-white dark:bg-stone-900 border-x border-stone-200/90 dark:border-stone-800 shadow-2xl flex flex-col relative transition-colors">
         <Header currentPage={currentPage} onNavigate={handleNavigate} />
         <main className="flex-1 w-full flex flex-col">{renderCurrentPage()}</main>
       </div>

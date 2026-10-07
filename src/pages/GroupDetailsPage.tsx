@@ -1,22 +1,22 @@
-import React, { useState } from 'react'
 import {
   ArrowLeft,
-  Copy,
-  Users,
-  UserPlus,
-  LogOut,
+  ArrowRight,
   CheckCircle2,
-  X,
-  Crown,
   Coffee,
-  Trash2,
-  ShieldAlert,
+  Copy,
+  Crown,
   Flame,
-  ArrowRight
+  LogOut,
+  ShieldAlert,
+  Trash2,
+  UserPlus,
+  Users,
+  X
 } from 'lucide-react'
+import React, { useState } from 'react'
 import { useExpense } from '../context/ExpenseContext'
-import { TeaBreakPage } from './TeaBreakPage'
 import type { Group, User } from '../types'
+import { TeaBreakPage } from './TeaBreakPage'
 
 interface GroupDetailsPageProps {
   group: Group
