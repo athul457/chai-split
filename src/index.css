@@ -23,6 +23,81 @@
   animation: steam 2s ease-in-out infinite alternate;
 }
 
+/* Rich Chai Loading Animations */
+@keyframes steamRise1 {
+  0% { transform: translateY(0) scaleX(0.85); opacity: 0; }
+  25% { opacity: 0.8; }
+  60% { opacity: 0.5; }
+  100% { transform: translateY(-28px) translateX(6px) scaleX(1.3); opacity: 0; }
+}
+
+@keyframes steamRise2 {
+  0% { transform: translateY(0) scaleX(0.9); opacity: 0; }
+  25% { opacity: 0.9; }
+  60% { opacity: 0.6; }
+  100% { transform: translateY(-34px) translateX(-7px) scaleX(1.4); opacity: 0; }
+}
+
+@keyframes steamRise3 {
+  0% { transform: translateY(0) scaleX(0.8); opacity: 0; }
+  25% { opacity: 0.85; }
+  60% { opacity: 0.55; }
+  100% { transform: translateY(-30px) translateX(4px) scaleX(1.2); opacity: 0; }
+}
+
+@keyframes teaBubble {
+  0%, 100% { transform: translateY(0) scale(0.9); opacity: 0.3; }
+  50% { transform: translateY(-5px) scale(1.25); opacity: 0.95; }
+}
+
+@keyframes chaiGlow {
+  0%, 100% { opacity: 0.4; transform: scale(0.96); }
+  50% { opacity: 0.85; transform: scale(1.06); }
+}
+
+@keyframes shimmerWave {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+
+@keyframes cupTilt {
+  0%, 100% { transform: rotate(0deg); }
+  25% { transform: rotate(-2.5deg); }
+  75% { transform: rotate(2.5deg); }
+}
+
+.animate-steam-1 {
+  animation: steamRise1 2.2s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+.animate-steam-2 {
+  animation: steamRise2 2.6s cubic-bezier(0.4, 0, 0.2, 1) infinite 0.4s;
+}
+
+.animate-steam-3 {
+  animation: steamRise3 2.4s cubic-bezier(0.4, 0, 0.2, 1) infinite 0.8s;
+}
+
+.animate-tea-bubble-1 {
+  animation: teaBubble 1.8s ease-in-out infinite;
+}
+
+.animate-tea-bubble-2 {
+  animation: teaBubble 1.5s ease-in-out infinite 0.5s;
+}
+
+.animate-tea-bubble-3 {
+  animation: teaBubble 2.1s ease-in-out infinite 0.9s;
+}
+
+.animate-chai-glow {
+  animation: chaiGlow 2.5s ease-in-out infinite;
+}
+
+.animate-cup-tilt {
+  animation: cupTilt 3.2s ease-in-out infinite;
+}
+
 /* Glassmorphism helpers */
 .glass-panel {
   background: rgba(255, 255, 255, 0.85);

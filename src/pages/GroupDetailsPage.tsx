@@ -18,6 +18,7 @@ import {
 import React, { useState } from 'react'
 import { useExpense } from '../context/ExpenseContext'
 import { supabase } from '../lib/supabase'
+import { ChaiLoader } from '../components/ChaiLoader'
 import type { Group, User } from '../types'
 import { TeaBreakPage } from './TeaBreakPage'
 
@@ -57,6 +58,7 @@ export const GroupDetailsPage: React.FC<GroupDetailsPageProps> = ({
   const [toastNotice, setToastNotice] = useState<string | null>(null)
   const [showExitConfirm, setShowExitConfirm] = useState(false)
   const [breakTitleInput, setBreakTitleInput] = useState(`${group.name} Chai Break ☕`)
+  const [isStartingBreak, setIsStartingBreak] = useState(false)
 
   const cleanInput = memberUniqueIdInput.trim()
   const matchedUser = cleanInput
@@ -276,7 +278,8 @@ export const GroupDetailsPage: React.FC<GroupDetailsPageProps> = ({
 
   // Admin starts break for this group and immediately opens the separate break page
   const handleStartBreak = () => {
-    if (!isAdmin) return
+    if (!isAdmin || isStartingBreak) return
+    setIsStartingBreak(true)
     const title = breakTitleInput.trim() || `${group.name} Chai Break ☕`
     addNewSession(
       title,
@@ -287,11 +290,14 @@ export const GroupDetailsPage: React.FC<GroupDetailsPageProps> = ({
       currentUser?.id,
       group.shopId
     )
-    if (onOpenBreak) {
-      onOpenBreak(group.id)
-    } else {
-      setShowTeaBreakView(true)
-    }
+    setTimeout(() => {
+      setIsStartingBreak(false)
+      if (onOpenBreak) {
+        onOpenBreak(group.id)
+      } else {
+        setShowTeaBreakView(true)
+      }
+    }, 350)
   }
 
   // =========================================================================
@@ -606,11 +612,18 @@ export const GroupDetailsPage: React.FC<GroupDetailsPageProps> = ({
 
                 <button
                   onClick={handleStartBreak}
+                  disabled={isStartingBreak}
                   id="start-tea-break-btn"
-                  className="w-full py-2.5 px-4 rounded-xl font-bold text-xs bg-gradient-to-r from-amber-600 via-orange-600 to-amber-700 hover:from-amber-700 hover:to-orange-700 text-white shadow-md active:scale-[0.98] transition-all cursor-pointer flex items-center justify-center gap-2"
+                  className="w-full py-2.5 px-4 rounded-xl font-bold text-xs bg-gradient-to-r from-amber-600 via-orange-600 to-amber-700 hover:from-amber-700 hover:to-orange-700 disabled:opacity-80 disabled:cursor-wait text-white shadow-md active:scale-[0.98] transition-all cursor-pointer flex items-center justify-center gap-2"
                 >
-                  <Coffee className="w-4 h-4" />
-                  <span>Start Tea Break ☕</span>
+                  {isStartingBreak ? (
+                    <ChaiLoader variant="spinner" size="sm" text="Starting Tea Break..." />
+                  ) : (
+                    <>
+                      <Coffee className="w-4 h-4" />
+                      <span>Start Tea Break ☕</span>
+                    </>
+                  )}
                 </button>
               </div>
             ) : (
@@ -742,8 +755,14 @@ export const GroupDetailsPage: React.FC<GroupDetailsPageProps> = ({
                   id="submit-add-member-by-id-btn"
                   className="px-4 py-2 rounded-xl text-xs font-semibold bg-amber-600 hover:bg-amber-700 disabled:opacity-50 disabled:cursor-not-allowed text-white shadow-xs cursor-pointer active:scale-95 transition-all flex items-center gap-1.5"
                 >
-                  <UserPlus className="w-3.5 h-3.5" />
-                  <span>{isSubmittingMember ? 'Adding...' : 'Add Member'}</span>
+                  {isSubmittingMember ? (
+                    <ChaiLoader variant="spinner" size="sm" text="Adding..." />
+                  ) : (
+                    <>
+                      <UserPlus className="w-3.5 h-3.5" />
+                      <span>Add Member</span>
+                    </>
+                  )}
                 </button>
               </div>
             </form>

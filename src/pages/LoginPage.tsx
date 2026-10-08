@@ -1,5 +1,6 @@
 import React, { useState } from 'react'
 import { Coffee, ArrowLeft, LogIn, Mail, Lock, AlertCircle } from 'lucide-react'
+import { ChaiLoader } from '../components/ChaiLoader'
 import type { PageRoute } from '../types'
 import { useAuth } from '../context/AuthContext'
 
@@ -113,8 +114,14 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onNavigate }) => {
             id="login-submit-btn"
             className="w-full py-2.5 px-4 rounded-xl font-semibold text-sm bg-amber-600 hover:bg-amber-700 active:scale-98 text-white shadow-md shadow-amber-600/20 transition-all duration-200 cursor-pointer flex items-center justify-center gap-2"
           >
-            <LogIn className="w-4 h-4" />
-            <span>{loading ? 'Logging in...' : 'Log In to Dashboard'}</span>
+            {loading ? (
+              <ChaiLoader variant="spinner" message="Pouring into Dashboard..." className="text-white" />
+            ) : (
+              <>
+                <LogIn className="w-4 h-4" />
+                <span>Log In to Dashboard</span>
+              </>
+            )}
           </button>
         </form>
 

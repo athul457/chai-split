@@ -25,6 +25,7 @@ import { GroupDetailsPage } from './GroupDetailsPage'
 import { TeaBreakPage } from './TeaBreakPage'
 import { DEFAULT_SHOPS } from '../lib/mockData'
 import { supabase } from '../lib/supabase'
+import { ShopCardSkeleton, GroupCardSkeleton } from '../components/ChaiSkeleton'
 import type { PageRoute, BottomTab, Shop, MenuItem, Group, User } from '../types'
 
 interface DashboardProps {
@@ -88,10 +89,15 @@ export const Dashboard: React.FC<DashboardProps> = () => {
   const viewingGroup = viewingGroupId ? groups.find(g => g.id === viewingGroupId) || null : null
   const [viewingBreakGroupId, setViewingBreakGroupId] = useState<string | null>(null)
   const viewingBreakGroup = viewingBreakGroupId ? (groups.find(g => g.id === viewingBreakGroupId) || null) : null
+  const [isLoadingGroups, setIsLoadingGroups] = useState(true)
+  const [isLoadingShops, setIsLoadingShops] = useState(true)
 
   // Fetch real groups from Supabase
   useEffect(() => {
-    if (!supabase) return
+    if (!supabase) {
+      setIsLoadingGroups(false)
+      return
+    }
     const client = supabase
     const loadGroups = async () => {
       try {
@@ -139,6 +145,8 @@ export const Dashboard: React.FC<DashboardProps> = () => {
         }
       } catch (err) {
         console.warn('Failed to load groups from Supabase:', err)
+      } finally {
+        setIsLoadingGroups(false)
       }
     }
     loadGroups()
@@ -146,7 +154,10 @@ export const Dashboard: React.FC<DashboardProps> = () => {
 
   // Fetch real shops from Supabase
   useEffect(() => {
-    if (!supabase) return
+    if (!supabase) {
+      setIsLoadingShops(false)
+      return
+    }
     const client = supabase
     const loadShops = async () => {
       try {
@@ -186,6 +197,8 @@ export const Dashboard: React.FC<DashboardProps> = () => {
         }
       } catch (err) {
         console.warn('Failed to load shops from Supabase:', err)
+      } finally {
+        setIsLoadingShops(false)
       }
     }
     loadShops()
@@ -1142,8 +1155,10 @@ export const Dashboard: React.FC<DashboardProps> = () => {
               </div>
             )}
 
-            {/* Empty State: If no groups found */}
-            {groups.length === 0 ? (
+            {/* Loading or Empty State: If groups are fetching or none found */}
+            {isLoadingGroups && groups.length === 0 ? (
+              <GroupCardSkeleton count={3} />
+            ) : groups.length === 0 ? (
               <div className="p-8 rounded-2xl bg-white dark:bg-stone-900 border border-dashed border-stone-300 dark:border-stone-800 text-center space-y-4 my-2">
                 <div className="w-16 h-16 mx-auto rounded-2xl bg-gradient-to-tr from-amber-500/10 to-orange-500/10 text-amber-600 dark:text-amber-500 flex items-center justify-center border border-amber-500/20 shadow-xs">
                   <Users className="w-8 h-8" />
@@ -1369,7 +1384,9 @@ export const Dashboard: React.FC<DashboardProps> = () => {
               </div>
 
               {/* Shop Cards */}
-              {shops.length === 0 ? (
+              {isLoadingShops && shops.length === 0 ? (
+                <ShopCardSkeleton count={3} />
+              ) : shops.length === 0 ? (
                 <div className="p-8 text-center bg-white dark:bg-stone-900 rounded-2xl border border-dashed border-stone-200 dark:border-stone-800 text-stone-500 text-xs space-y-3">
                   <span className="text-3xl block">🏪</span>
                   <p className="font-semibold text-stone-700 dark:text-stone-300">No shops available</p>

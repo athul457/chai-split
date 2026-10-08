@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { Header } from './components/Header'
+import { ChaiLoader } from './components/ChaiLoader'
 import { LandingPage } from './pages/LandingPage'
 import { LoginPage } from './pages/LoginPage'
 import { RegisterPage } from './pages/RegisterPage'
@@ -11,6 +12,15 @@ import type { PageRoute } from './types'
 
 const MainApp: React.FC = () => {
   const { isAuthenticated } = useAuth()
+  const [isAppLoading, setIsAppLoading] = useState(true)
+
+  // Smooth initial tea brewing splash screen
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setIsAppLoading(false)
+    }, 650)
+    return () => clearTimeout(timer)
+  }, [])
 
   // Read current hash route
   const getRouteFromHash = (): PageRoute => {
@@ -78,6 +88,19 @@ const MainApp: React.FC = () => {
       default:
         return <LandingPage onNavigate={handleNavigate} />
     }
+  }
+
+  if (isAppLoading) {
+    return (
+      <div className="min-h-screen w-full bg-stone-100 dark:bg-black text-stone-900 dark:text-stone-100 flex justify-center items-center p-4">
+        <ChaiLoader
+          variant="fullscreen"
+          size="lg"
+          message="Brewing your chai break... ☕"
+          submessage="ChaiSplit • Smart Tea Break Expense Tracker"
+        />
+      </div>
+    )
   }
 
   return (

@@ -22,6 +22,7 @@ import {
 import React, { useMemo, useState } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { useExpense } from '../context/ExpenseContext'
+import { ChaiLoader } from '../components/ChaiLoader'
 import type { Group, MenuItem, User } from '../types'
 
 interface TeaBreakPageProps {
@@ -52,6 +53,8 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
   const [toastNotice, setToastNotice] = useState<string | null>(null)
   const [showCancelConfirm, setShowCancelConfirm] = useState(false)
   const [showAssignModal, setShowAssignModal] = useState(false)
+  const [isSettling, setIsSettling] = useState(false)
+  const [isDeletingBreak, setIsDeletingBreak] = useState(false)
 
   // Accordion state: other users' items only appear when clicked
   const [expandedMemberIds, setExpandedMemberIds] = useState<Set<string>>(() => {
@@ -152,29 +155,41 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
 
   // Settle break (owner or admin)
   const handleSettleBreak = () => {
-    if (!isBreakOwner) {
-      showToast(`Only ${activeSession?.creatorName || 'the creator'} can settle this break.`)
+    if (!isBreakOwner || isSettling) {
+      if (!isBreakOwner) {
+        showToast(`Only ${activeSession?.creatorName || 'the creator'} can settle this break.`)
+      }
       return
     }
-    settleActiveSession()
-    showToast(`Tea break bill settled successfully! 🎉`)
-    onBack()
+    setIsSettling(true)
+    setTimeout(() => {
+      settleActiveSession()
+      showToast(`Tea break bill settled successfully! 🎉`)
+      setIsSettling(false)
+      onBack()
+    }, 400)
   }
 
   // Delete / End break (only who created the break)
   const handleCancelBreak = () => {
-    if (!isBreakOwner) {
-      showToast(`Only ${activeSession?.creatorName || 'the creator'} can delete this break.`)
+    if (!isBreakOwner || isDeletingBreak) {
+      if (!isBreakOwner) {
+        showToast(`Only ${activeSession?.creatorName || 'the creator'} can delete this break.`)
+      }
       return
     }
-    const res = cancelActiveSession(currentUser?.id)
-    setShowCancelConfirm(false)
-    if (res) {
-      showToast(`Tea break deleted. Anyone can now start a new break!`)
-      onBack()
-    } else {
-      showToast(`Only ${activeSession?.creatorName || 'the creator'} can delete this break.`)
-    }
+    setIsDeletingBreak(true)
+    setTimeout(() => {
+      const res = cancelActiveSession(currentUser?.id)
+      setIsDeletingBreak(false)
+      setShowCancelConfirm(false)
+      if (res) {
+        showToast(`Tea break deleted. Anyone can now start a new break!`)
+        onBack()
+      } else {
+        showToast(`Only ${activeSession?.creatorName || 'the creator'} can delete this break.`)
+      }
+    }, 350)
   }
 
   // WhatsApp share
@@ -824,11 +839,18 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
               <button
                 type="button"
                 onClick={handleSettleBreak}
+                disabled={isSettling}
                 id="settle-and-end-task-btn"
-                className="flex-1 py-2.5 px-3 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-bold text-xs shadow-md active:scale-95 flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+                className="flex-1 py-2.5 px-3 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 disabled:opacity-80 text-white font-bold text-xs shadow-md active:scale-95 flex items-center justify-center gap-1.5 transition-all cursor-pointer"
               >
-                <Sparkles className="w-3.5 h-3.5" />
-                <span>Settle &amp; Close 🎉</span>
+                {isSettling ? (
+                  <ChaiLoader variant="spinner" size="sm" text="Settling..." />
+                ) : (
+                  <>
+                    <Sparkles className="w-3.5 h-3.5" />
+                    <span>Settle &amp; Close 🎉</span>
+                  </>
+                )}
               </button>
             </div>
           ) : (
@@ -870,11 +892,18 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
               <button
                 type="button"
                 onClick={handleCancelBreak}
+                disabled={isDeletingBreak}
                 id="confirm-end-task-btn"
-                className="px-4 py-2 rounded-xl text-xs font-semibold bg-rose-600 hover:bg-rose-700 text-white shadow-xs cursor-pointer active:scale-95 transition-all flex items-center gap-1.5"
+                className="px-4 py-2 rounded-xl text-xs font-semibold bg-rose-600 hover:bg-rose-700 disabled:opacity-80 text-white shadow-xs cursor-pointer active:scale-95 transition-all flex items-center gap-1.5"
               >
-                <Trash2 className="w-3.5 h-3.5" />
-                <span>Yes, Delete Task</span>
+                {isDeletingBreak ? (
+                  <ChaiLoader variant="spinner" size="sm" text="Deleting..." />
+                ) : (
+                  <>
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Yes, Delete Task</span>
+                  </>
+                )}
               </button>
             </div>
           </div>

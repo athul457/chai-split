@@ -1,5 +1,6 @@
 import React, { useState } from 'react'
 import { Coffee, ArrowLeft, UserPlus, Mail, User, Building, AlertCircle } from 'lucide-react'
+import { ChaiLoader } from '../components/ChaiLoader'
 import type { PageRoute } from '../types'
 import { useAuth } from '../context/AuthContext'
 
@@ -134,8 +135,14 @@ export const RegisterPage: React.FC<RegisterPageProps> = ({ onNavigate }) => {
             id="register-submit-btn"
             className="w-full py-2.5 px-4 rounded-xl font-semibold text-sm bg-amber-600 hover:bg-amber-700 active:scale-98 text-white shadow-md shadow-amber-600/20 transition-all duration-200 cursor-pointer flex items-center justify-center gap-2"
           >
-            <UserPlus className="w-4 h-4" />
-            <span>{loading ? 'Creating Account...' : 'Get Started & Join Team'}</span>
+            {loading ? (
+              <ChaiLoader variant="spinner" message="Brewing your account..." className="text-white" />
+            ) : (
+              <>
+                <UserPlus className="w-4 h-4" />
+                <span>Get Started &amp; Join Team</span>
+              </>
+            )}
           </button>
         </form>
 
