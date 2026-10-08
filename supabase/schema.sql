@@ -137,6 +137,9 @@ CREATE POLICY "Allow public read/write order_items" ON public.order_items FOR AL
 ALTER PUBLICATION supabase_realtime ADD TABLE public.tea_sessions;
 ALTER PUBLICATION supabase_realtime ADD TABLE public.session_expenses;
 ALTER PUBLICATION supabase_realtime ADD TABLE public.order_items;
+ALTER PUBLICATION supabase_realtime ADD TABLE public.menu_items;
+ALTER PUBLICATION supabase_realtime ADD TABLE public.shops;
+ALTER PUBLICATION supabase_realtime ADD TABLE public.groups;
 
 -- ==============================================================================
 -- SEED INITIAL DATA (DEFAULT SHOPS, USERS & MENU)

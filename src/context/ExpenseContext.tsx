@@ -38,6 +38,7 @@ interface ExpenseContextType {
   ) => void
   updateMenuItemPrice: (itemId: string, newPrice: number) => void
   deleteMenuItem: (itemId: string) => void
+  removeMenuItemsForShop?: (shopId: string) => void
   getShopItemSummary: () => { name: string; emoji: string; count: number; totalCost: number }[]
   generateWhatsAppSummary: () => string
 }
@@ -82,14 +83,14 @@ export const ExpenseProvider: React.FC<{ children: React.ReactNode }> = ({ child
   })
 
   // Fetch menu items from Supabase
-  useEffect(() => {
+  const fetchMenuItems = useCallback(async () => {
     if (!supabase) return
     const client = supabase
 
-    const loadMenu = async () => {
-      try {
-        const { data, error } = await client.from('menu_items').select('*')
-        if (!error && data && data.length > 0) {
+    try {
+      const { data, error } = await client.from('menu_items').select('*').order('name', { ascending: true })
+      if (!error && data) {
+        if (data.length > 0) {
           const mapped: MenuItem[] = data.map((item: any) => ({
             id: item.id,
             name: item.name,
@@ -100,13 +101,32 @@ export const ExpenseProvider: React.FC<{ children: React.ReactNode }> = ({ child
             shopId: item.shop_id || 'shop-chayakkada'
           }))
           setMenuItems(mapped)
+        } else {
+          // Auto-seed default menu items into Supabase menu_items table
+          const seedItems = DEFAULT_MENU.map(item => ({
+            id: item.id,
+            name: item.name,
+            price: item.price,
+            category: item.category,
+            emoji: item.emoji,
+            description: item.description,
+            shop_id: item.shopId
+          }))
+          client.from('menu_items').upsert(seedItems).then(({ error: upsertErr }) => {
+            if (!upsertErr) {
+              setMenuItems(DEFAULT_MENU)
+            }
+          }, (e: any) => console.warn(e))
         }
-      } catch (e) {
-        console.warn('Could not load menu items:', e)
       }
+    } catch (e) {
+      console.warn('Could not load menu items from Supabase:', e)
     }
-    loadMenu()
   }, [])
+
+  useEffect(() => {
+    fetchMenuItems()
+  }, [fetchMenuItems])
 
   // Fetch active session from Supabase
   const fetchActiveSession = useCallback(async () => {
@@ -246,12 +266,15 @@ export const ExpenseProvider: React.FC<{ children: React.ReactNode }> = ({ child
       .on('postgres_changes', { event: '*', schema: 'public', table: 'order_items' }, () => {
         fetchActiveSession()
       })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'menu_items' }, () => {
+        fetchMenuItems()
+      })
       .subscribe()
 
     return () => {
       client.removeChannel(channel)
     }
-  }, [fetchActiveSession, fetchPastSessions])
+  }, [fetchActiveSession, fetchPastSessions, fetchMenuItems])
 
   // Sync to local cache
   useEffect(() => {
@@ -756,6 +779,14 @@ export const ExpenseProvider: React.FC<{ children: React.ReactNode }> = ({ child
     setMenuItems(prev => prev.filter(item => item.id !== itemId))
   }
 
+  const removeMenuItemsForShop = (shopId: string) => {
+    if (supabase) {
+      const client = supabase
+      client.from('menu_items').delete().eq('shop_id', shopId).then(() => {}, (e: any) => console.warn(e))
+    }
+    setMenuItems(prev => prev.filter(item => item.shopId !== shopId))
+  }
+
   const getShopItemSummary = () => {
     if (!activeSession) return []
     const summaryMap: Record<string, { name: string; emoji: string; count: number; totalCost: number }> = {}
@@ -832,6 +863,7 @@ export const ExpenseProvider: React.FC<{ children: React.ReactNode }> = ({ child
         addCustomMenuItem,
         updateMenuItemPrice,
         deleteMenuItem,
+        removeMenuItemsForShop,
         getShopItemSummary,
         generateWhatsAppSummary
       }}

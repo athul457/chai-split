@@ -231,11 +231,22 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
         <div className="flex items-center justify-between p-3 rounded-2xl bg-white dark:bg-stone-900 border border-stone-200/80 dark:border-stone-800 shadow-2xs">
           <button
             onClick={onBack}
-            className="flex items-center gap-1.5 text-xs font-semibold text-stone-600 dark:text-stone-300 hover:text-amber-700 cursor-pointer"
+            className="flex items-center gap-1.5 text-xs font-semibold text-stone-600 dark:text-stone-300 hover:text-amber-700 dark:hover:text-amber-400 cursor-pointer active:scale-95 transition-all"
           >
             <ArrowLeft className="w-4 h-4" />
             <span>Back to Group</span>
           </button>
+
+          {group && (
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-bold text-stone-800 dark:text-stone-200">
+                {group.name}
+              </span>
+              <span className="font-mono text-[11px] font-bold text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/60 px-2 py-0.5 rounded-md border border-amber-200/50 dark:border-amber-900/50">
+                ID: {group.code || group.id}
+              </span>
+            </div>
+          )}
         </div>
         <div className="p-8 text-center bg-white dark:bg-stone-900 rounded-2xl border border-stone-200 dark:border-stone-800 space-y-3">
           <div className="text-3xl">☕</div>
@@ -243,14 +254,24 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
             No Active Tea Break
           </h3>
           <p className="text-xs text-stone-500">
-            This tea break has ended or settled.
+            This tea break has ended or settled for <strong className="text-stone-800 dark:text-stone-200">{group?.name}</strong>.
           </p>
-          <button
-            onClick={onBack}
-            className="px-4 py-2 rounded-xl text-xs font-bold bg-amber-600 text-white cursor-pointer"
-          >
-            Return to Group
-          </button>
+          {group && (
+            <div>
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-amber-50 dark:bg-amber-950/60 border border-amber-200/60 dark:border-amber-900/60 text-xs">
+                <span className="text-stone-500 dark:text-stone-400 font-medium">Group ID:</span>
+                <span className="font-mono font-bold text-amber-700 dark:text-amber-400">{group.code || group.id}</span>
+              </div>
+            </div>
+          )}
+          <div className="pt-2">
+            <button
+              onClick={onBack}
+              className="px-5 py-2.5 rounded-xl text-xs font-bold bg-amber-600 hover:bg-amber-700 active:scale-95 text-white transition-all cursor-pointer shadow-xs"
+            >
+              Return to Group
+            </button>
+          </div>
         </div>
       </div>
     )
@@ -279,13 +300,20 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
           className="flex items-center gap-1.5 text-xs font-semibold text-stone-600 dark:text-stone-300 hover:text-amber-700 dark:hover:text-amber-400 cursor-pointer active:scale-95 transition-all"
         >
           <ArrowLeft className="w-4 h-4" />
-          <span>Back to Groups</span>
+          <span>Back to Group</span>
         </button>
 
-        <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
-          <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping inline-block" />
-          <span>Live Tea Break</span>
-        </span>
+        <div className="flex items-center gap-2">
+          {group && (
+            <span className="font-mono text-[11px] font-bold text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/60 px-2 py-0.5 rounded-md border border-amber-200/50 dark:border-amber-900/50">
+              ID: {group.code || group.id}
+            </span>
+          )}
+          <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping inline-block" />
+            <span>Live Tea Break</span>
+          </span>
+        </div>
       </div>
 
       {/* Active Session Overview Banner (PURE BREAK DATA - NO GROUP DETAILS) */}

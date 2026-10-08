@@ -54,33 +54,6 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onNavigate }) => {
           </button>
         </div>
 
-        {/* Live Mini Preview Snippet */}
-        <div className="w-full p-3.5 rounded-xl bg-white dark:bg-stone-900 border border-amber-200/60 dark:border-amber-900/40 shadow-sm text-left text-xs">
-          <div className="flex items-center justify-between pb-2 mb-2 border-b border-stone-100 dark:border-stone-800">
-            <span className="font-semibold text-stone-800 dark:text-stone-200 text-[11px] flex items-center gap-1">
-              <span>☕ Raju Chai Tapri</span>
-            </span>
-            <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 font-bold text-[10px]">
-              Total: ₹170
-            </span>
-          </div>
-          <div className="grid grid-cols-2 gap-1.5 text-stone-600 dark:text-stone-400 text-[11px]">
-            <div className="p-1.5 rounded-lg bg-stone-50 dark:bg-stone-800 flex items-center justify-between">
-              <span>☕ Kadak Chai × 4</span>
-              <span className="font-bold text-stone-800 dark:text-stone-200">₹60</span>
-            </div>
-            <div className="p-1.5 rounded-lg bg-stone-50 dark:bg-stone-800 flex items-center justify-between">
-              <span>🥟 Samosas × 3</span>
-              <span className="font-bold text-stone-800 dark:text-stone-200">₹60</span>
-            </div>
-          </div>
-          <div className="mt-2 pt-1.5 border-t border-stone-100 dark:border-stone-800 flex items-center justify-between text-[10px] text-stone-500 dark:text-stone-400">
-            <span>Amit paid for all</span>
-            <span className="text-amber-600 dark:text-amber-400 font-semibold">
-              Rahul owes ₹35 • Priya owes ₹55
-            </span>
-          </div>
-        </div>
 
         {/* 4 Feature Points Section (Mobile 2x2 Grid) */}
         <div className="w-full grid grid-cols-2 gap-2 text-left pt-2">

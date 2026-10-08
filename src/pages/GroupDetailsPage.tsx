@@ -377,11 +377,11 @@ export const GroupDetailsPage: React.FC<GroupDetailsPageProps> = ({
               </div>
 
               <button
-                onClick={() => handleCopy(group.code, 'Group ID')}
+                onClick={() => handleCopy(group.code || group.id, 'Group ID')}
                 className="text-[11px] font-semibold bg-white/20 hover:bg-white/30 px-2.5 py-1 rounded-xl flex items-center gap-1 cursor-pointer transition-colors shrink-0"
               >
                 <Copy className="w-3 h-3" />
-                <span>ID: {group.code}</span>
+                <span>ID: {group.code || group.id}</span>
               </button>
             </div>
 

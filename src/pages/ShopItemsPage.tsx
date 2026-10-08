@@ -7,7 +7,6 @@ import {
   Check,
   X,
   MapPin,
-  Coffee,
   CheckCircle2,
   Sparkles
 } from 'lucide-react'
@@ -17,13 +16,13 @@ import type { Shop, MenuItem } from '../types'
 interface ShopItemsPageProps {
   shop: Shop
   onBack: () => void
-  onStartBreak?: (shop: Shop) => void
+  onDeleteShop?: (shop: Shop) => void
 }
 
 export const ShopItemsPage: React.FC<ShopItemsPageProps> = ({
   shop,
   onBack,
-  onStartBreak
+  onDeleteShop
 }) => {
   const {
     menuItems,
@@ -47,6 +46,11 @@ export const ShopItemsPage: React.FC<ShopItemsPageProps> = ({
   const [newItemCategory, setNewItemCategory] = useState<MenuItem['category']>('snacks')
   const [newItemEmoji, setNewItemEmoji] = useState('☕')
   const [toastNotice, setToastNotice] = useState<string | null>(null)
+
+  // Delete shop confirmation modal state
+  const [showDeleteModal, setShowDeleteModal] = useState(false)
+  const [deleteConfirmInput, setDeleteConfirmInput] = useState('')
+  const [deleteError, setDeleteError] = useState<string | null>(null)
 
   const showToast = (msg: string) => {
     setToastNotice(msg)
@@ -147,23 +151,29 @@ export const ShopItemsPage: React.FC<ShopItemsPageProps> = ({
               </div>
             </div>
           </div>
+
+          {onDeleteShop && (
+            <button
+              type="button"
+              onClick={() => {
+                setDeleteConfirmInput('')
+                setDeleteError(null)
+                setShowDeleteModal(true)
+              }}
+              id="delete-shop-hero-btn"
+              title={`Delete ${shop.name}`}
+              className="px-2.5 py-1.5 rounded-xl bg-black/25 hover:bg-rose-600 active:scale-95 text-white text-xs font-semibold backdrop-blur-sm transition-all cursor-pointer flex items-center gap-1.5 shadow-xs border border-white/10"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              <span>Delete Shop</span>
+            </button>
+          )}
         </div>
 
         <div className="pt-2 border-t border-white/20 flex items-center justify-between text-xs">
-          <span className="text-[11px] text-amber-100 truncate max-w-[210px]">
+          <span className="text-[11px] text-amber-100 truncate">
             Specialty: <strong className="text-white">{shop.specialty}</strong>
           </span>
-
-          {onStartBreak && (
-            <button
-              onClick={() => onStartBreak(shop)}
-              id="start-break-hero-btn"
-              className="px-3 py-1.5 rounded-xl bg-white text-stone-900 hover:bg-amber-50 active:scale-95 text-xs font-bold shadow-xs transition-all cursor-pointer flex items-center gap-1.5"
-            >
-              <Coffee className="w-3.5 h-3.5 text-amber-700" />
-              <span>Start Break ☕</span>
-            </button>
-          )}
         </div>
       </div>
 
@@ -304,6 +314,122 @@ export const ShopItemsPage: React.FC<ShopItemsPageProps> = ({
         <Plus className="w-4 h-4" />
         <span>Add New Item to {shop.name} Menu</span>
       </button>
+
+      {/* Danger Zone: Delete Shop */}
+      {onDeleteShop && (
+        <div className="p-3.5 rounded-2xl bg-rose-50/70 dark:bg-rose-950/20 border border-rose-200/80 dark:border-rose-900/40 flex items-center justify-between gap-3 shadow-2xs">
+          <div>
+            <p className="text-xs font-bold text-rose-900 dark:text-rose-200">Delete this Shop</p>
+            <p className="text-[11px] text-rose-700/80 dark:text-rose-400">Permanently remove {shop.name} and all its menu items.</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              setDeleteConfirmInput('')
+              setDeleteError(null)
+              setShowDeleteModal(true)
+            }}
+            id="delete-shop-bottom-btn"
+            className="px-3 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 active:scale-95 text-white font-bold text-xs shadow-xs cursor-pointer flex items-center gap-1.5 shrink-0 transition-all"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+            <span>Delete</span>
+          </button>
+        </div>
+      )}
+
+      {/* Modal: Confirm Delete Shop with Name Input */}
+      {showDeleteModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-900/60 backdrop-blur-xs animate-in fade-in">
+          <div className="w-full max-w-sm bg-white dark:bg-stone-900 rounded-2xl shadow-2xl border border-stone-200 dark:border-stone-800 p-5 space-y-4 animate-in zoom-in-95">
+            <div className="flex items-start justify-between gap-2">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2.5 rounded-xl bg-rose-100 dark:bg-rose-950/80 text-rose-600 dark:text-rose-400">
+                  <Trash2 className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-heading font-bold text-base text-stone-900 dark:text-stone-100">
+                    Delete Shop
+                  </h3>
+                  <p className="text-[11px] text-stone-500 dark:text-stone-400">
+                    Type shop name to confirm
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowDeleteModal(false)}
+                className="text-stone-400 hover:text-stone-600 dark:hover:text-stone-200 cursor-pointer p-1 rounded-lg"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-3 rounded-xl bg-rose-50/70 dark:bg-rose-950/30 border border-rose-200/60 dark:border-rose-900/40 text-xs text-rose-800 dark:text-rose-300 space-y-1">
+              <p className="font-semibold">
+                Are you sure you want to delete <span className="font-bold underline">{shop.name}</span>?
+              </p>
+              <p className="text-[11px] text-rose-600 dark:text-rose-400">
+                This will delete the shop and all its {shopMenuItems.length} menu items permanently.
+              </p>
+            </div>
+
+            <form
+              onSubmit={(e) => {
+                e.preventDefault()
+                if (deleteConfirmInput.trim().toLowerCase() !== shop.name.trim().toLowerCase()) {
+                  setDeleteError(`Please type "${shop.name}" exactly to confirm.`)
+                  return
+                }
+                setShowDeleteModal(false)
+                if (onDeleteShop) {
+                  onDeleteShop(shop)
+                }
+              }}
+              className="space-y-3"
+            >
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-stone-700 dark:text-stone-300">
+                  Type <span className="font-mono font-bold text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/60 px-1.5 py-0.5 rounded border border-rose-200 dark:border-rose-900">{shop.name}</span> to confirm:
+                </label>
+                <input
+                  type="text"
+                  required
+                  autoFocus
+                  placeholder={`Type "${shop.name}"`}
+                  value={deleteConfirmInput}
+                  onChange={(e) => {
+                    setDeleteConfirmInput(e.target.value)
+                    if (deleteError) setDeleteError(null)
+                  }}
+                  className="w-full py-2 px-3 rounded-xl border border-stone-300 dark:border-stone-700 bg-stone-50 dark:bg-stone-800 text-xs text-stone-900 dark:text-stone-100 focus:outline-none focus:ring-2 focus:ring-rose-500 font-medium"
+                />
+                {deleteError && (
+                  <p className="text-[11px] text-rose-600 dark:text-rose-400 font-medium">{deleteError}</p>
+                )}
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowDeleteModal(false)}
+                  className="px-3 py-2 rounded-xl text-xs font-semibold text-stone-600 dark:text-stone-400 hover:bg-stone-100 dark:hover:bg-stone-800 cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  id="confirm-delete-shop-btn"
+                  disabled={deleteConfirmInput.trim().toLowerCase() !== shop.name.trim().toLowerCase()}
+                  className="px-3.5 py-2 rounded-xl text-xs font-bold bg-rose-600 hover:bg-rose-700 disabled:opacity-40 disabled:cursor-not-allowed text-white shadow-xs cursor-pointer flex items-center gap-1.5 transition-all"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>Delete this Shop</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* Modal: Add Item */}
       {showAddItemModal && (

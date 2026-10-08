@@ -8,7 +8,6 @@ import {
   Share2,
   Receipt,
   Wallet,
-  QrCode,
   Copy,
   X,
   MapPin,
@@ -42,11 +41,10 @@ export const Dashboard: React.FC<DashboardProps> = () => {
     addItemToMember,
     removeItemFromMember,
     toggleMemberPaid,
-    setPayer,
-    addNewSession,
     settleActiveSession,
     addMemberToSession,
     addCustomMenuItem,
+    removeMenuItemsForShop,
     getShopItemSummary,
     generateWhatsAppSummary
   } = useExpense()
@@ -62,13 +60,17 @@ export const Dashboard: React.FC<DashboardProps> = () => {
   const [customItemEmoji, setCustomItemEmoji] = useState('☕')
   const [selectedMemberForQuickAdd, setSelectedMemberForQuickAdd] = useState<string>('')
   const [copyNotice, setCopyNotice] = useState<string | null>(null)
-  const [showQrModal, setShowQrModal] = useState<{ name: string; amount: number; upi: string } | null>(null)
 
   // Groups tab state
   const [groups, setGroups] = useState<Group[]>(() => {
     try {
       const saved = localStorage.getItem('chaisplit_groups_list_v2')
-      return saved ? JSON.parse(saved) : []
+      if (!saved) return []
+      const parsed: Group[] = JSON.parse(saved)
+      return parsed.map(g => ({
+        ...g,
+        code: g.code || g.id || `TEA-${Math.floor(1000 + Math.random() * 9000)}`
+      }))
     } catch {
       return []
     }
@@ -85,7 +87,7 @@ export const Dashboard: React.FC<DashboardProps> = () => {
   const [viewingGroupId, setViewingGroupId] = useState<string | null>(null)
   const viewingGroup = viewingGroupId ? groups.find(g => g.id === viewingGroupId) || null : null
   const [viewingBreakGroupId, setViewingBreakGroupId] = useState<string | null>(null)
-  const viewingBreakGroup = viewingBreakGroupId ? groups.find(g => g.id === viewingBreakGroupId) || activeGroup : activeGroup
+  const viewingBreakGroup = viewingBreakGroupId ? (groups.find(g => g.id === viewingBreakGroupId) || null) : null
 
   // Fetch real groups from Supabase
   useEffect(() => {
@@ -98,7 +100,7 @@ export const Dashboard: React.FC<DashboardProps> = () => {
           const mapped: Group[] = data.map((g: any) => ({
             id: g.id,
             name: g.name,
-            code: g.code,
+            code: g.code || g.id || `TEA-${Math.floor(1000 + Math.random() * 9000)}`,
             department: g.department || 'Office',
             adminId: g.admin_id,
             shopId: g.shop_id,
@@ -126,16 +128,38 @@ export const Dashboard: React.FC<DashboardProps> = () => {
     const loadShops = async () => {
       try {
         const { data, error } = await client.from('shops').select('*')
-        if (!error && data && data.length > 0) {
-          const mapped: Shop[] = data.map((s: any) => ({
-            id: s.id,
-            name: s.name,
-            location: s.location || '',
-            specialty: s.specialty || '',
-            rating: Number(s.rating) || 4.5,
-            emoji: s.emoji || '☕'
-          }))
-          setShops(mapped)
+        if (!error && data) {
+          if (data.length > 0) {
+            const mapped: Shop[] = data.map((s: any) => ({
+              id: s.id,
+              name: s.name,
+              location: s.location || '',
+              specialty: s.specialty || '',
+              rating: Number(s.rating) || 4.5,
+              emoji: s.emoji || '☕'
+            }))
+            setShops(mapped)
+            localStorage.setItem('chaisplit_shops_initialized', 'true')
+          } else {
+            const isInitialized = localStorage.getItem('chaisplit_shops_initialized')
+            if (!isInitialized) {
+              // Auto-seed default shops into Supabase shops table only on very first launch
+              localStorage.setItem('chaisplit_shops_initialized', 'true')
+              const seedShops = DEFAULT_SHOPS.map(s => ({
+                id: s.id,
+                name: s.name,
+                location: s.location,
+                specialty: s.specialty,
+                rating: s.rating,
+                emoji: s.emoji
+              }))
+              client.from('shops').upsert(seedShops).then(({ error: upsertErr }) => {
+                if (!upsertErr) setShops(DEFAULT_SHOPS)
+              }, (e: any) => console.warn(e))
+            } else {
+              setShops([])
+            }
+          }
         }
       } catch (err) {
         console.warn('Failed to load shops from Supabase:', err)
@@ -143,6 +167,50 @@ export const Dashboard: React.FC<DashboardProps> = () => {
     }
     loadShops()
   }, [])
+
+  // Realtime subscription for shops and groups
+  useEffect(() => {
+    if (!supabase) return
+    const client = supabase
+
+    const channel = client
+      .channel('realtime_shops_and_groups')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'shops' }, async () => {
+        const { data } = await client.from('shops').select('*')
+        if (data) {
+          setShops(data.map((s: any) => ({
+            id: s.id,
+            name: s.name,
+            location: s.location || '',
+            specialty: s.specialty || '',
+            rating: Number(s.rating) || 4.5,
+            emoji: s.emoji || '☕'
+          })))
+        }
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'groups' }, async () => {
+        const { data } = await client.from('groups').select('*')
+        if (data && data.length > 0) {
+          setGroups(data.map((g: any) => ({
+            id: g.id,
+            name: g.name,
+            code: g.code || g.id || `TEA-${Math.floor(1000 + Math.random() * 9000)}`,
+            department: g.department || 'Office',
+            adminId: g.admin_id,
+            shopId: g.shop_id,
+            shopName: g.shop_name,
+            shopEmoji: g.shop_emoji || '☕',
+            members: allUsers.filter(u => u.id === g.admin_id || (user && u.id === user.id)),
+            createdDate: g.created_at ? new Date(g.created_at).toISOString().split('T')[0] : 'Today'
+          })))
+        }
+      })
+      .subscribe()
+
+    return () => {
+      client.removeChannel(channel)
+    }
+  }, [allUsers, user])
 
   useEffect(() => {
     localStorage.setItem('chaisplit_groups_list_v2', JSON.stringify(groups))
@@ -158,7 +226,8 @@ export const Dashboard: React.FC<DashboardProps> = () => {
   const [shops, setShops] = useState<Shop[]>(() => {
     try {
       const saved = localStorage.getItem('chaisplit_shops_list_v2')
-      return saved ? JSON.parse(saved) : DEFAULT_SHOPS
+      if (saved !== null) return JSON.parse(saved)
+      return DEFAULT_SHOPS
     } catch {
       return DEFAULT_SHOPS
     }
@@ -432,6 +501,45 @@ export const Dashboard: React.FC<DashboardProps> = () => {
     setTimeout(() => setCopyNotice(null), 3000)
   }
 
+  // Handle delete shop
+  const handleDeleteShop = (shopId: string, shopName: string, e?: React.MouseEvent) => {
+    if (e) {
+      e.stopPropagation()
+      e.preventDefault()
+    }
+
+    if (supabase) {
+      const client = supabase
+      client
+        .from('menu_items')
+        .delete()
+        .eq('shop_id', shopId)
+        .then(() => {
+          client
+            .from('shops')
+            .delete()
+            .eq('id', shopId)
+            .then(() => {}, (err: any) => console.warn('Supabase delete shop err:', err))
+        }, () => {
+          client
+            .from('shops')
+            .delete()
+            .eq('id', shopId)
+            .then(() => {}, (err: any) => console.warn('Supabase delete shop err:', err))
+        })
+    }
+
+    setShops(prev => prev.filter(s => s.id !== shopId))
+    if (removeMenuItemsForShop) {
+      removeMenuItemsForShop(shopId)
+    }
+    if (viewingShopItems?.id === shopId) {
+      setViewingShopItems(null)
+    }
+    setCopyNotice(`Deleted shop "${shopName}"`)
+    setTimeout(() => setCopyNotice(null), 3000)
+  }
+
   // Filtered menu
   const filteredMenuItems = selectedCategory === 'all'
     ? menuItems
@@ -443,7 +551,6 @@ export const Dashboard: React.FC<DashboardProps> = () => {
 
   // Total collected & pending
   const totalAmount = activeSession?.totalAmount || 0
-  const payer = allUsers.find(u => u.id === activeSession?.payerId) || { name: activeSession?.payerName || 'Someone', upiId: activeSession?.payerUpi }
   const unpaidMembers = activeSession?.expenses.filter(e => !e.isPaid && e.memberId !== activeSession.payerId && e.total > 0) || []
   const paidMembers = activeSession?.expenses.filter(e => e.isPaid && e.memberId !== activeSession.payerId && e.total > 0) || []
 
@@ -839,24 +946,6 @@ export const Dashboard: React.FC<DashboardProps> = () => {
                     </h3>
                   </div>
 
-                  <div className="space-y-1">
-                    <label className="text-[11px] font-semibold text-stone-600 dark:text-stone-400 block">
-                      Who paid at counter?
-                    </label>
-                    <select
-                      id="select-payer"
-                      value={activeSession.payerId}
-                      onChange={e => setPayer(e.target.value)}
-                      className="w-full py-1.5 px-2.5 rounded-lg border border-stone-200 dark:border-stone-700 bg-stone-50 dark:bg-stone-800 text-xs font-medium cursor-pointer"
-                    >
-                      {allUsers.map(u => (
-                        <option key={u.id} value={u.id}>
-                          {u.name} (UPI: {u.upiId || 'Not set'})
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
                   {/* Unpaid shares */}
                   <div className="space-y-1.5">
                     {unpaidMembers.length === 0 ? (
@@ -868,10 +957,10 @@ export const Dashboard: React.FC<DashboardProps> = () => {
                       unpaidMembers.map(m => (
                         <div
                           key={m.memberId}
-                          className="p-2 rounded-xl border border-amber-200/60 dark:border-amber-900/40 bg-amber-50/30 dark:bg-amber-950/20 flex items-center justify-between text-xs"
+                          className="p-2.5 rounded-xl border border-amber-200/60 dark:border-amber-900/40 bg-amber-50/30 dark:bg-amber-950/20 flex items-center justify-between text-xs"
                         >
-                          <div className="flex items-center gap-1.5">
-                            <span className="w-5 h-5 rounded-full bg-amber-500 text-white font-bold text-[9px] flex items-center justify-center">
+                          <div className="flex items-center gap-2">
+                            <span className="w-6 h-6 rounded-full bg-amber-500 text-white font-bold text-[10px] flex items-center justify-center">
                               {m.memberAvatar}
                             </span>
                             <span className="font-semibold text-stone-800 dark:text-stone-200">
@@ -879,26 +968,13 @@ export const Dashboard: React.FC<DashboardProps> = () => {
                             </span>
                           </div>
 
-                          <div className="flex items-center gap-1.5">
+                          <div className="flex items-center gap-2">
                             <span className="font-bold text-amber-800 dark:text-amber-300">
                               owes ₹{m.total}
                             </span>
                             <button
-                              onClick={() =>
-                                setShowQrModal({
-                                  name: payer.name,
-                                  amount: m.total,
-                                  upi: payer.upiId || 'office@upi'
-                                })
-                              }
-                              className="p-1 rounded bg-white dark:bg-stone-800 border border-stone-200 dark:border-stone-700 text-stone-600 hover:text-amber-600 cursor-pointer"
-                              title="Show UPI QR"
-                            >
-                              <QrCode className="w-3 h-3" />
-                            </button>
-                            <button
                               onClick={() => toggleMemberPaid(m.memberId)}
-                              className="px-1.5 py-0.5 rounded bg-stone-200 dark:bg-stone-700 hover:bg-emerald-600 hover:text-white text-[10px] font-semibold cursor-pointer"
+                              className="px-2.5 py-1 rounded-lg bg-stone-100 hover:bg-emerald-600 dark:bg-stone-800 dark:hover:bg-emerald-600 hover:text-white text-[11px] font-semibold cursor-pointer active:scale-95 transition-all shadow-2xs"
                             >
                               Mark Paid
                             </button>
@@ -956,7 +1032,11 @@ export const Dashboard: React.FC<DashboardProps> = () => {
             <TeaBreakPage
               group={viewingBreakGroup}
               currentUser={user}
-              onBack={() => setViewingBreakGroupId(null)}
+              onBack={() => {
+                const returnGroupId = viewingBreakGroup.id
+                setViewingBreakGroupId(null)
+                setViewingGroupId(returnGroupId)
+              }}
             />
           ) : viewingGroup ? (
             <GroupDetailsPage
@@ -965,7 +1045,7 @@ export const Dashboard: React.FC<DashboardProps> = () => {
               allUsers={allUsers}
               onBack={() => setViewingGroupId(null)}
               onOpenBreak={(groupId) => {
-                setViewingGroupId(null)
+                setViewingGroupId(groupId)
                 setViewingBreakGroupId(groupId)
               }}
               onUpdateGroup={(updatedGroup) => {
@@ -1165,7 +1245,7 @@ export const Dashboard: React.FC<DashboardProps> = () => {
                             Group ID:
                           </span>
                           <span className="font-mono font-bold text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/60 px-2 py-0.5 rounded-md border border-amber-200/50 dark:border-amber-900/50">
-                            {group.code}
+                            {group.code || group.id}
                           </span>
                         </div>
 
@@ -1187,7 +1267,7 @@ export const Dashboard: React.FC<DashboardProps> = () => {
                             type="button"
                             onClick={(e) => {
                               e.stopPropagation()
-                              handleCopy(group.code, `${group.name} Group ID`)
+                              handleCopy(group.code || group.id, `${group.name} Group ID`)
                             }}
                             className="px-2 py-1 rounded-lg bg-stone-100 dark:bg-stone-800 hover:bg-amber-100 dark:hover:bg-amber-950/60 text-stone-600 dark:text-stone-300 hover:text-amber-800 dark:hover:text-amber-200 font-medium text-[11px] flex items-center gap-1 cursor-pointer transition-colors"
                           >
@@ -1233,46 +1313,7 @@ export const Dashboard: React.FC<DashboardProps> = () => {
             <ShopItemsPage
               shop={viewingShopItems}
               onBack={() => setViewingShopItems(null)}
-              onStartBreak={(shop) => {
-                const targetGroup = groups.find(g => g.id === activeGroupId) || groups[0]
-                if (!targetGroup) {
-                  alert('Please create or join a group first before starting a tea break!')
-                  setActiveTab('groups')
-                  setViewingShopItems(null)
-                  return
-                }
-
-                if (activeSession && activeSession.status === 'active') {
-                  const isOwner = !activeSession.creatorId || activeSession.creatorId === user?.id
-                  alert(
-                    `An active tea break is already running ("${activeSession.title}")!\n\n` +
-                    (isOwner
-                      ? 'You created this break. Please delete it first from the group page if you want to start a new one.'
-                      : `Only the creator (${activeSession.creatorName || 'owner'}) can delete the existing break before a new one can be started.`)
-                  )
-                  setViewingShopItems(null)
-                  setActiveTab('groups')
-                  if (activeSession.groupId) {
-                    setViewingBreakGroupId(activeSession.groupId)
-                  }
-                  return
-                }
-
-                addNewSession(
-                  `${targetGroup.name} Chai Break ☕`,
-                  shop.name,
-                  targetGroup.members,
-                  targetGroup.id,
-                  targetGroup.name,
-                  user?.id,
-                  shop.id,
-                  user?.id,
-                  user?.name
-                )
-                setViewingShopItems(null)
-                setActiveTab('groups')
-                setViewingBreakGroupId(targetGroup.id)
-              }}
+              onDeleteShop={(shop) => handleDeleteShop(shop.id, shop.name)}
             />
           ) : (
             /* Shops List */
@@ -1294,51 +1335,66 @@ export const Dashboard: React.FC<DashboardProps> = () => {
               </div>
 
               {/* Shop Cards */}
-              <div className="space-y-3">
-                {shops.map(shop => (
-                  <div
-                    key={shop.id}
-                    id={`shop-card-${shop.id}`}
-                    onClick={() => setViewingShopItems(shop)}
-                    className="p-4 rounded-2xl bg-white dark:bg-stone-900 border border-stone-200/80 dark:border-stone-800 shadow-2xs space-y-3 hover:border-amber-400 dark:hover:border-amber-500/80 hover:shadow-md transition-all cursor-pointer group"
-                    role="button"
-                    tabIndex={0}
+              {shops.length === 0 ? (
+                <div className="p-8 text-center bg-white dark:bg-stone-900 rounded-2xl border border-dashed border-stone-200 dark:border-stone-800 text-stone-500 text-xs space-y-3">
+                  <span className="text-3xl block">🏪</span>
+                  <p className="font-semibold text-stone-700 dark:text-stone-300">No shops available</p>
+                  <p className="text-[11px] text-stone-400">Add your favorite chai tapri or cafe to get started.</p>
+                  <button
+                    onClick={() => setShowAddShopModal(true)}
+                    className="px-3 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs cursor-pointer inline-flex items-center gap-1 shadow-xs"
                   >
-                    <div className="flex items-start justify-between">
-                      <div className="flex items-start gap-3">
-                        <span className="text-3xl p-2.5 rounded-2xl bg-amber-50 dark:bg-amber-950/60 border border-amber-100 dark:border-amber-900/40 group-hover:scale-105 transition-transform">
-                          {shop.emoji}
-                        </span>
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <h3 className="font-heading font-bold text-sm text-stone-900 dark:text-stone-100 group-hover:text-amber-800 dark:group-hover:text-amber-300 transition-colors">
-                              {shop.name}
-                            </h3>
-                            <span className="px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300 font-bold text-[10px]">
-                              {getMenuItemsForShop(shop.id).length} items
-                            </span>
-                          </div>
-                          <div className="flex items-center gap-1 text-[11px] text-stone-500 dark:text-stone-400 mt-0.5">
-                            <MapPin className="w-3 h-3 text-stone-400 shrink-0" />
-                            <span>{shop.location}</span>
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Add Shop</span>
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {shops.map(shop => (
+                    <div
+                      key={shop.id}
+                      id={`shop-card-${shop.id}`}
+                      onClick={() => setViewingShopItems(shop)}
+                      className="p-4 rounded-2xl bg-white dark:bg-stone-900 border border-stone-200/80 dark:border-stone-800 shadow-2xs space-y-3 hover:border-amber-400 dark:hover:border-amber-500/80 hover:shadow-md transition-all cursor-pointer group"
+                      role="button"
+                      tabIndex={0}
+                    >
+                      <div className="flex items-start justify-between">
+                        <div className="flex items-start gap-3">
+                          <span className="text-3xl p-2.5 rounded-2xl bg-amber-50 dark:bg-amber-950/60 border border-amber-100 dark:border-amber-900/40 group-hover:scale-105 transition-transform">
+                            {shop.emoji}
+                          </span>
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <h3 className="font-heading font-bold text-sm text-stone-900 dark:text-stone-100 group-hover:text-amber-800 dark:group-hover:text-amber-300 transition-colors">
+                                {shop.name}
+                              </h3>
+                              <span className="px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300 font-bold text-[10px]">
+                                {getMenuItemsForShop(shop.id).length} items
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-1 text-[11px] text-stone-500 dark:text-stone-400 mt-0.5">
+                              <MapPin className="w-3 h-3 text-stone-400 shrink-0" />
+                              <span>{shop.location}</span>
+                            </div>
                           </div>
                         </div>
                       </div>
-                    </div>
 
-                    <div className="pt-2 border-t border-stone-100 dark:border-stone-800 flex items-center justify-between text-xs">
-                      <span className="text-[11px] text-stone-500 truncate max-w-[190px]">
-                        Specialty: <strong className="text-stone-700 dark:text-stone-300">{shop.specialty}</strong>
-                      </span>
+                      <div className="pt-2 border-t border-stone-100 dark:border-stone-800 flex items-center justify-between text-xs">
+                        <span className="text-[11px] text-stone-500 truncate max-w-[190px]">
+                          Specialty: <strong className="text-stone-700 dark:text-stone-300">{shop.specialty}</strong>
+                        </span>
 
-                      <span className="text-[11px] font-bold text-amber-700 dark:text-amber-400 group-hover:translate-x-0.5 transition-transform flex items-center gap-0.5">
-                        <span>View Menu</span>
-                        <ArrowRight className="w-3 h-3" />
-                      </span>
+                        <span className="text-[11px] font-bold text-amber-700 dark:text-amber-400 group-hover:translate-x-0.5 transition-transform flex items-center gap-0.5">
+                          <span>View Menu</span>
+                          <ArrowRight className="w-3 h-3" />
+                        </span>
+                      </div>
                     </div>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              )}
             </div>
           )
         )}
@@ -1834,54 +1890,6 @@ export const Dashboard: React.FC<DashboardProps> = () => {
                 </button>
               </div>
             </form>
-          </div>
-        </div>
-      )}
-
-      {/* Modal: QR Code */}
-      {showQrModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-900/50 backdrop-blur-xs animate-in fade-in">
-          <div className="w-full max-w-xs bg-white dark:bg-stone-900 rounded-2xl shadow-2xl border border-stone-200 dark:border-stone-800 p-5 text-center space-y-3">
-            <div className="flex items-center justify-between pb-1 border-b border-stone-100 dark:border-stone-800">
-              <span className="text-xs font-bold text-stone-700 dark:text-stone-300">
-                UPI Payment QR
-              </span>
-              <button
-                onClick={() => setShowQrModal(null)}
-                className="text-stone-400 hover:text-stone-600 cursor-pointer"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <div className="p-3 bg-stone-50 dark:bg-stone-800 rounded-xl inline-block border border-stone-200 dark:border-stone-700">
-              <img
-                src={`https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=upi://pay?pa=${encodeURIComponent(
-                  showQrModal.upi
-                )}&pn=${encodeURIComponent(showQrModal.name)}&am=${showQrModal.amount}&cu=INR`}
-                alt="UPI QR Code"
-                className="w-36 h-36 mx-auto rounded-lg shadow-2xs"
-              />
-            </div>
-
-            <div>
-              <div className="font-heading font-extrabold text-lg text-stone-900 dark:text-stone-100">
-                ₹{showQrModal.amount}
-              </div>
-              <p className="text-xs text-stone-500">
-                Paying to <strong className="text-stone-800 dark:text-stone-200">{showQrModal.name}</strong>
-              </p>
-              <p className="text-[10px] text-amber-700 dark:text-amber-400 font-mono mt-0.5">
-                {showQrModal.upi}
-              </p>
-            </div>
-
-            <button
-              onClick={() => setShowQrModal(null)}
-              className="w-full py-1.5 rounded-xl bg-stone-900 text-white hover:bg-stone-800 text-xs font-semibold cursor-pointer"
-            >
-              Done
-            </button>
           </div>
         </div>
       )}
