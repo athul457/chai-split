@@ -1,19 +1,12 @@
 import React from 'react'
-import { ArrowRight, Coffee, Users, Receipt, Wallet, Sparkles } from 'lucide-react'
+import { ArrowRight, Coffee, Users, Receipt, Wallet, LogIn } from 'lucide-react'
 import type { PageRoute } from '../types'
-import { useAuth } from '../context/AuthContext'
 
 interface LandingPageProps {
   onNavigate: (page: PageRoute) => void
 }
 
 export const LandingPage: React.FC<LandingPageProps> = ({ onNavigate }) => {
-  const { quickLogin } = useAuth()
-
-  const handleQuickDemo = () => {
-    quickLogin('user-athul')
-    onNavigate('dashboard')
-  }
 
   return (
     <div className="flex flex-col min-h-full justify-between px-4 py-6 text-center space-y-6">
@@ -52,12 +45,12 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onNavigate }) => {
           </button>
 
           <button
-            onClick={handleQuickDemo}
-            id="hero-quick-demo-btn"
+            onClick={() => onNavigate('login')}
+            id="hero-login-btn"
             className="w-full py-2.5 px-3 rounded-xl font-medium text-xs text-stone-700 dark:text-stone-300 bg-white dark:bg-stone-800 border border-stone-200 dark:border-stone-700 hover:bg-amber-50/50 dark:hover:bg-stone-700 transition-all cursor-pointer flex items-center justify-center gap-1.5 shadow-2xs"
           >
-            <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-            <span>Try 1-Click Demo as Athul</span>
+            <LogIn className="w-3.5 h-3.5 text-stone-500" />
+            <span>Sign In to Existing Account</span>
           </button>
         </div>
 
@@ -147,7 +140,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onNavigate }) => {
 
       {/* Footer */}
       <footer className="w-full border-t border-stone-200/60 dark:border-stone-800/80 pt-3 text-[11px] text-stone-400 flex items-center justify-between">
-        <span>ChaiSplit • Office Khata</span>
+        <span>Nibru-Tea • Office Khata</span>
         <div className="flex items-center gap-3">
           <button onClick={() => onNavigate('login')} className="hover:text-stone-700 dark:hover:text-stone-200 cursor-pointer">
             Login

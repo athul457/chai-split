@@ -11,7 +11,6 @@ import {
   QrCode,
   Copy,
   X,
-  Star,
   MapPin,
   Users,
   Store,
@@ -25,7 +24,8 @@ import { BottomNav } from '../components/BottomNav'
 import { ShopItemsPage } from './ShopItemsPage'
 import { GroupDetailsPage } from './GroupDetailsPage'
 import { TeaBreakPage } from './TeaBreakPage'
-import { DEFAULT_SHOPS, DEFAULT_GROUP } from '../lib/mockData'
+import { DEFAULT_SHOPS } from '../lib/mockData'
+import { supabase } from '../lib/supabase'
 import type { PageRoute, BottomTab, Shop, MenuItem, Group } from '../types'
 
 interface DashboardProps {
@@ -51,8 +51,8 @@ export const Dashboard: React.FC<DashboardProps> = () => {
     generateWhatsAppSummary
   } = useExpense()
 
-  // Navigation tab state
-  const [activeTab, setActiveTab] = useState<BottomTab>('details')
+  // Navigation tab state (Shops is the default home tab)
+  const [activeTab, setActiveTab] = useState<BottomTab>('shops')
 
   // Modals & form state
   const [selectedCategory, setSelectedCategory] = useState<string>('all')
@@ -85,7 +85,64 @@ export const Dashboard: React.FC<DashboardProps> = () => {
   const [viewingGroupId, setViewingGroupId] = useState<string | null>(null)
   const viewingGroup = viewingGroupId ? groups.find(g => g.id === viewingGroupId) || null : null
   const [viewingBreakGroupId, setViewingBreakGroupId] = useState<string | null>(null)
-  const viewingBreakGroup = viewingBreakGroupId ? groups.find(g => g.id === viewingBreakGroupId) || activeGroup || DEFAULT_GROUP : null
+  const viewingBreakGroup = viewingBreakGroupId ? groups.find(g => g.id === viewingBreakGroupId) || activeGroup : activeGroup
+
+  // Fetch real groups from Supabase
+  useEffect(() => {
+    if (!supabase) return
+    const client = supabase
+    const loadGroups = async () => {
+      try {
+        const { data, error } = await client.from('groups').select('*')
+        if (!error && data && data.length > 0) {
+          const mapped: Group[] = data.map((g: any) => ({
+            id: g.id,
+            name: g.name,
+            code: g.code,
+            department: g.department || 'Office',
+            adminId: g.admin_id,
+            shopId: g.shop_id,
+            shopName: g.shop_name,
+            shopEmoji: g.shop_emoji || '☕',
+            members: allUsers.filter(u => u.id === g.admin_id || (user && u.id === user.id)),
+            createdDate: g.created_at ? new Date(g.created_at).toISOString().split('T')[0] : 'Today'
+          }))
+          setGroups(mapped)
+          if (!activeGroupId && mapped[0]) {
+            setActiveGroupId(mapped[0].id)
+          }
+        }
+      } catch (err) {
+        console.warn('Failed to load groups from Supabase:', err)
+      }
+    }
+    loadGroups()
+  }, [allUsers, user, activeGroupId])
+
+  // Fetch real shops from Supabase
+  useEffect(() => {
+    if (!supabase) return
+    const client = supabase
+    const loadShops = async () => {
+      try {
+        const { data, error } = await client.from('shops').select('*')
+        if (!error && data && data.length > 0) {
+          const mapped: Shop[] = data.map((s: any) => ({
+            id: s.id,
+            name: s.name,
+            location: s.location || '',
+            specialty: s.specialty || '',
+            rating: Number(s.rating) || 4.5,
+            emoji: s.emoji || '☕'
+          }))
+          setShops(mapped)
+        }
+      } catch (err) {
+        console.warn('Failed to load shops from Supabase:', err)
+      }
+    }
+    loadShops()
+  }, [])
 
   useEffect(() => {
     localStorage.setItem('chaisplit_groups_list_v2', JSON.stringify(groups))
@@ -181,7 +238,22 @@ export const Dashboard: React.FC<DashboardProps> = () => {
     setNewGroupName('')
     setSelectedShopId(shops[0]?.id || '')
 
-    // Persist to all registered groups registry so others can join it
+    // Persist to Supabase
+    if (supabase) {
+      const client = supabase
+      client.from('groups').insert({
+        id: createdGroup.id,
+        name: createdGroup.name,
+        code: createdGroup.code,
+        department: createdGroup.department,
+        admin_id: createdGroup.adminId || null,
+        shop_id: createdGroup.shopId || null,
+        shop_name: createdGroup.shopName,
+        shop_emoji: createdGroup.shopEmoji
+      }).then(() => {}, (e: any) => console.warn(e))
+    }
+
+    // Persist to local registry
     try {
       const saved = localStorage.getItem('chaisplit_all_registered_groups')
       const all: Group[] = saved ? JSON.parse(saved) : []
@@ -210,16 +282,44 @@ export const Dashboard: React.FC<DashboardProps> = () => {
       return
     }
 
-    // 2. Check in registered groups registry and default group
+    // 2. Check in Supabase groups table
+    if (supabase) {
+      const client = supabase
+      client
+        .from('groups')
+        .select('*')
+        .ilike('code', cleanId)
+        .maybeSingle()
+        .then(({ data }) => {
+          if (data) {
+            const groupToAdd: Group = {
+              id: data.id,
+              name: data.name,
+              code: data.code,
+              department: data.department || 'Office',
+              adminId: data.admin_id,
+              shopId: data.shop_id,
+              shopName: data.shop_name,
+              shopEmoji: data.shop_emoji || '☕',
+              members: user ? [user] : [],
+              createdDate: 'Today'
+            }
+            setGroups(prev => [groupToAdd, ...prev.filter(g => g.id !== groupToAdd.id)])
+            setActiveGroupId(groupToAdd.id)
+            setCopyNotice(`Joined "${groupToAdd.name}"! 🎉`)
+            setTimeout(() => setCopyNotice(null), 3000)
+          }
+        }, (e: any) => console.warn(e))
+    }
+
+    // 3. Check in registered groups registry
     let allRegistered: Group[] = []
     try {
       const saved = localStorage.getItem('chaisplit_all_registered_groups')
       if (saved) allRegistered = JSON.parse(saved)
     } catch {}
 
-    const foundGroup = [...allRegistered, DEFAULT_GROUP].find(
-      g => g.code.toUpperCase() === cleanId
-    )
+    const foundGroup = allRegistered.find(g => g.code.toUpperCase() === cleanId)
 
     if (foundGroup) {
       const updatedMembers = user && !foundGroup.members.some(m => m.id === user.id)
@@ -243,7 +343,7 @@ export const Dashboard: React.FC<DashboardProps> = () => {
       return
     }
 
-    // 3. Dynamic group creation for newly provided ID
+    // 4. Dynamic group creation for newly provided ID
     const dynamicGroup: Group = {
       id: `group-joined-${Date.now()}`,
       name: `Team Club (${cleanId})`,
@@ -255,6 +355,20 @@ export const Dashboard: React.FC<DashboardProps> = () => {
       shopEmoji: shops[0]?.emoji || '☕',
       members: user ? [user] : [],
       createdDate: new Date().toISOString().split('T')[0]
+    }
+
+    if (supabase) {
+      const client = supabase
+      client.from('groups').insert({
+        id: dynamicGroup.id,
+        name: dynamicGroup.name,
+        code: dynamicGroup.code,
+        department: dynamicGroup.department,
+        admin_id: dynamicGroup.adminId || null,
+        shop_id: dynamicGroup.shopId || null,
+        shop_name: dynamicGroup.shopName,
+        shop_emoji: dynamicGroup.shopEmoji
+      }).then(() => {}, (e: any) => console.warn(e))
     }
 
     setGroups(prev => [dynamicGroup, ...prev])
@@ -269,6 +383,10 @@ export const Dashboard: React.FC<DashboardProps> = () => {
   // Handle delete group
   const handleDeleteGroup = (groupId: string, e: React.MouseEvent) => {
     e.stopPropagation()
+    if (supabase) {
+      const client = supabase
+      client.from('groups').delete().eq('id', groupId).then(() => {}, (e: any) => console.warn(e))
+    }
     setGroups(prev => {
       const updated = prev.filter(g => g.id !== groupId)
       if (activeGroupId === groupId) {
@@ -292,6 +410,19 @@ export const Dashboard: React.FC<DashboardProps> = () => {
       rating: 4.8,
       emoji: newShopEmoji || '☕'
     }
+
+    if (supabase) {
+      const client = supabase
+      client.from('shops').insert({
+        id: createdShop.id,
+        name: createdShop.name,
+        location: createdShop.location,
+        specialty: createdShop.specialty,
+        rating: createdShop.rating,
+        emoji: createdShop.emoji
+      }).then(() => {}, (e: any) => console.warn(e))
+    }
+
     setShops(prev => [createdShop, ...prev])
     setShowAddShopModal(false)
     setNewShopName('')
@@ -1103,7 +1234,14 @@ export const Dashboard: React.FC<DashboardProps> = () => {
               shop={viewingShopItems}
               onBack={() => setViewingShopItems(null)}
               onStartBreak={(shop) => {
-                const targetGroup = groups.find(g => g.id === activeGroupId) || groups[0] || DEFAULT_GROUP
+                const targetGroup = groups.find(g => g.id === activeGroupId) || groups[0]
+                if (!targetGroup) {
+                  alert('Please create or join a group first before starting a tea break!')
+                  setActiveTab('groups')
+                  setViewingShopItems(null)
+                  return
+                }
+
                 if (activeSession && activeSession.status === 'active') {
                   const isOwner = !activeSession.creatorId || activeSession.creatorId === user?.id
                   alert(
@@ -1141,22 +1279,17 @@ export const Dashboard: React.FC<DashboardProps> = () => {
             <div className="space-y-4 animate-in fade-in">
               {/* Header */}
               <div className="p-3.5 rounded-2xl bg-white dark:bg-stone-900 border border-stone-200/80 dark:border-stone-800 shadow-2xs flex items-center justify-between">
-                <div>
-                  <h2 className="font-heading font-bold text-base text-stone-900 dark:text-stone-100 flex items-center gap-1.5">
-                    <Store className="w-4 h-4 text-amber-600" />
-                    <span>Favorite Tapris &amp; Shops</span>
-                  </h2>
-                  <p className="text-[11px] text-stone-400">
-                    Tap a shop card to view items on a new page
-                  </p>
-                </div>
+                <h2 className="font-heading font-bold text-base text-stone-900 dark:text-stone-100 flex items-center gap-1.5">
+                  <Store className="w-4 h-4 text-amber-600" />
+                  <span>Shops</span>
+                </h2>
 
                 <button
                   onClick={() => setShowAddShopModal(true)}
                   className="px-2.5 py-1.5 rounded-xl font-semibold text-xs bg-amber-600 hover:bg-amber-700 text-white shadow-xs cursor-pointer flex items-center gap-1"
                 >
                   <Plus className="w-3.5 h-3.5" />
-                  <span>+ Shop</span>
+                  <span>Shop</span>
                 </button>
               </div>
 
@@ -1191,11 +1324,6 @@ export const Dashboard: React.FC<DashboardProps> = () => {
                           </div>
                         </div>
                       </div>
-
-                      <span className="px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300 font-bold text-[10px] flex items-center gap-0.5">
-                        <Star className="w-2.5 h-2.5 fill-amber-500 text-amber-500" />
-                        <span>{shop.rating}</span>
-                      </span>
                     </div>
 
                     <div className="pt-2 border-t border-stone-100 dark:border-stone-800 flex items-center justify-between text-xs">

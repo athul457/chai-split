@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react'
 import type { User } from '../types'
-import { DEFAULT_USERS } from '../lib/mockData'
+import { supabase } from '../lib/supabase'
 
 interface AuthContextType {
   user: User | null
@@ -37,12 +37,45 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [allUsers, setAllUsers] = useState<User[]>(() => {
     try {
       const saved = localStorage.getItem(ALL_USERS_KEY)
-      return saved ? JSON.parse(saved) : DEFAULT_USERS
+      return saved ? JSON.parse(saved) : []
     } catch {
-      return DEFAULT_USERS
+      return []
     }
   })
 
+  // Fetch real profiles from Supabase on mount
+  useEffect(() => {
+    if (!supabase) return
+    const client = supabase
+
+    const fetchProfiles = async () => {
+      try {
+        const { data, error } = await client
+          .from('profiles')
+          .select('*')
+          .order('created_at', { ascending: false })
+
+        if (!error && data && data.length > 0) {
+          const mappedUsers: User[] = data.map((p: any) => ({
+            id: p.id,
+            name: p.name,
+            email: p.email,
+            avatar: p.avatar || '☕',
+            teamName: p.team_name || 'Team',
+            userCode: p.user_code,
+            upiId: p.upi_id
+          }))
+          setAllUsers(mappedUsers)
+        }
+      } catch (err) {
+        console.warn('Could not load profiles from Supabase:', err)
+      }
+    }
+
+    fetchProfiles()
+  }, [])
+
+  // Sync active user to local cache
   useEffect(() => {
     try {
       if (user) {
@@ -55,6 +88,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [user])
 
+  // Sync users to local cache
   useEffect(() => {
     try {
       localStorage.setItem(ALL_USERS_KEY, JSON.stringify(allUsers))
@@ -65,13 +99,49 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const login = async (email: string): Promise<{ success: boolean; error?: string }> => {
     const trimmed = email.trim().toLowerCase()
+    if (!trimmed) {
+      return { success: false, error: 'Email is required.' }
+    }
+
+    // 1. Try querying Supabase profiles first
+    if (supabase) {
+      try {
+        const { data, error } = await supabase
+          .from('profiles')
+          .select('*')
+          .ilike('email', trimmed)
+          .maybeSingle()
+
+        if (!error && data) {
+          const loggedInUser: User = {
+            id: data.id,
+            name: data.name,
+            email: data.email,
+            avatar: data.avatar || '☕',
+            teamName: data.team_name || 'Team',
+            userCode: data.user_code,
+            upiId: data.upi_id
+          }
+          setUser(loggedInUser)
+          setAllUsers(prev => {
+            if (prev.some(u => u.id === loggedInUser.id)) return prev
+            return [loggedInUser, ...prev]
+          })
+          return { success: true }
+        }
+      } catch (err) {
+        console.warn('Supabase login lookup failed, falling back:', err)
+      }
+    }
+
+    // 2. Check local users
     const found = allUsers.find(u => u.email.toLowerCase() === trimmed)
     if (found) {
       setUser(found)
       return { success: true }
     }
 
-    // Auto-create friendly user if new email
+    // 3. If new email, create real user
     const namePart = trimmed.split('@')[0]
     const formattedName = namePart.charAt(0).toUpperCase() + namePart.slice(1)
     const codePrefix = formattedName.replace(/[^a-zA-Z]/g, '').slice(0, 5).toUpperCase() || 'USER'
@@ -80,11 +150,29 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       name: formattedName,
       email: trimmed,
       avatar: formattedName.slice(0, 2).toUpperCase(),
-      teamName: 'Floor 3 Tea Club',
+      teamName: 'Team',
       userCode: `${codePrefix}${Math.floor(1000 + Math.random() * 9000)}`,
       upiId: `${namePart}@upi`
     }
-    setAllUsers(prev => [...prev, newUser])
+
+    if (supabase) {
+      supabase
+        .from('profiles')
+        .insert({
+          id: newUser.id,
+          name: newUser.name,
+          email: newUser.email,
+          avatar: newUser.avatar,
+          team_name: newUser.teamName,
+          user_code: newUser.userCode,
+          upi_id: newUser.upiId
+        })
+        .then(({ error }) => {
+          if (error) console.warn('Supabase user auto-create error:', error.message)
+        }, err => console.warn('Supabase insert error:', err))
+    }
+
+    setAllUsers(prev => [newUser, ...prev])
     setUser(newUser)
     return { success: true }
   }
@@ -102,32 +190,49 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
 
     const trimmedEmail = email.trim().toLowerCase()
-    const existing = allUsers.find(u => u.email.toLowerCase() === trimmedEmail)
-    if (existing) {
-      setUser(existing)
-      return { success: true }
-    }
-
     const initials = name
       .trim()
       .split(' ')
       .map(n => n[0])
       .join('')
       .slice(0, 2)
-      .toUpperCase()
+      .toUpperCase() || '☕'
 
     const codePrefix = name.replace(/[^a-zA-Z]/g, '').slice(0, 5).toUpperCase() || 'USER'
     const newUser: User = {
       id: `user-${Date.now()}`,
       name: name.trim(),
       email: trimmedEmail,
-      avatar: initials || '☕',
-      teamName: teamName?.trim() || 'Floor 3 Tea Club',
+      avatar: initials,
+      teamName: teamName?.trim() || 'Team',
       userCode: `${codePrefix}${Math.floor(1000 + Math.random() * 9000)}`,
       upiId: `${name.toLowerCase().replace(/\s+/g, '')}@okaxis`
     }
 
-    setAllUsers(prev => [...prev, newUser])
+    // Insert into Supabase profiles
+    if (supabase) {
+      try {
+        const { error } = await supabase.from('profiles').insert({
+          id: newUser.id,
+          name: newUser.name,
+          email: newUser.email,
+          avatar: newUser.avatar,
+          team_name: newUser.teamName,
+          user_code: newUser.userCode,
+          upi_id: newUser.upiId
+        })
+        if (error) {
+          console.warn('Supabase register error:', error.message)
+        }
+      } catch (err) {
+        console.warn('Could not insert profile into Supabase:', err)
+      }
+    }
+
+    setAllUsers(prev => {
+      const filtered = prev.filter(u => u.email.toLowerCase() !== trimmedEmail)
+      return [newUser, ...filtered]
+    })
     setUser(newUser)
     return { success: true }
   }
@@ -140,11 +245,26 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       name: name.trim(),
       email: email.trim() || `${name.toLowerCase().replace(/\s+/g, '')}@office.com`,
       avatar: initials || '☕',
-      teamName: user?.teamName || 'Floor 3 Tea Club',
+      teamName: user?.teamName || 'Team',
       userCode: `${codePrefix}${Math.floor(1000 + Math.random() * 9000)}`,
       upiId: `${name.toLowerCase().replace(/\s+/g, '')}@upi`
     }
-    setAllUsers(prev => [...prev, newUser])
+
+    if (supabase) {
+      supabase.from('profiles').insert({
+        id: newUser.id,
+        name: newUser.name,
+        email: newUser.email,
+        avatar: newUser.avatar,
+        team_name: newUser.teamName,
+        user_code: newUser.userCode,
+        upi_id: newUser.upiId
+      }).then(({ error }) => {
+        if (error) console.warn('Supabase add user error:', error.message)
+      }, err => console.warn('Supabase add user error:', err))
+    }
+
+    setAllUsers(prev => [newUser, ...prev])
     return newUser
   }
 

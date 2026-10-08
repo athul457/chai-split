@@ -17,7 +17,7 @@ export const ProfileDropdown: React.FC<ProfileDropdownProps> = ({ isOpen, onClos
 
   if (!isOpen || !user) return null
 
-  // Ensure an ID like 'ATHUL4821'
+  // Ensure an ID like 'USER4821'
   const userCode = user.userCode || (
     user.name.replace(/[^a-zA-Z]/g, '').slice(0, 5).toUpperCase() + '4821'
   )

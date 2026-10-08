@@ -34,7 +34,7 @@ export const Header: React.FC<HeaderProps> = ({ currentPage, onNavigate }) => {
 
           <div className="flex items-center gap-1">
             <span className="font-heading text-lg font-bold tracking-tight text-stone-900 dark:text-stone-100 group-hover:text-amber-700 transition-colors">
-              ChaiSplit
+              Nibru-Tea
             </span>
             <span className="text-xs">☕</span>
           </div>

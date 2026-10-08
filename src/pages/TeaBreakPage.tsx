@@ -460,7 +460,7 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
             className="w-full py-2.5 px-3 rounded-xl border border-stone-300 dark:border-stone-700 hover:border-amber-500 bg-white dark:bg-stone-900 text-stone-700 dark:text-stone-300 hover:text-amber-700 dark:hover:text-amber-400 font-bold text-xs flex items-center justify-center gap-2 shadow-2xs active:scale-[0.98] transition-all cursor-pointer"
           >
             <UserPlus className="w-4 h-4 text-amber-600" />
-            <span>+ Add items for others</span>
+            <span>Add items for others</span>
           </button>
         </div>
       )}

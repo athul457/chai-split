@@ -2,13 +2,13 @@ import type { User, MenuItem, Group, TeaSession, Shop } from '../types'
 
 export const DEFAULT_USERS: User[] = [
   {
-    id: 'user-athul',
-    name: 'Athul Sukumaran',
-    email: 'athul@example.com',
-    avatar: 'AS',
+    id: 'user-john',
+    name: 'John Doe',
+    email: 'johndoe@example.com',
+    avatar: 'JD',
     teamName: 'Engineering & Product',
-    userCode: 'ATHUL4821',
-    upiId: 'athul@okaxis'
+    userCode: 'JOHN4821',
+    upiId: 'johndoe@okaxis'
   },
   {
     id: 'user-rahul',
@@ -155,7 +155,7 @@ export const DEFAULT_GROUP: Group = {
   name: 'Floor 3 Tea & Snack Addicts',
   code: 'TEA-FL3',
   department: 'Product & Tech',
-  adminId: 'user-athul',
+  adminId: 'user-john',
   shopId: 'shop-chayakkada',
   shopName: 'Chayakkada',
   shopEmoji: '☕',
@@ -174,8 +174,8 @@ export const INITIAL_ACTIVE_SESSION: TeaSession = {
   payerId: 'user-amit',
   payerName: 'Amit Verma',
   payerUpi: 'amit.verma@paytm',
-  creatorId: 'user-athul',
-  creatorName: 'Athul Sukumaran',
+  creatorId: 'user-john',
+  creatorName: 'John Doe',
   totalAmount: 170,
   status: 'active',
   notes: 'Tapri near Building B gate',

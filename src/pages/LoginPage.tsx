@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { Coffee, ArrowLeft, LogIn, Sparkles, Mail, Lock, AlertCircle } from 'lucide-react'
+import { Coffee, ArrowLeft, LogIn, Mail, Lock, AlertCircle } from 'lucide-react'
 import type { PageRoute } from '../types'
 import { useAuth } from '../context/AuthContext'
 
@@ -8,7 +8,7 @@ interface LoginPageProps {
 }
 
 export const LoginPage: React.FC<LoginPageProps> = ({ onNavigate }) => {
-  const { login, quickLogin, allUsers } = useAuth()
+  const { login } = useAuth()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -18,7 +18,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onNavigate }) => {
     e.preventDefault()
     setError(null)
     if (!email.trim()) {
-      setError('Please enter your office email.')
+      setError('Please enter your email.')
       return
     }
 
@@ -31,11 +31,6 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onNavigate }) => {
     } else {
       setError(result.error || 'Failed to log in.')
     }
-  }
-
-  const handleSelectQuickPersona = (userId: string) => {
-    quickLogin(userId)
-    onNavigate('dashboard')
   }
 
   return (
@@ -76,7 +71,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onNavigate }) => {
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-1.5 text-left">
             <label className="text-xs font-semibold text-stone-700 dark:text-stone-300" htmlFor="login-email">
-              Office Email
+              Email
             </label>
             <div className="relative">
               <Mail className="w-4 h-4 text-stone-400 absolute left-3.5 top-3" />
@@ -86,7 +81,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onNavigate }) => {
                 required
                 value={email}
                 onChange={e => setEmail(e.target.value)}
-                placeholder="athul@example.com"
+                placeholder="johndoe@example.com"
                 className="w-full pl-10 pr-3.5 py-2.5 rounded-xl border border-stone-200 dark:border-stone-700 bg-stone-50/50 dark:bg-stone-800 text-sm text-stone-900 dark:text-stone-100 placeholder:text-stone-400 focus:outline-none focus:ring-2 focus:ring-amber-500/30 focus:border-amber-500 transition-all"
               />
             </div>
@@ -123,32 +118,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onNavigate }) => {
           </button>
         </form>
 
-        {/* 1-Click Quick Teammate Picker */}
-        <div className="pt-2 border-t border-stone-100 dark:border-stone-800">
-          <div className="flex items-center gap-1.5 mb-2.5 text-xs font-semibold text-stone-600 dark:text-stone-400">
-            <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-            <span>1-Click Team Member Login:</span>
-          </div>
-          <div className="grid grid-cols-2 gap-2">
-            {allUsers.slice(0, 4).map(u => (
-              <button
-                key={u.id}
-                type="button"
-                onClick={() => handleSelectQuickPersona(u.id)}
-                className="flex items-center gap-2 p-2 rounded-xl border border-stone-200 dark:border-stone-700 bg-stone-50 dark:bg-stone-800/60 hover:border-amber-400 hover:bg-amber-50/60 dark:hover:bg-stone-700/60 transition-all text-left text-xs cursor-pointer group"
-              >
-                <div className="w-6 h-6 rounded-full bg-amber-500 text-white font-bold text-[10px] flex items-center justify-center shrink-0">
-                  {u.avatar}
-                </div>
-                <div className="truncate">
-                  <div className="font-semibold text-stone-800 dark:text-stone-200 group-hover:text-amber-800 truncate">
-                    {u.name}
-                  </div>
-                </div>
-              </button>
-            ))}
-          </div>
-        </div>
+
 
         {/* Bottom Switch Link */}
         <div className="text-center text-xs text-stone-500 dark:text-stone-400">

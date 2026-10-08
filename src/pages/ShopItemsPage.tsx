@@ -6,7 +6,6 @@ import {
   Trash2,
   Check,
   X,
-  Star,
   MapPin,
   Coffee,
   CheckCircle2,
@@ -141,10 +140,6 @@ export const ShopItemsPage: React.FC<ShopItemsPageProps> = ({
                 <h3 className="font-heading font-black text-lg tracking-tight">
                   {shop.name}
                 </h3>
-                <span className="px-2 py-0.5 rounded-full bg-white/20 text-white text-[10px] font-bold flex items-center gap-0.5">
-                  <Star className="w-2.5 h-2.5 fill-amber-300 text-amber-300" />
-                  <span>{shop.rating}</span>
-                </span>
               </div>
               <div className="flex items-center gap-1 text-xs text-amber-100 mt-0.5">
                 <MapPin className="w-3 h-3 text-amber-200 shrink-0" />
@@ -307,7 +302,7 @@ export const ShopItemsPage: React.FC<ShopItemsPageProps> = ({
         className="w-full py-3 border-2 border-dashed border-stone-300 dark:border-stone-700 hover:border-amber-500 dark:hover:border-amber-500 rounded-2xl text-stone-600 dark:text-stone-400 hover:text-amber-600 dark:hover:text-amber-400 text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer bg-white/60 dark:bg-stone-900/60 shadow-2xs hover:bg-amber-50/40"
       >
         <Plus className="w-4 h-4" />
-        <span>+ Add New Item to {shop.name} Menu</span>
+        <span>Add New Item to {shop.name} Menu</span>
       </button>
 
       {/* Modal: Add Item */}
