@@ -681,7 +681,10 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
 
           <div className="divide-y divide-stone-100 dark:divide-stone-800">
             {sortedExpenses.map(expense => {
-              const isUser = expense.memberId === currentUser?.id
+              const isUser =
+                expense.memberId === effectiveUser?.id ||
+                expense.memberId === currentUser?.id ||
+                (effectiveUser?.userCode && expense.memberId === effectiveUser.userCode)
               const isMemberAdmin = expense.memberId === effectiveAdminId
               const canEditThisMember = isAdmin || isUser
               const memberItemCount = expense.items.reduce((sum, it) => sum + it.quantity, 0)

@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react'
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react'
 import confetti from 'canvas-confetti'
 import type { TeaSession, MenuItem, OrderItem, MemberExpense, User } from '../types'
 import { DEFAULT_MENU } from '../lib/mockData'
@@ -129,9 +129,13 @@ export const ExpenseProvider: React.FC<{ children: React.ReactNode }> = ({ child
   }, [fetchMenuItems])
 
   // Fetch active session from Supabase
+  const latestFetchIdRef = useRef(0)
+
   const fetchActiveSession = useCallback(async () => {
     if (!supabase) return
     const client = supabase
+    const fetchId = ++latestFetchIdRef.current
+
     try {
       const { data: sessionData, error: sessionErr } = await client
         .from('tea_sessions')
@@ -140,6 +144,8 @@ export const ExpenseProvider: React.FC<{ children: React.ReactNode }> = ({ child
         .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle()
+
+      if (fetchId !== latestFetchIdRef.current) return
 
       if (sessionErr || !sessionData) {
         if (!sessionErr && !sessionData) {
@@ -155,30 +161,46 @@ export const ExpenseProvider: React.FC<{ children: React.ReactNode }> = ({ child
         .select('*')
         .eq('session_id', sessionData.id)
 
+      if (fetchId !== latestFetchIdRef.current) return
+
       // Fetch order items
       const { data: orderItemsData } = await client
         .from('order_items')
         .select('*')
         .eq('session_id', sessionData.id)
 
-      const expenses: MemberExpense[] = (expensesData || []).map((exp: any) => ({
-        memberId: exp.member_id,
-        memberName: exp.member_name,
-        memberAvatar: exp.member_avatar || '☕',
-        total: Number(exp.total) || 0,
-        isPaid: !!exp.is_paid,
-        paidAt: exp.paid_at || undefined,
-        items: (orderItemsData || [])
+      if (fetchId !== latestFetchIdRef.current) return
+
+      const expenses: MemberExpense[] = (expensesData || []).map((exp: any) => {
+        const expPrefix = `${sessionData.id}-${exp.member_id}-`
+        const memberItems: OrderItem[] = (orderItemsData || [])
           .filter((item: any) => item.expense_id === exp.id || item.member_id === exp.member_id)
-          .map((item: any) => ({
-            id: item.id,
-            menuItemId: item.menu_item_id || item.id,
-            name: item.name,
-            price: Number(item.price) || 0,
-            quantity: Number(item.quantity) || 1,
-            emoji: item.emoji || '☕'
-          }))
-      }))
+          .map((item: any) => {
+            const cleanItemId = item.id && item.id.startsWith(expPrefix) ? item.id.slice(expPrefix.length) : item.id
+            return {
+              id: item.id,
+              menuItemId: item.menu_item_id || cleanItemId,
+              name: item.name,
+              price: Number(item.price) || 0,
+              quantity: Number(item.quantity) || 1,
+              emoji: item.emoji || '☕'
+            }
+          })
+
+        const calculatedMemberTotal = memberItems.reduce((sum, it) => sum + it.price * it.quantity, 0)
+
+        return {
+          memberId: exp.member_id,
+          memberName: exp.member_name,
+          memberAvatar: exp.member_avatar || '☕',
+          total: memberItems.length > 0 ? calculatedMemberTotal : (Number(exp.total) || 0),
+          isPaid: !!exp.is_paid,
+          paidAt: exp.paid_at || undefined,
+          items: memberItems
+        }
+      })
+
+      const calculatedGrandTotal = expenses.reduce((sum, e) => sum + e.total, 0)
 
       const fullSession: TeaSession = {
         id: sessionData.id,
@@ -193,48 +215,13 @@ export const ExpenseProvider: React.FC<{ children: React.ReactNode }> = ({ child
         payerUpi: sessionData.payer_upi,
         creatorId: sessionData.creator_id,
         creatorName: sessionData.creator_name,
-        totalAmount: Number(sessionData.total_amount) || 0,
+        totalAmount: calculatedGrandTotal || (Number(sessionData.total_amount) || 0),
         status: sessionData.status,
         notes: sessionData.notes,
         expenses
       }
 
-      setActiveSession(prev => {
-        // Merge with local items if local items are populated and Supabase hasn't finished writing them yet
-        const mergedExpenses = expenses.map(exp => {
-          if (!prev || prev.id !== sessionData.id) return exp
-          const localExp = prev.expenses.find(pe => pe.memberId === exp.memberId)
-          if (!localExp || localExp.items.length === 0) return exp
-
-          const localCount = localExp.items.reduce((sum, i) => sum + i.quantity, 0)
-          const serverCount = exp.items.reduce((sum, i) => sum + i.quantity, 0)
-
-          // If local has more items than server, or server has 0 while local has items: retain local in-flight items!
-          if (localCount > serverCount || exp.items.length === 0) {
-            return {
-              ...exp,
-              items: localExp.items,
-              total: localExp.total
-            }
-          }
-          return exp
-        })
-
-        if (prev && prev.id === sessionData.id) {
-          prev.expenses.forEach(pe => {
-            if (!mergedExpenses.some(me => me.memberId === pe.memberId) && pe.items.length > 0) {
-              mergedExpenses.push(pe)
-            }
-          })
-        }
-
-        const calculatedTotal = mergedExpenses.reduce((sum, e) => sum + e.total, 0)
-        return {
-          ...fullSession,
-          expenses: mergedExpenses,
-          totalAmount: calculatedTotal || fullSession.totalAmount
-        }
-      })
+      setActiveSession(fullSession)
     } catch (err) {
       console.warn('Error fetching active session from Supabase:', err)
     }
@@ -284,6 +271,17 @@ export const ExpenseProvider: React.FC<{ children: React.ReactNode }> = ({ child
     fetchPastSessions()
   }, [fetchActiveSession, fetchPastSessions])
 
+  // Debounced refresh for Realtime notifications
+  const refreshTimerRef = useRef<any>(null)
+  const debouncedFetchActiveSession = useCallback(() => {
+    if (refreshTimerRef.current) {
+      clearTimeout(refreshTimerRef.current)
+    }
+    refreshTimerRef.current = setTimeout(() => {
+      fetchActiveSession()
+    }, 80)
+  }, [fetchActiveSession])
+
   // Realtime subscription
   useEffect(() => {
     if (!supabase) return
@@ -292,24 +290,55 @@ export const ExpenseProvider: React.FC<{ children: React.ReactNode }> = ({ child
     const channel = client
       .channel('realtime_tea_breaks')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'tea_sessions' }, () => {
-        fetchActiveSession()
+        debouncedFetchActiveSession()
         fetchPastSessions()
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'session_expenses' }, () => {
-        fetchActiveSession()
+        debouncedFetchActiveSession()
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'order_items' }, () => {
-        fetchActiveSession()
+        debouncedFetchActiveSession()
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'menu_items' }, () => {
         fetchMenuItems()
       })
-      .subscribe()
+      .subscribe((status) => {
+        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+          console.warn('[Realtime] Channel error/timeout, refreshing session...')
+          debouncedFetchActiveSession()
+        }
+      })
 
     return () => {
+      if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current)
       client.removeChannel(channel)
     }
-  }, [fetchActiveSession, fetchPastSessions, fetchMenuItems])
+  }, [debouncedFetchActiveSession, fetchPastSessions, fetchMenuItems])
+
+  // Automatic Polling Heartbeat: guarantees real-time sync across all users without manual reload
+  useEffect(() => {
+    const intervalMs = (activeSession && activeSession.status === 'active') ? 2000 : 5000
+    const timer = setInterval(() => {
+      fetchActiveSession()
+    }, intervalMs)
+
+    return () => clearInterval(timer)
+  }, [activeSession?.id, activeSession?.status, fetchActiveSession])
+
+  // Window Focus & Visibility sync: immediately refreshes when user switches back to browser tab
+  useEffect(() => {
+    const handleActive = () => {
+      if (document.visibilityState === 'visible') {
+        fetchActiveSession()
+      }
+    }
+    window.addEventListener('visibilitychange', handleActive)
+    window.addEventListener('focus', handleActive)
+    return () => {
+      window.removeEventListener('visibilitychange', handleActive)
+      window.removeEventListener('focus', handleActive)
+    }
+  }, [fetchActiveSession])
 
   // Sync to local cache
   useEffect(() => {
@@ -411,7 +440,52 @@ export const ExpenseProvider: React.FC<{ children: React.ReactNode }> = ({ child
         team_name: 'Team'
       }, { onConflict: 'id', ignoreDuplicates: true })
 
-      // 2. Upsert session_expenses
+      // 2. CRITICAL: Upsert and delete order_items FIRST in database so DB has all items ready before session_expenses Realtime event fires!
+      const currentRows = (exp.items || []).map((item, idx) => {
+        const itemId = item.id || `${expenseId}-${item.menuItemId || idx}`
+        return {
+          id: itemId,
+          session_id: sessionId,
+          expense_id: expenseId,
+          member_id: exp.memberId,
+          menu_item_id: item.menuItemId || null,
+          name: item.name,
+          price: item.price,
+          quantity: item.quantity,
+          emoji: item.emoji || '☕'
+        }
+      })
+
+      if (currentRows.length > 0) {
+        // Upsert order items
+        const { error: upsertErr } = await client.from('order_items').upsert(currentRows, { onConflict: 'id' })
+        if (upsertErr) {
+          // Fallback if FK constraint on menu_item_id failed
+          const fallbackRows = currentRows.map(r => ({ ...r, menu_item_id: null }))
+          await client.from('order_items').upsert(fallbackRows, { onConflict: 'id' })
+        }
+
+        // Delete any items from DB that were removed from the member's cart
+        const currentItemIds = currentRows.map(r => r.id)
+        const { data: existingDbItems } = await client
+          .from('order_items')
+          .select('id')
+          .eq('expense_id', expenseId)
+
+        if (existingDbItems && existingDbItems.length > 0) {
+          const toDelete = existingDbItems
+            .filter((di: any) => !currentItemIds.includes(di.id))
+            .map((di: any) => di.id)
+          if (toDelete.length > 0) {
+            await client.from('order_items').delete().in('id', toDelete)
+          }
+        }
+      } else {
+        // No items in cart: delete ALL order items for this expense in DB
+        await client.from('order_items').delete().eq('expense_id', expenseId)
+      }
+
+      // 3. Upsert session_expenses with updated total
       await client
         .from('session_expenses')
         .upsert({
@@ -424,53 +498,12 @@ export const ExpenseProvider: React.FC<{ children: React.ReactNode }> = ({ child
           is_paid: exp.isPaid
         }, { onConflict: 'id' })
 
-      // 3. Update total_amount in tea_sessions
+      // 4. Update total_amount in tea_sessions
       if (sessionTotal !== undefined) {
         await client
           .from('tea_sessions')
           .update({ total_amount: sessionTotal })
           .eq('id', sessionId)
-      }
-
-      // 4. Upsert order_items safely without creating empty race conditions
-      const validMenuIds = new Set(menuItems.map(m => m.id))
-      const currentRows = (exp.items || []).map((item, idx) => ({
-        id: item.id || `${expenseId}-${idx}-${Date.now()}`,
-        session_id: sessionId,
-        expense_id: expenseId,
-        member_id: exp.memberId,
-        menu_item_id: item.menuItemId && validMenuIds.has(item.menuItemId) ? item.menuItemId : null,
-        name: item.name,
-        price: item.price,
-        quantity: item.quantity,
-        emoji: item.emoji || '☕'
-      }))
-
-      if (currentRows.length > 0) {
-        // Upsert current items first so count is never 0 in database
-        const { error: upsertErr } = await client.from('order_items').upsert(currentRows, { onConflict: 'id' })
-        if (upsertErr) {
-          // If menu_item_id failed FK constraint, fallback to null menu_item_id
-          const fallbackRows = currentRows.map(r => ({ ...r, menu_item_id: null }))
-          await client.from('order_items').upsert(fallbackRows, { onConflict: 'id' })
-        }
-
-        // Clean up any items that were previously in DB for this expense but removed from cart
-        const currentItemIds = currentRows.map(r => r.id)
-        const { data: existingDbItems } = await client
-          .from('order_items')
-          .select('id')
-          .eq('expense_id', expenseId)
-        if (existingDbItems && existingDbItems.length > 0) {
-          const toDelete = existingDbItems
-            .filter((di: any) => !currentItemIds.includes(di.id))
-            .map((di: any) => di.id)
-          if (toDelete.length > 0) {
-            await client.from('order_items').delete().in('id', toDelete)
-          }
-        }
-      } else {
-        await client.from('order_items').delete().eq('expense_id', expenseId)
       }
     } catch (e) {
       console.warn('Sync expense warning:', e)
@@ -493,7 +526,7 @@ export const ExpenseProvider: React.FC<{ children: React.ReactNode }> = ({ child
         if (exp.memberId !== memberId) return exp
         memberFound = true
 
-        const itemIdx = exp.items.findIndex(i => i.menuItemId === menuItem.id)
+        const itemIdx = exp.items.findIndex(i => i.menuItemId === menuItem.id || i.id === menuItem.id)
         let updatedItems: OrderItem[] = []
 
         if (itemIdx > -1) {
@@ -504,7 +537,7 @@ export const ExpenseProvider: React.FC<{ children: React.ReactNode }> = ({ child
           updatedItems = [
             ...exp.items,
             {
-              id: `item-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+              id: `${prev.id}-${memberId}-${menuItem.id}`,
               menuItemId: menuItem.id,
               name: menuItem.name,
               price: menuItem.price,
@@ -532,7 +565,7 @@ export const ExpenseProvider: React.FC<{ children: React.ReactNode }> = ({ child
           memberAvatar,
           items: [
             {
-              id: `item-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+              id: `${prev.id}-${memberId}-${menuItem.id}`,
               menuItemId: menuItem.id,
               name: menuItem.name,
               price: menuItem.price,
@@ -584,7 +617,7 @@ export const ExpenseProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
         const updatedItems = exp.items
           .map(item => {
-            if (item.menuItemId === menuItemId) {
+            if (item.menuItemId === menuItemId || item.id === menuItemId) {
               return { ...item, quantity: item.quantity - 1 }
             }
             return item
