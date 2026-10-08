@@ -50,7 +50,7 @@ const PAST_SESSIONS_KEY = 'chaisplit_past_sessions_v3'
 const MENU_ITEMS_KEY = 'chaisplit_menu_items_v3'
 
 export const ExpenseProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { allUsers } = useAuth()
+  const { allUsers, user } = useAuth()
 
   const [menuItems, setMenuItems] = useState<MenuItem[]>(() => {
     try {
@@ -199,7 +199,42 @@ export const ExpenseProvider: React.FC<{ children: React.ReactNode }> = ({ child
         expenses
       }
 
-      setActiveSession(fullSession)
+      setActiveSession(prev => {
+        // Merge with local items if local items are populated and Supabase hasn't finished writing them yet
+        const mergedExpenses = expenses.map(exp => {
+          if (!prev || prev.id !== sessionData.id) return exp
+          const localExp = prev.expenses.find(pe => pe.memberId === exp.memberId)
+          if (!localExp || localExp.items.length === 0) return exp
+
+          const localCount = localExp.items.reduce((sum, i) => sum + i.quantity, 0)
+          const serverCount = exp.items.reduce((sum, i) => sum + i.quantity, 0)
+
+          // If local has more items than server, or server has 0 while local has items: retain local in-flight items!
+          if (localCount > serverCount || exp.items.length === 0) {
+            return {
+              ...exp,
+              items: localExp.items,
+              total: localExp.total
+            }
+          }
+          return exp
+        })
+
+        if (prev && prev.id === sessionData.id) {
+          prev.expenses.forEach(pe => {
+            if (!mergedExpenses.some(me => me.memberId === pe.memberId) && pe.items.length > 0) {
+              mergedExpenses.push(pe)
+            }
+          })
+        }
+
+        const calculatedTotal = mergedExpenses.reduce((sum, e) => sum + e.total, 0)
+        return {
+          ...fullSession,
+          expenses: mergedExpenses,
+          totalAmount: calculatedTotal || fullSession.totalAmount
+        }
+      })
     } catch (err) {
       console.warn('Error fetching active session from Supabase:', err)
     }
@@ -360,11 +395,23 @@ export const ExpenseProvider: React.FC<{ children: React.ReactNode }> = ({ child
     })
   }
 
-  const syncExpenseToSupabase = async (sessionId: string, exp: MemberExpense) => {
+  const syncExpenseToSupabase = async (sessionId: string, exp: MemberExpense, sessionTotal?: number) => {
     if (!supabase) return
     const client = supabase
     const expenseId = `${sessionId}-${exp.memberId}`
     try {
+      // 1. Ensure profile exists so foreign key doesn't fail
+      const existingUser = allUsers.find(u => u.id === exp.memberId) || (user?.id === exp.memberId ? user : null)
+      const userEmail = existingUser?.email || `${exp.memberId}@team.chaisplit.internal`
+      await client.from('profiles').upsert({
+        id: exp.memberId,
+        name: exp.memberName,
+        email: userEmail,
+        avatar: exp.memberAvatar || '☕',
+        team_name: 'Team'
+      }, { onConflict: 'id', ignoreDuplicates: true })
+
+      // 2. Upsert session_expenses
       await client
         .from('session_expenses')
         .upsert({
@@ -375,11 +422,56 @@ export const ExpenseProvider: React.FC<{ children: React.ReactNode }> = ({ child
           member_avatar: exp.memberAvatar,
           total: exp.total,
           is_paid: exp.isPaid
-        })
-      await client
-        .from('tea_sessions')
-        .update({ total_amount: exp.total })
-        .eq('id', sessionId)
+        }, { onConflict: 'id' })
+
+      // 3. Update total_amount in tea_sessions
+      if (sessionTotal !== undefined) {
+        await client
+          .from('tea_sessions')
+          .update({ total_amount: sessionTotal })
+          .eq('id', sessionId)
+      }
+
+      // 4. Upsert order_items safely without creating empty race conditions
+      const validMenuIds = new Set(menuItems.map(m => m.id))
+      const currentRows = (exp.items || []).map((item, idx) => ({
+        id: item.id || `${expenseId}-${idx}-${Date.now()}`,
+        session_id: sessionId,
+        expense_id: expenseId,
+        member_id: exp.memberId,
+        menu_item_id: item.menuItemId && validMenuIds.has(item.menuItemId) ? item.menuItemId : null,
+        name: item.name,
+        price: item.price,
+        quantity: item.quantity,
+        emoji: item.emoji || '☕'
+      }))
+
+      if (currentRows.length > 0) {
+        // Upsert current items first so count is never 0 in database
+        const { error: upsertErr } = await client.from('order_items').upsert(currentRows, { onConflict: 'id' })
+        if (upsertErr) {
+          // If menu_item_id failed FK constraint, fallback to null menu_item_id
+          const fallbackRows = currentRows.map(r => ({ ...r, menu_item_id: null }))
+          await client.from('order_items').upsert(fallbackRows, { onConflict: 'id' })
+        }
+
+        // Clean up any items that were previously in DB for this expense but removed from cart
+        const currentItemIds = currentRows.map(r => r.id)
+        const { data: existingDbItems } = await client
+          .from('order_items')
+          .select('id')
+          .eq('expense_id', expenseId)
+        if (existingDbItems && existingDbItems.length > 0) {
+          const toDelete = existingDbItems
+            .filter((di: any) => !currentItemIds.includes(di.id))
+            .map((di: any) => di.id)
+          if (toDelete.length > 0) {
+            await client.from('order_items').delete().in('id', toDelete)
+          }
+        }
+      } else {
+        await client.from('order_items').delete().eq('expense_id', expenseId)
+      }
     } catch (e) {
       console.warn('Sync expense warning:', e)
     }
@@ -388,8 +480,13 @@ export const ExpenseProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const addItemToMember = (memberId: string, menuItem: MenuItem) => {
     if (!activeSession) return
 
+    let targetExpenseToSync: MemberExpense | null = null
+    let targetSessionId = activeSession.id
+    let targetSessionTotal = 0
+
     setActiveSession(prev => {
       if (!prev) return null
+      targetSessionId = prev.id
 
       let memberFound = false
       const updatedExpenses = prev.expenses.map(exp => {
@@ -425,33 +522,35 @@ export const ExpenseProvider: React.FC<{ children: React.ReactNode }> = ({ child
       })
 
       if (!memberFound) {
-        const userObj = allUsers.find(u => u.id === memberId)
-        if (userObj) {
-          const newExp: MemberExpense = {
-            memberId: userObj.id,
-            memberName: userObj.name,
-            memberAvatar: userObj.avatar,
-            items: [
-              {
-                id: `item-${Date.now()}`,
-                menuItemId: menuItem.id,
-                name: menuItem.name,
-                price: menuItem.price,
-                quantity: 1,
-                emoji: menuItem.emoji
-              }
-            ],
-            total: menuItem.price,
-            isPaid: userObj.id === prev.payerId
-          }
-          const updated = recalculateSessionTotals({
-            ...prev,
-            expenses: [...prev.expenses, newExp]
-          })
+        const userObj = (user && user.id === memberId ? user : null) || allUsers.find(u => u.id === memberId)
+        const memberName = userObj?.name || (memberId === user?.id ? user?.name : 'Member') || 'Member'
+        const memberAvatar = userObj?.avatar || (memberId === user?.id ? user?.avatar : '☕') || '☕'
 
-          syncExpenseToSupabase(prev.id, newExp)
-          return updated
+        const newExp: MemberExpense = {
+          memberId,
+          memberName,
+          memberAvatar,
+          items: [
+            {
+              id: `item-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+              menuItemId: menuItem.id,
+              name: menuItem.name,
+              price: menuItem.price,
+              quantity: 1,
+              emoji: menuItem.emoji
+            }
+          ],
+          total: menuItem.price,
+          isPaid: memberId === prev.payerId
         }
+        const updated = recalculateSessionTotals({
+          ...prev,
+          expenses: [...prev.expenses, newExp]
+        })
+
+        targetExpenseToSync = updated.expenses.find(e => e.memberId === memberId) || newExp
+        targetSessionTotal = updated.totalAmount
+        return updated
       }
 
       const updated = recalculateSessionTotals({
@@ -459,18 +558,26 @@ export const ExpenseProvider: React.FC<{ children: React.ReactNode }> = ({ child
         expenses: updatedExpenses
       })
 
-      const targetExp = updated.expenses.find(e => e.memberId === memberId)
-      if (targetExp) syncExpenseToSupabase(prev.id, targetExp)
-
+      targetExpenseToSync = updated.expenses.find(e => e.memberId === memberId) || null
+      targetSessionTotal = updated.totalAmount
       return updated
     })
+
+    if (targetExpenseToSync) {
+      syncExpenseToSupabase(targetSessionId, targetExpenseToSync, targetSessionTotal)
+    }
   }
 
   const removeItemFromMember = (memberId: string, menuItemId: string) => {
     if (!activeSession) return
 
+    let targetExpenseToSync: MemberExpense | null = null
+    let targetSessionId = activeSession.id
+    let targetSessionTotal = 0
+
     setActiveSession(prev => {
       if (!prev) return null
+      targetSessionId = prev.id
 
       const updatedExpenses = prev.expenses.map(exp => {
         if (exp.memberId !== memberId) return exp
@@ -495,11 +602,14 @@ export const ExpenseProvider: React.FC<{ children: React.ReactNode }> = ({ child
         expenses: updatedExpenses
       })
 
-      const targetExp = updated.expenses.find(e => e.memberId === memberId)
-      if (targetExp) syncExpenseToSupabase(prev.id, targetExp)
-
+      targetExpenseToSync = updated.expenses.find(e => e.memberId === memberId) || null
+      targetSessionTotal = updated.totalAmount
       return updated
     })
+
+    if (targetExpenseToSync) {
+      syncExpenseToSupabase(targetSessionId, targetExpenseToSync, targetSessionTotal)
+    }
   }
 
   const toggleMemberPaid = (memberId: string) => {
@@ -649,41 +759,64 @@ export const ExpenseProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
     if (supabase) {
       const client = supabase
-      client
-        .from('tea_sessions')
-        .insert({
-          id: newSess.id,
-          title: newSess.title,
-          shop_name: newSess.shopName,
-          shop_id: newSess.shopId || null,
-          group_id: newSess.groupId || null,
-          group_name: newSess.groupName || null,
-          payer_id: newSess.payerId || null,
-          payer_name: newSess.payerName,
-          payer_upi: newSess.payerUpi || null,
-          creator_id: newSess.creatorId || null,
-          creator_name: newSess.creatorName || null,
-          total_amount: 0,
-          status: 'active'
-        })
-        .then(() => {}, (e: any) => console.warn(e))
+      ;(async () => {
+        try {
+          // 1. Ensure all session members exist in profiles to prevent FK constraint failure
+          for (const exp of newSess.expenses) {
+            const existingU = allUsers.find(u => u.id === exp.memberId) || (user?.id === exp.memberId ? user : null)
+            await client.from('profiles').upsert({
+              id: exp.memberId,
+              name: exp.memberName,
+              email: existingU?.email || `${exp.memberId}@team.chaisplit.internal`,
+              avatar: exp.memberAvatar || '☕',
+              team_name: newSess.groupName || 'Team'
+            }, { onConflict: 'id', ignoreDuplicates: true })
+          }
 
-      if (newSess.expenses.length > 0) {
-        client
-          .from('session_expenses')
-          .insert(
-            newSess.expenses.map(exp => ({
-              id: `${newSess.id}-${exp.memberId}`,
-              session_id: newSess.id,
-              member_id: exp.memberId,
-              member_name: exp.memberName,
-              member_avatar: exp.memberAvatar,
-              total: 0,
-              is_paid: exp.isPaid
-            }))
-          )
-          .then(() => {}, (e: any) => console.warn(e))
-      }
+          // 2. Insert tea_sessions
+          const { error: sessErr } = await client
+            .from('tea_sessions')
+            .insert({
+              id: newSess.id,
+              title: newSess.title,
+              shop_name: newSess.shopName,
+              shop_id: newSess.shopId || null,
+              group_id: newSess.groupId || null,
+              group_name: newSess.groupName || null,
+              payer_id: newSess.payerId || null,
+              payer_name: newSess.payerName || 'Admin',
+              payer_upi: newSess.payerUpi || null,
+              creator_id: newSess.creatorId || null,
+              creator_name: newSess.creatorName || null,
+              total_amount: 0,
+              status: 'active'
+            })
+
+          if (sessErr) {
+            console.warn('Failed to insert tea_session in Supabase:', sessErr)
+            return
+          }
+
+          // 3. Insert session_expenses once tea_sessions exists
+          if (newSess.expenses.length > 0) {
+            await client
+              .from('session_expenses')
+              .insert(
+                newSess.expenses.map(exp => ({
+                  id: `${newSess.id}-${exp.memberId}`,
+                  session_id: newSess.id,
+                  member_id: exp.memberId,
+                  member_name: exp.memberName,
+                  member_avatar: exp.memberAvatar,
+                  total: 0,
+                  is_paid: exp.isPaid
+                }))
+              )
+          }
+        } catch (err) {
+          console.warn('Error syncing new session to Supabase:', err)
+        }
+      })()
     }
 
     setActiveSession(newSess)
@@ -722,8 +855,12 @@ export const ExpenseProvider: React.FC<{ children: React.ReactNode }> = ({ child
   }
 
   const getMenuItemsForShop = (shopId?: string): MenuItem[] => {
-    const targetShopId = shopId || 'shop-chayakkada'
-    return menuItems.filter(item => (item.shopId || 'shop-chayakkada') === targetShopId)
+    if (!shopId) return menuItems
+    const directMatches = menuItems.filter(item => item.shopId === shopId)
+    if (directMatches.length > 0) return directMatches
+    const defaultMatches = menuItems.filter(item => !item.shopId || item.shopId === 'shop-chayakkada')
+    if (defaultMatches.length > 0) return defaultMatches
+    return menuItems
   }
 
   const addCustomMenuItem = (

@@ -1,6 +1,8 @@
 import {
+  AlertCircle,
   ArrowLeft,
   ArrowRight,
+  Check,
   CheckCircle2,
   Coffee,
   Copy,
@@ -15,6 +17,7 @@ import {
 } from 'lucide-react'
 import React, { useState } from 'react'
 import { useExpense } from '../context/ExpenseContext'
+import { supabase } from '../lib/supabase'
 import type { Group, User } from '../types'
 import { TeaBreakPage } from './TeaBreakPage'
 
@@ -48,11 +51,28 @@ export const GroupDetailsPage: React.FC<GroupDetailsPageProps> = ({
 
   // Modals & form states
   const [showAddUserModal, setShowAddUserModal] = useState(false)
-  const [newUserName, setNewUserName] = useState('')
-  const [newUserEmail, setNewUserEmail] = useState('')
+  const [memberUniqueIdInput, setMemberUniqueIdInput] = useState('')
+  const [addMemberError, setAddMemberError] = useState<string | null>(null)
+  const [isSubmittingMember, setIsSubmittingMember] = useState(false)
   const [toastNotice, setToastNotice] = useState<string | null>(null)
   const [showExitConfirm, setShowExitConfirm] = useState(false)
   const [breakTitleInput, setBreakTitleInput] = useState(`${group.name} Chai Break ☕`)
+
+  const cleanInput = memberUniqueIdInput.trim()
+  const matchedUser = cleanInput
+    ? allUsers.find(
+        u =>
+          (u.userCode && u.userCode.toUpperCase() === cleanInput.toUpperCase()) ||
+          u.id.toLowerCase() === cleanInput.toLowerCase()
+      ) ||
+      (currentUser &&
+      ((currentUser.userCode && currentUser.userCode.toUpperCase() === cleanInput.toUpperCase()) ||
+        currentUser.id.toLowerCase() === cleanInput.toLowerCase())
+        ? currentUser
+        : null)
+    : null
+
+  const isMatchedAlreadyMember = matchedUser ? group.members.some(m => m.id === matchedUser.id) : false
 
   const showToast = (msg: string) => {
     setToastNotice(msg)
@@ -88,7 +108,7 @@ export const GroupDetailsPage: React.FC<GroupDetailsPageProps> = ({
   }
 
   // Remove a member (strictly admin only, from members page)
-  const handleRemoveMember = (memberId: string, memberName: string) => {
+  const handleRemoveMember = async (memberId: string, memberName: string) => {
     if (!isAdmin) return
     const updatedMembers = group.members.filter(m => m.id !== memberId)
     const updatedGroup: Group = {
@@ -96,50 +116,156 @@ export const GroupDetailsPage: React.FC<GroupDetailsPageProps> = ({
       members: updatedMembers
     }
     onUpdateGroup(updatedGroup)
+    if (supabase) {
+      try {
+        await supabase
+          .from('group_members')
+          .delete()
+          .eq('group_id', group.id)
+          .eq('user_id', memberId)
+      } catch (err) {
+        console.warn('Failed to remove member from Supabase:', err)
+      }
+    }
     showToast(`Removed ${memberName} from group`)
   }
 
   // Add existing colleague
-  const handleAddExistingUser = (colleague: User) => {
+  const handleAddExistingUser = async (colleague: User) => {
     const updatedMembers = [...group.members, colleague]
     const updatedGroup: Group = {
       ...group,
       members: updatedMembers
     }
     onUpdateGroup(updatedGroup)
+    if (supabase) {
+      try {
+        await supabase.from('group_members').insert({
+          group_id: group.id,
+          user_id: colleague.id
+        })
+      } catch (err) {
+        console.warn('Failed to add member to Supabase:', err)
+      }
+    }
     showToast(`Added ${colleague.name} to group!`)
   }
 
-  // Add new colleague via form
-  const handleCreateNewUser = (e: React.FormEvent) => {
+  // Add member by Unique ID (not name and email)
+  const handleAddMemberByUniqueId = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!newUserName.trim()) return
+    const cleanId = memberUniqueIdInput.trim()
+    if (!cleanId) return
 
-    const newMember: User = {
-      id: `user-${Date.now()}`,
-      name: newUserName.trim(),
-      email: newUserEmail.trim() || `${newUserName.trim().toLowerCase().replace(/\s+/g, '.')}@office.com`,
-      avatar: newUserName
-        .trim()
-        .split(' ')
-        .map(n => n[0])
-        .join('')
-        .toUpperCase()
-        .slice(0, 2),
-      teamName: group.name,
-      userCode: newUserName.replace(/[^a-zA-Z]/g, '').slice(0, 5).toUpperCase() + Math.floor(1000 + Math.random() * 9000)
-    }
+    setAddMemberError(null)
+    setIsSubmittingMember(true)
 
-    const updatedMembers = [...group.members, newMember]
-    const updatedGroup: Group = {
-      ...group,
-      members: updatedMembers
+    try {
+      // 1. Check if already in group
+      const alreadyInGroup = group.members.find(
+        m =>
+          (m.userCode && m.userCode.toUpperCase() === cleanId.toUpperCase()) ||
+          m.id.toLowerCase() === cleanId.toLowerCase()
+      )
+      if (alreadyInGroup) {
+        setAddMemberError(
+          `${alreadyInGroup.name} (${alreadyInGroup.userCode || alreadyInGroup.id}) is already in this group!`
+        )
+        setIsSubmittingMember(false)
+        return
+      }
+
+      // 2. Search locally across allUsers & currentUser
+      let foundUser: User | undefined = allUsers.find(
+        u =>
+          (u.userCode && u.userCode.toUpperCase() === cleanId.toUpperCase()) ||
+          u.id.toLowerCase() === cleanId.toLowerCase()
+      )
+      if (!foundUser && currentUser) {
+        if (
+          (currentUser.userCode && currentUser.userCode.toUpperCase() === cleanId.toUpperCase()) ||
+          currentUser.id.toLowerCase() === cleanId.toLowerCase()
+        ) {
+          foundUser = currentUser
+        }
+      }
+
+      // 3. Search Supabase profiles table if online
+      if (!foundUser && supabase) {
+        try {
+          const { data, error } = await supabase
+            .from('profiles')
+            .select('*')
+            .or(`user_code.ilike.${cleanId},id.eq.${cleanId}`)
+            .maybeSingle()
+
+          if (!error && data) {
+            foundUser = {
+              id: data.id,
+              name: data.name,
+              email: data.email,
+              avatar: data.avatar || '👤',
+              teamName: data.team_name || group.name,
+              userCode: data.user_code || cleanId.toUpperCase()
+            }
+          }
+        } catch (dbErr) {
+          console.warn('Error querying profile by unique id:', dbErr)
+        }
+      }
+
+      // 4. Resolve member to add
+      const memberToAdd: User = foundUser || {
+        id: `user-${cleanId.toLowerCase().replace(/[^a-z0-9_-]/g, '') || Date.now()}`,
+        name: `Member (${cleanId.toUpperCase()})`,
+        email: `${cleanId.toLowerCase()}@team.chaisplit.internal`,
+        avatar: cleanId.slice(0, 2).toUpperCase(),
+        teamName: group.name,
+        userCode: cleanId.toUpperCase()
+      }
+
+      // 5. Update local group state
+      const updatedMembers = [...group.members, memberToAdd]
+      const updatedGroup: Group = {
+        ...group,
+        members: updatedMembers
+      }
+      onUpdateGroup(updatedGroup)
+
+      // 6. Sync with Supabase if online
+      if (supabase) {
+        try {
+          // Upsert profiles
+          await supabase.from('profiles').upsert(
+            {
+              id: memberToAdd.id,
+              name: memberToAdd.name,
+              email: memberToAdd.email,
+              avatar: memberToAdd.avatar || '👤',
+              team_name: memberToAdd.teamName || group.name,
+              user_code: memberToAdd.userCode
+            },
+            { onConflict: 'id' }
+          )
+
+          // Insert into group_members
+          await supabase.from('group_members').insert({
+            group_id: group.id,
+            user_id: memberToAdd.id
+          })
+        } catch (syncErr) {
+          console.warn('Failed to sync group member to Supabase:', syncErr)
+        }
+      }
+
+      setMemberUniqueIdInput('')
+      setShowAddUserModal(false)
+      showToast(`Added ${memberToAdd.name} (${memberToAdd.userCode || memberToAdd.id}) to group! 🎉`)
+    } catch (err: any) {
+      setAddMemberError(err?.message || 'Failed to add member by Unique ID')
+    } finally {
+      setIsSubmittingMember(false)
     }
-    onUpdateGroup(updatedGroup)
-    setNewUserName('')
-    setNewUserEmail('')
-    setShowAddUserModal(false)
-    showToast(`Added ${newMember.name} to group! 🎉`)
   }
 
   // Handle Exit Group
@@ -277,9 +403,16 @@ export const GroupDetailsPage: React.FC<GroupDetailsPageProps> = ({
                           )}
                         </div>
 
-                        <span className="text-[10px] text-stone-400 block truncate">
-                          {member.email || (member.userCode ? `ID: ${member.userCode}` : 'Colleague')}
-                        </span>
+                        <div className="flex items-center gap-1.5 text-[10px] text-stone-400">
+                          <span className="font-mono font-bold text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/60 px-1.5 py-0.5 rounded border border-amber-200/50 dark:border-amber-900/40">
+                            ID: {member.userCode || member.id}
+                          </span>
+                          {member.email && (
+                            <span className="truncate text-stone-400 hidden sm:inline">
+                              • {member.email}
+                            </span>
+                          )}
+                        </div>
                       </div>
                     </div>
 
@@ -499,7 +632,7 @@ export const GroupDetailsPage: React.FC<GroupDetailsPageProps> = ({
       {/* MODALS                                                                   */}
       {/* ========================================================================= */}
 
-      {/* Modal: Add User to Group */}
+      {/* Modal: Add Member to Group by Unique ID */}
       {showAddUserModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-900/50 backdrop-blur-xs animate-in fade-in">
           <div className="w-full max-w-sm bg-white dark:bg-stone-900 rounded-2xl shadow-2xl border border-stone-200 dark:border-stone-800 p-5 space-y-4">
@@ -507,25 +640,119 @@ export const GroupDetailsPage: React.FC<GroupDetailsPageProps> = ({
               <div>
                 <h3 className="font-heading font-bold text-base text-stone-900 dark:text-stone-100 flex items-center gap-1.5">
                   <UserPlus className="w-4 h-4 text-amber-600" />
-                  <span>Add Users to Group</span>
+                  <span>Add Member to Group</span>
                 </h3>
                 <p className="text-[11px] text-stone-400">
-                  Invite your colleagues to {group.name}
+                  Add member to {group.name} using their Unique ID
                 </p>
               </div>
               <button
-                onClick={() => setShowAddUserModal(false)}
+                onClick={() => {
+                  setShowAddUserModal(false)
+                  setAddMemberError(null)
+                  setMemberUniqueIdInput('')
+                }}
                 className="text-stone-400 hover:text-stone-600 cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            {/* Quick add from office colleagues */}
-            {nonMemberColleagues.length > 0 && (
+            {/* Unique ID Form */}
+            <form onSubmit={handleAddMemberByUniqueId} className="space-y-3 pt-1 text-left">
               <div className="space-y-1.5">
-                <span className="text-xs font-semibold text-stone-700 dark:text-stone-300 block">
-                  Quick Add Teammates
+                <label className="text-xs font-semibold text-stone-700 dark:text-stone-300 flex items-center justify-between">
+                  <span>Member Unique ID / User Code</span>
+                  <span className="text-[10px] text-amber-600 font-normal">e.g. JOHN4821</span>
+                </label>
+                <input
+                  type="text"
+                  required
+                  autoFocus
+                  placeholder="Enter Unique ID (e.g. JOHN4821)"
+                  value={memberUniqueIdInput}
+                  onChange={e => {
+                    setMemberUniqueIdInput(e.target.value)
+                    if (addMemberError) setAddMemberError(null)
+                  }}
+                  className="w-full py-2.5 px-3.5 uppercase font-mono tracking-wider rounded-xl border border-stone-300 dark:border-stone-700 bg-stone-50 dark:bg-stone-800 text-xs text-stone-900 dark:text-stone-100 placeholder:normal-case placeholder:font-sans placeholder:tracking-normal focus:outline-none focus:ring-2 focus:ring-amber-500"
+                />
+                <p className="text-[10px] text-stone-400 leading-tight">
+                  Colleagues can find their Unique ID in the Profile menu (top right).
+                </p>
+              </div>
+
+              {/* Matched user preview */}
+              {matchedUser && (
+                <div
+                  className={`p-2.5 rounded-xl border flex items-center justify-between gap-2 ${
+                    isMatchedAlreadyMember
+                      ? 'bg-amber-50 dark:bg-amber-950/40 border-amber-200 dark:border-amber-800'
+                      : 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-800'
+                  }`}
+                >
+                  <div className="flex items-center gap-2 min-w-0">
+                    <div className="w-7 h-7 rounded-full bg-stone-200 dark:bg-stone-700 font-bold text-xs flex items-center justify-center shrink-0">
+                      {matchedUser.avatar || matchedUser.name.slice(0, 2).toUpperCase()}
+                    </div>
+                    <div className="min-w-0 truncate">
+                      <div className="text-xs font-semibold text-stone-900 dark:text-stone-100 truncate">
+                        {matchedUser.name}
+                      </div>
+                      <div className="text-[10px] text-stone-500 dark:text-stone-400 font-mono">
+                        ID: {matchedUser.userCode || matchedUser.id}
+                      </div>
+                    </div>
+                  </div>
+                  {isMatchedAlreadyMember ? (
+                    <span className="text-[10px] font-bold text-amber-700 dark:text-amber-400 px-2 py-0.5 rounded bg-amber-100 dark:bg-amber-900/60 shrink-0">
+                      Already in group
+                    </span>
+                  ) : (
+                    <span className="text-[10px] font-bold text-emerald-700 dark:text-emerald-400 px-2 py-0.5 rounded bg-emerald-100 dark:bg-emerald-900/60 shrink-0 flex items-center gap-1">
+                      <Check className="w-3 h-3" /> Ready
+                    </span>
+                  )}
+                </div>
+              )}
+
+              {/* Error display */}
+              {addMemberError && (
+                <div className="p-2.5 rounded-xl bg-rose-50 dark:bg-rose-950/50 border border-rose-200 dark:border-rose-900 text-rose-700 dark:text-rose-300 text-xs flex items-start gap-1.5">
+                  <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                  <span>{addMemberError}</span>
+                </div>
+              )}
+
+              <div className="flex items-center justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowAddUserModal(false)
+                    setAddMemberError(null)
+                    setMemberUniqueIdInput('')
+                  }}
+                  className="px-3.5 py-2 rounded-xl text-xs font-semibold text-stone-600 dark:text-stone-400 hover:bg-stone-100 dark:hover:bg-stone-800 cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSubmittingMember || !cleanInput || isMatchedAlreadyMember}
+                  id="submit-add-member-by-id-btn"
+                  className="px-4 py-2 rounded-xl text-xs font-semibold bg-amber-600 hover:bg-amber-700 disabled:opacity-50 disabled:cursor-not-allowed text-white shadow-xs cursor-pointer active:scale-95 transition-all flex items-center gap-1.5"
+                >
+                  <UserPlus className="w-3.5 h-3.5" />
+                  <span>{isSubmittingMember ? 'Adding...' : 'Add Member'}</span>
+                </button>
+              </div>
+            </form>
+
+            {/* Quick add from office colleagues with UNIQUE IDs */}
+            {nonMemberColleagues.length > 0 && (
+              <div className="space-y-1.5 pt-3 border-t border-stone-100 dark:border-stone-800">
+                <span className="text-[11px] font-semibold text-stone-500 dark:text-stone-400 block">
+                  Or Quick Add Teammate by ID
                 </span>
                 <div className="max-h-36 overflow-y-auto space-y-1 pr-0.5 divide-y divide-stone-100 dark:divide-stone-800">
                   {nonMemberColleagues.map(colleague => (
@@ -535,14 +762,14 @@ export const GroupDetailsPage: React.FC<GroupDetailsPageProps> = ({
                     >
                       <div className="flex items-center gap-2 min-w-0">
                         <div className="w-6 h-6 rounded-full bg-stone-200 dark:bg-stone-700 text-stone-700 dark:text-stone-200 font-bold text-[10px] flex items-center justify-center shrink-0">
-                          {colleague.avatar}
+                          {colleague.avatar || colleague.name.slice(0, 2).toUpperCase()}
                         </div>
                         <div className="truncate">
                           <div className="text-xs font-medium text-stone-900 dark:text-stone-100 truncate">
                             {colleague.name}
                           </div>
-                          <div className="text-[10px] text-stone-400 truncate">
-                            {colleague.email}
+                          <div className="text-[10px] font-mono font-bold text-amber-700 dark:text-amber-400 truncate">
+                            ID: {colleague.userCode || colleague.id}
                           </div>
                         </div>
                       </div>
@@ -559,56 +786,6 @@ export const GroupDetailsPage: React.FC<GroupDetailsPageProps> = ({
                 </div>
               </div>
             )}
-
-            {/* Custom Add Colleague Form */}
-            <form onSubmit={handleCreateNewUser} className="space-y-3 pt-2 border-t border-stone-100 dark:border-stone-800 text-left">
-              <span className="text-xs font-semibold text-stone-700 dark:text-stone-300 block">
-                Or Add Colleague by Name
-              </span>
-
-              <div className="space-y-1">
-                <label className="text-[11px] font-medium text-stone-600 dark:text-stone-400">
-                  Full Name <span className="text-amber-600">*</span>
-                </label>
-                <input
-                  type="text"
-                  required
-                  placeholder="e.g. Arun Nair"
-                  value={newUserName}
-                  onChange={e => setNewUserName(e.target.value)}
-                  className="w-full py-2 px-3 rounded-xl border border-stone-300 dark:border-stone-700 bg-stone-50 dark:bg-stone-800 text-xs focus:outline-none focus:ring-1 focus:ring-amber-500"
-                />
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-[11px] font-medium text-stone-600 dark:text-stone-400">
-                  Email / Work ID (optional)
-                </label>
-                <input
-                  type="email"
-                  placeholder="e.g. arun.nair@company.com"
-                  value={newUserEmail}
-                  onChange={e => setNewUserEmail(e.target.value)}
-                  className="w-full py-2 px-3 rounded-xl border border-stone-300 dark:border-stone-700 bg-stone-50 dark:bg-stone-800 text-xs focus:outline-none focus:ring-1 focus:ring-amber-500"
-                />
-              </div>
-
-              <div className="flex items-center justify-end gap-2 pt-1">
-                <button
-                  type="button"
-                  onClick={() => setShowAddUserModal(false)}
-                  className="px-3 py-1.5 rounded-lg text-xs font-semibold text-stone-600 dark:text-stone-400 hover:bg-stone-100 dark:hover:bg-stone-800 cursor-pointer"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-amber-600 hover:bg-amber-700 text-white shadow-xs cursor-pointer active:scale-95 transition-all"
-                >
-                  Add Colleague
-                </button>
-              </div>
-            </form>
           </div>
         </div>
       )}

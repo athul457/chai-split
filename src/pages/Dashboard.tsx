@@ -25,7 +25,7 @@ import { GroupDetailsPage } from './GroupDetailsPage'
 import { TeaBreakPage } from './TeaBreakPage'
 import { DEFAULT_SHOPS } from '../lib/mockData'
 import { supabase } from '../lib/supabase'
-import type { PageRoute, BottomTab, Shop, MenuItem, Group } from '../types'
+import type { PageRoute, BottomTab, Shop, MenuItem, Group, User } from '../types'
 
 interface DashboardProps {
   onNavigate?: (page: PageRoute) => void
@@ -97,21 +97,44 @@ export const Dashboard: React.FC<DashboardProps> = () => {
       try {
         const { data, error } = await client.from('groups').select('*')
         if (!error && data && data.length > 0) {
-          const mapped: Group[] = data.map((g: any) => ({
-            id: g.id,
-            name: g.name,
-            code: g.code || g.id || `TEA-${Math.floor(1000 + Math.random() * 9000)}`,
-            department: g.department || 'Office',
-            adminId: g.admin_id,
-            shopId: g.shop_id,
-            shopName: g.shop_name,
-            shopEmoji: g.shop_emoji || '☕',
-            members: allUsers.filter(u => u.id === g.admin_id || (user && u.id === user.id)),
-            createdDate: g.created_at ? new Date(g.created_at).toISOString().split('T')[0] : 'Today'
-          }))
-          setGroups(mapped)
-          if (!activeGroupId && mapped[0]) {
-            setActiveGroupId(mapped[0].id)
+          let groupMemberRows: any[] = []
+          try {
+            const { data: gm } = await client.from('group_members').select('*')
+            if (gm) groupMemberRows = gm
+          } catch {}
+
+          setGroups(prev => {
+            return data.map((g: any) => {
+              const existing = prev.find(p => p.id === g.id)
+              const gmUsers: User[] = groupMemberRows
+                .filter(r => r.group_id === g.id)
+                .map(r => allUsers.find(u => u.id === r.user_id))
+                .filter((u): u is User => Boolean(u))
+
+              const baseMembers = allUsers.filter(u => u.id === g.admin_id || (user && u.id === user.id))
+              const memberMap = new Map<string, User>()
+              baseMembers.forEach(m => memberMap.set(m.id, m))
+              if (existing?.members) {
+                existing.members.forEach(m => memberMap.set(m.id, m))
+              }
+              gmUsers.forEach(m => memberMap.set(m.id, m))
+
+              return {
+                id: g.id,
+                name: g.name,
+                code: g.code || g.id || `TEA-${Math.floor(1000 + Math.random() * 9000)}`,
+                department: g.department || 'Office',
+                adminId: g.admin_id,
+                shopId: g.shop_id,
+                shopName: g.shop_name,
+                shopEmoji: g.shop_emoji || '☕',
+                members: Array.from(memberMap.values()),
+                createdDate: g.created_at ? new Date(g.created_at).toISOString().split('T')[0] : 'Today'
+              }
+            })
+          })
+          if (!activeGroupId && data[0]) {
+            setActiveGroupId(data[0].id)
           }
         }
       } catch (err) {
@@ -191,18 +214,29 @@ export const Dashboard: React.FC<DashboardProps> = () => {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'groups' }, async () => {
         const { data } = await client.from('groups').select('*')
         if (data && data.length > 0) {
-          setGroups(data.map((g: any) => ({
-            id: g.id,
-            name: g.name,
-            code: g.code || g.id || `TEA-${Math.floor(1000 + Math.random() * 9000)}`,
-            department: g.department || 'Office',
-            adminId: g.admin_id,
-            shopId: g.shop_id,
-            shopName: g.shop_name,
-            shopEmoji: g.shop_emoji || '☕',
-            members: allUsers.filter(u => u.id === g.admin_id || (user && u.id === user.id)),
-            createdDate: g.created_at ? new Date(g.created_at).toISOString().split('T')[0] : 'Today'
-          })))
+          setGroups(prev => {
+            return data.map((g: any) => {
+              const existing = prev.find(p => p.id === g.id)
+              const baseMembers = allUsers.filter(u => u.id === g.admin_id || (user && u.id === user.id))
+              const memberMap = new Map<string, User>()
+              baseMembers.forEach(m => memberMap.set(m.id, m))
+              if (existing?.members) {
+                existing.members.forEach(m => memberMap.set(m.id, m))
+              }
+              return {
+                id: g.id,
+                name: g.name,
+                code: g.code || g.id || `TEA-${Math.floor(1000 + Math.random() * 9000)}`,
+                department: g.department || 'Office',
+                adminId: g.admin_id,
+                shopId: g.shop_id,
+                shopName: g.shop_name,
+                shopEmoji: g.shop_emoji || '☕',
+                members: Array.from(memberMap.values()),
+                createdDate: g.created_at ? new Date(g.created_at).toISOString().split('T')[0] : 'Today'
+              }
+            })
+          })
         }
       })
       .subscribe()

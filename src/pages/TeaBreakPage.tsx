@@ -20,6 +20,7 @@ import {
     Trash2
 } from 'lucide-react'
 import React, { useMemo, useState } from 'react'
+import { useAuth } from '../context/AuthContext'
 import { useExpense } from '../context/ExpenseContext'
 import type { Group, MenuItem, User } from '../types'
 
@@ -34,6 +35,9 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
   currentUser,
   onBack
 }) => {
+  const { user: authUser } = useAuth()
+  const effectiveUser = currentUser || authUser
+
   const {
     activeSession,
     cancelActiveSession,
@@ -51,7 +55,8 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
 
   // Accordion state: other users' items only appear when clicked
   const [expandedMemberIds, setExpandedMemberIds] = useState<Set<string>>(() => {
-    return new Set(currentUser?.id ? [currentUser.id] : [])
+    const id = effectiveUser?.id || currentUser?.id
+    return new Set(id ? [id] : [])
   })
 
   const toggleMemberExpand = (memberId: string) => {
@@ -72,36 +77,70 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
   }
 
   // Admin detection
-  const effectiveAdminId = group.adminId || group.members[0]?.id || currentUser?.id
-  const isAdmin = currentUser?.id === effectiveAdminId
+  const effectiveAdminId = group.adminId || group.members[0]?.id || effectiveUser?.id
+  const isAdmin = effectiveUser?.id === effectiveAdminId
 
   // Break Creator / Owner detection (only who created the break can delete it)
   const isBreakOwner = Boolean(
     activeSession && (
-      currentUser?.id === activeSession.creatorId ||
-      (!activeSession.creatorId && (currentUser?.id === activeSession.payerId || isAdmin))
+      effectiveUser?.id === activeSession.creatorId ||
+      (!activeSession.creatorId && (effectiveUser?.id === activeSession.payerId || isAdmin))
     )
   )
 
   // Selected colleague for admin assigning items
   const [selectedAssigneeId, setSelectedAssigneeId] = useState<string>(() => {
-    const firstOther = group.members.find(m => m.id !== currentUser?.id)
-    return firstOther ? firstOther.id : (group.members[0]?.id || currentUser?.id || '')
+    const firstOther = group.members.find(m => m.id !== effectiveUser?.id)
+    return firstOther ? firstOther.id : (group.members[0]?.id || effectiveUser?.id || '')
   })
 
-  const selectedAssignee = group.members.find(m => m.id === selectedAssigneeId) || group.members[0] || currentUser
+  const selectedAssignee = group.members.find(m => m.id === selectedAssigneeId) || group.members[0] || effectiveUser
+
+  // Current user's expense in active break
+  const effectiveUserId =
+    effectiveUser?.id ||
+    currentUser?.id ||
+    activeSession?.creatorId ||
+    activeSession?.payerId ||
+    activeSession?.expenses[0]?.memberId ||
+    group.members[0]?.id ||
+    ''
+
+  const currentUserExpense = activeSession?.expenses.find(e =>
+    e.memberId === effectiveUserId ||
+    (effectiveUser?.userCode && e.memberId === effectiveUser.userCode) ||
+    (effectiveUser?.name && e.memberName.toLowerCase() === effectiveUser.name.toLowerCase())
+  ) || (activeSession?.expenses.length === 1 ? activeSession.expenses[0] : undefined)
+
+  const myTotal = currentUserExpense?.total || 0
+  const myItemCount = currentUserExpense?.items.reduce((acc, i) => acc + i.quantity, 0) || 0
 
   // User adds item for themselves
   const handleSelfAddItem = (item: MenuItem) => {
-    if (!currentUser) return
-    addItemToMember(currentUser.id, item)
+    const targetUserId =
+      currentUserExpense?.memberId ||
+      effectiveUserId ||
+      effectiveUser?.id ||
+      group.members[0]?.id
+
+    if (!targetUserId) {
+      showToast('Please join the group or select your profile first.')
+      return
+    }
+    addItemToMember(targetUserId, item)
     showToast(`Added ${item.name} to your cup! ☕`)
   }
 
   // User removes item for themselves
   const handleSelfRemoveItem = (menuItemId: string) => {
-    if (!currentUser) return
-    removeItemFromMember(currentUser.id, menuItemId)
+    const targetUserId =
+      currentUserExpense?.memberId ||
+      effectiveUserId ||
+      effectiveUser?.id ||
+      group.members[0]?.id
+
+    if (!targetUserId) return
+    removeItemFromMember(targetUserId, menuItemId)
   }
 
   // Admin assigns item to selected colleague
@@ -144,11 +183,6 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
     const url = `https://wa.me/?text=${encodeURIComponent(text)}`
     window.open(url, '_blank')
   }
-
-  // Current user's expense in active break
-  const currentUserExpense = activeSession?.expenses.find(e => e.memberId === currentUser?.id)
-  const myTotal = currentUserExpense?.total || 0
-  const myItemCount = currentUserExpense?.items.reduce((acc, i) => acc + i.quantity, 0) || 0
 
   // Total items in break
   const totalSessionItemCount = activeSession?.expenses.reduce(
@@ -203,24 +237,29 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
   // Sort members based on total price in ascending order (₹0 first, then ₹12, ₹50, ₹90...)
   const sortedExpenses = useMemo(() => {
     if (!activeSession) return []
+    const myId = effectiveUser?.id || currentUser?.id
     return [...activeSession.expenses].sort((a, b) => {
       if (a.total !== b.total) {
         return a.total - b.total
       }
       // If totals are equal, put current user first, then sort by name
-      if (a.memberId === currentUser?.id) return -1
-      if (b.memberId === currentUser?.id) return 1
+      if (a.memberId === myId) return -1
+      if (b.memberId === myId) return 1
       return a.memberName.localeCompare(b.memberName)
     })
-  }, [activeSession, currentUser?.id])
+  }, [activeSession, effectiveUser?.id, currentUser?.id])
 
   // Target shop for this tea break session
   const breakShopId = activeSession?.shopId || group.shopId || 'shop-chayakkada'
   const shopMenuItems = useMemo(() => {
-    return getMenuItemsForShop(breakShopId)
+    const items = getMenuItemsForShop(breakShopId)
+    if (items.length > 0) return items
+    // Fallback if shop has no custom items listed yet
+    if (menuItems.length > 0) return menuItems
+    return []
   }, [getMenuItemsForShop, breakShopId, menuItems])
 
-  // Sort menu items by price in ascending order (only for this specific shop)
+  // Sort menu items by price in ascending order
   const sortedMenuItems = useMemo(() => {
     return [...shopMenuItems].sort((a, b) => a.price - b.price)
   }, [shopMenuItems])
@@ -370,7 +409,7 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
                 <span className="text-xs text-amber-600 font-normal">(Add items for yourself)</span>
               </h3>
               <p className="text-[10px] text-stone-400">
-                Logged in as <strong>{currentUser?.name}</strong> • Tap items below to add
+                Logged in as <strong>{effectiveUser?.name || currentUserExpense?.memberName || 'You'}</strong> • Tap items below to add
               </p>
             </div>
           </div>
@@ -415,8 +454,16 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
                     <span className="font-bold text-[11px] px-1">{item.quantity}</span>
                     <button
                       onClick={() => {
-                        const mi = shopMenuItems.find(m => m.id === item.menuItemId) || menuItems.find(m => m.id === item.menuItemId)
-                        if (mi) handleSelfAddItem(mi)
+                        const mi =
+                          shopMenuItems.find(m => m.id === item.menuItemId) ||
+                          menuItems.find(m => m.id === item.menuItemId) || {
+                            id: item.menuItemId || item.id,
+                            name: item.name,
+                            price: item.price,
+                            category: 'snacks',
+                            emoji: item.emoji || '☕'
+                          }
+                        handleSelfAddItem(mi)
                       }}
                       className="w-5 h-5 rounded flex items-center justify-center hover:bg-stone-200 dark:hover:bg-stone-600 text-stone-600 dark:text-stone-300 cursor-pointer"
                     >
@@ -689,8 +736,16 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
                                   <button
                                     onClick={(e) => {
                                       e.stopPropagation()
-                                      const mi = shopMenuItems.find(m => m.id === item.menuItemId) || menuItems.find(m => m.id === item.menuItemId)
-                                      if (mi) addItemToMember(expense.memberId, mi)
+                                      const mi =
+                                        shopMenuItems.find(m => m.id === item.menuItemId) ||
+                                        menuItems.find(m => m.id === item.menuItemId) || {
+                                          id: item.menuItemId || item.id,
+                                          name: item.name,
+                                          price: item.price,
+                                          category: 'snacks',
+                                          emoji: item.emoji || '☕'
+                                        }
+                                      addItemToMember(expense.memberId, mi)
                                     }}
                                     className="w-4 h-4 rounded flex items-center justify-center hover:bg-stone-200 dark:hover:bg-stone-700 text-stone-600 dark:text-stone-300 cursor-pointer"
                                     title="Increase"
@@ -931,8 +986,16 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
                         </button>
                         <button
                           onClick={() => {
-                            const mi = shopMenuItems.find(m => m.id === item.menuItemId) || menuItems.find(m => m.id === item.menuItemId)
-                            if (mi) handleAdminAssignItem(mi)
+                            const mi =
+                              shopMenuItems.find(m => m.id === item.menuItemId) ||
+                              menuItems.find(m => m.id === item.menuItemId) || {
+                                id: item.menuItemId || item.id,
+                                name: item.name,
+                                price: item.price,
+                                category: 'snacks',
+                                emoji: item.emoji || '☕'
+                              }
+                            handleAdminAssignItem(mi)
                           }}
                           className="w-3.5 h-3.5 rounded hover:bg-stone-100 dark:hover:bg-stone-700 flex items-center justify-center text-stone-400 hover:text-emerald-600 cursor-pointer"
                         >
