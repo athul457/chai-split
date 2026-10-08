@@ -163,13 +163,13 @@ export const Dashboard: React.FC<DashboardProps> = () => {
         if (!error && allGroupsData) {
           // SECURITY FILTER: User is group admin OR explicitly listed in group_members table
           const myGroupsData = allGroupsData.filter((g: any) => {
-            const isAdmin = g.admin_id === user.id
-            const isMember = groupMemberRows.some(r => r.group_id === g.id && r.user_id === user.id)
+            const isAdmin = g.admin_id === user.id || (user.email && allUsers.some(u => u.id === g.admin_id && u.email.toLowerCase() === user.email.toLowerCase()))
+            const isMember = groupMemberRows.some(r => r.group_id === g.id && (r.user_id === user.id || (user.email && allUsers.some(u => u.id === r.user_id && u.email.toLowerCase() === user.email.toLowerCase()))))
             return isAdmin || isMember
           })
 
           const mappedGroups: Group[] = myGroupsData.map((g: any) => {
-            const adminUser = allUsers.find(u => u.id === g.admin_id) || (g.admin_id === user.id ? user : null)
+            const adminUser = allUsers.find(u => u.id === g.admin_id || (user.email && u.email.toLowerCase() === user.email.toLowerCase())) || (g.admin_id === user.id ? user : null)
             const gmUsers: User[] = groupMemberRows
               .filter(r => r.group_id === g.id)
               .map(r => allUsers.find(u => u.id === r.user_id) || (r.user_id === user.id ? user : null))
@@ -193,11 +193,27 @@ export const Dashboard: React.FC<DashboardProps> = () => {
             }
           })
 
-          setGroups(mappedGroups)
-          if (mappedGroups.length > 0) {
+          // Merge with locally created groups for this user to guarantee persistence across refresh
+          let localGroups: Group[] = []
+          try {
+            const saved = localStorage.getItem(`chaisplit_groups_user_${user.id}`)
+            if (saved) localGroups = JSON.parse(saved)
+          } catch {}
+
+          const groupMap = new Map<string, Group>()
+          localGroups.forEach(lg => {
+            if (lg.adminId === user.id || lg.members?.some(m => m.id === user.id)) {
+              groupMap.set(lg.id, lg)
+            }
+          })
+          mappedGroups.forEach(mg => groupMap.set(mg.id, mg))
+
+          const finalGroups = Array.from(groupMap.values())
+          setGroups(finalGroups)
+          if (finalGroups.length > 0) {
             setActiveGroupId(prev => {
-              if (prev && mappedGroups.some(g => g.id === prev)) return prev
-              return mappedGroups[0].id
+              if (prev && finalGroups.some(g => g.id === prev)) return prev
+              return finalGroups[0].id
             })
           } else {
             setActiveGroupId(null)
@@ -412,12 +428,29 @@ export const Dashboard: React.FC<DashboardProps> = () => {
   }
 
   // Handle create new group
-  const handleCreateGroup = (e: React.FormEvent) => {
+  const handleCreateGroup = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!newGroupName.trim() || !user) return
 
     const generatedGroupId = `GRP-${Math.floor(1000 + Math.random() * 9000)}`
     const chosenShop = shops.find(s => s.id === selectedShopId) || shops[0] || null
+
+    // Determine valid shopId in Supabase to avoid foreign key violations
+    let validShopId: string | null = null
+    if (supabase && chosenShop?.id) {
+      try {
+        const { data: dbShop } = await supabase
+          .from('shops')
+          .select('id')
+          .eq('id', chosenShop.id)
+          .maybeSingle()
+        if (dbShop) {
+          validShopId = dbShop.id
+        }
+      } catch (err) {
+        console.warn('Shop verification error:', err)
+      }
+    }
 
     const createdGroup: Group = {
       id: `group-${Date.now()}`,
@@ -425,49 +458,82 @@ export const Dashboard: React.FC<DashboardProps> = () => {
       code: generatedGroupId,
       department: 'Office',
       adminId: user.id,
-      shopId: chosenShop?.id,
-      shopName: chosenShop?.name,
-      shopEmoji: chosenShop?.emoji,
+      shopId: validShopId || chosenShop?.id,
+      shopName: chosenShop?.name || 'Chayakkada',
+      shopEmoji: chosenShop?.emoji || '☕',
       members: [user],
       createdDate: new Date().toISOString().split('T')[0]
     }
 
-    setGroups(prev => [createdGroup, ...prev])
+    // 1. Update React state immediately
+    setGroups(prev => [createdGroup, ...prev.filter(g => g.id !== createdGroup.id)])
     setActiveGroupId(createdGroup.id)
     setShowCreateGroupModal(false)
     setNewGroupName('')
     setSelectedShopId(shops[0]?.id || '')
 
-    // Persist to Supabase
-    if (supabase) {
-      const client = supabase
-      client.from('groups').insert({
-        id: createdGroup.id,
-        name: createdGroup.name,
-        code: createdGroup.code,
-        department: createdGroup.department,
-        admin_id: user.id,
-        shop_id: createdGroup.shopId || null,
-        shop_name: createdGroup.shopName,
-        shop_emoji: createdGroup.shopEmoji
-      }).then(() => {
-        // Also insert admin into group_members table
-        client.from('group_members').insert({
-          group_id: createdGroup.id,
-          user_id: user.id
-        }).then(() => {}, (e: any) => console.warn(e))
-      }, (e: any) => console.warn(e))
-    }
+    // 2. Persist to user-scoped localStorage immediately so refresh can NEVER lose it
+    try {
+      const current = localStorage.getItem(`chaisplit_groups_user_${user.id}`)
+      const parsed: Group[] = current ? JSON.parse(current) : []
+      const updated = [createdGroup, ...parsed.filter(g => g.id !== createdGroup.id)]
+      localStorage.setItem(`chaisplit_groups_user_${user.id}`, JSON.stringify(updated))
+    } catch {}
 
-    // Persist to local registry for offline fallback
+    // 3. Persist to global registry for code join fallback
     try {
       const saved = localStorage.getItem('chaisplit_all_registered_groups')
       const all: Group[] = saved ? JSON.parse(saved) : []
-      localStorage.setItem('chaisplit_all_registered_groups', JSON.stringify([createdGroup, ...all]))
+      localStorage.setItem('chaisplit_all_registered_groups', JSON.stringify([createdGroup, ...all.filter(g => g.id !== createdGroup.id)]))
     } catch {}
 
     setCopyNotice(`Created group "${createdGroup.name}" (ID: ${generatedGroupId})! 🎉`)
     setTimeout(() => setCopyNotice(null), 3000)
+
+    // 4. Persist to Supabase with profile guarantee & proper foreign keys
+    if (supabase) {
+      const client = supabase
+      try {
+        // Guarantee user profile exists so admin_id foreign key constraint succeeds
+        await client.from('profiles').upsert({
+          id: user.id,
+          name: user.name,
+          email: user.email,
+          avatar: user.avatar || '☕',
+          team_name: user.teamName || 'Team',
+          user_code: user.userCode,
+          upi_id: user.upiId
+        }, { onConflict: 'id' })
+
+        // Insert group row (using validShopId so shop_id foreign key never fails)
+        const { error: groupErr } = await client.from('groups').insert({
+          id: createdGroup.id,
+          name: createdGroup.name,
+          code: createdGroup.code,
+          department: createdGroup.department,
+          admin_id: user.id,
+          shop_id: validShopId,
+          shop_name: createdGroup.shopName,
+          shop_emoji: createdGroup.shopEmoji
+        })
+
+        if (groupErr) {
+          console.error('Failed to insert group in Supabase:', groupErr)
+        }
+
+        // Insert creator into group_members
+        const { error: memberErr } = await client.from('group_members').upsert({
+          group_id: createdGroup.id,
+          user_id: user.id
+        }, { onConflict: 'group_id,user_id' })
+
+        if (memberErr) {
+          console.error('Failed to insert group_member in Supabase:', memberErr)
+        }
+      } catch (err) {
+        console.error('Supabase group creation error:', err)
+      }
+    }
   }
 
   // Handle join group with Group ID

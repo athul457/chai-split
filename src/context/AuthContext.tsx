@@ -82,28 +82,63 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     fetchProfiles()
 
     // 1. Initial JWT session recovery
-    client.auth.getSession().then(({ data: { session: existingSession } }) => {
-      if (existingSession) {
+    client.auth.getSession().then(async ({ data: { session: existingSession } }) => {
+      if (existingSession && existingSession.user) {
         setSession(existingSession)
-        if (existingSession.user) {
-          client
+        const authUser = existingSession.user
+        try {
+          const { data: p } = await client
             .from('profiles')
             .select('*')
-            .eq('id', existingSession.user.id)
+            .eq('id', authUser.id)
             .maybeSingle()
-            .then(({ data: p }) => {
-              if (p) {
-                setUser({
-                  id: p.id,
-                  name: p.name,
-                  email: p.email,
-                  avatar: p.avatar || '☕',
-                  teamName: p.team_name || 'Team',
-                  userCode: p.user_code,
-                  upiId: p.upi_id
-                })
-              }
+
+          let resolvedProfile = p
+          if (!resolvedProfile && authUser.email) {
+            const { data: pEmail } = await client
+              .from('profiles')
+              .select('*')
+              .ilike('email', authUser.email)
+              .maybeSingle()
+            if (pEmail) resolvedProfile = pEmail
+          }
+
+          if (resolvedProfile) {
+            setUser({
+              id: resolvedProfile.id,
+              name: resolvedProfile.name,
+              email: resolvedProfile.email,
+              avatar: resolvedProfile.avatar || '☕',
+              teamName: resolvedProfile.team_name || 'Team',
+              userCode: resolvedProfile.user_code,
+              upiId: resolvedProfile.upi_id
             })
+          } else {
+            const namePart = (authUser.email || 'user').split('@')[0]
+            const formattedName = namePart.charAt(0).toUpperCase() + namePart.slice(1)
+            const codePrefix = formattedName.replace(/[^a-zA-Z]/g, '').slice(0, 5).toUpperCase() || 'USER'
+            const fallbackProfile = {
+              id: authUser.id,
+              name: formattedName,
+              email: authUser.email || '',
+              avatar: formattedName.slice(0, 2).toUpperCase(),
+              team_name: 'Team',
+              user_code: `${codePrefix}${Math.floor(1000 + Math.random() * 9000)}`,
+              upi_id: `${namePart}@upi`
+            }
+            await client.from('profiles').upsert(fallbackProfile, { onConflict: 'id' })
+            setUser({
+              id: fallbackProfile.id,
+              name: fallbackProfile.name,
+              email: fallbackProfile.email,
+              avatar: fallbackProfile.avatar,
+              teamName: fallbackProfile.team_name,
+              userCode: fallbackProfile.user_code,
+              upiId: fallbackProfile.upi_id
+            })
+          }
+        } catch (err) {
+          console.warn('Profile recovery error:', err)
         }
       }
     })
@@ -114,22 +149,37 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (event === 'SIGNED_OUT' || !newSession) {
         setUser(null)
       } else if (newSession?.user) {
-        const { data: p } = await client
-          .from('profiles')
-          .select('*')
-          .eq('id', newSession.user.id)
-          .maybeSingle()
+        const authUser = newSession.user
+        try {
+          const { data: p } = await client
+            .from('profiles')
+            .select('*')
+            .eq('id', authUser.id)
+            .maybeSingle()
 
-        if (p) {
-          setUser({
-            id: p.id,
-            name: p.name,
-            email: p.email,
-            avatar: p.avatar || '☕',
-            teamName: p.team_name || 'Team',
-            userCode: p.user_code,
-            upiId: p.upi_id
-          })
+          let resolvedProfile = p
+          if (!resolvedProfile && authUser.email) {
+            const { data: pEmail } = await client
+              .from('profiles')
+              .select('*')
+              .ilike('email', authUser.email)
+              .maybeSingle()
+            if (pEmail) resolvedProfile = pEmail
+          }
+
+          if (resolvedProfile) {
+            setUser({
+              id: resolvedProfile.id,
+              name: resolvedProfile.name,
+              email: resolvedProfile.email,
+              avatar: resolvedProfile.avatar || '☕',
+              teamName: resolvedProfile.team_name || 'Team',
+              userCode: resolvedProfile.user_code,
+              upiId: resolvedProfile.upi_id
+            })
+          }
+        } catch (err) {
+          console.warn('Auth state change profile resolution error:', err)
         }
       }
     })
