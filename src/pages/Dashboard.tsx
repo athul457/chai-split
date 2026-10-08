@@ -62,10 +62,12 @@ export const Dashboard: React.FC<DashboardProps> = () => {
   const [selectedMemberForQuickAdd, setSelectedMemberForQuickAdd] = useState<string>('')
   const [copyNotice, setCopyNotice] = useState<string | null>(null)
 
-  // Groups tab state
+
+  // Groups tab state - Strictly isolated per logged-in user
   const [groups, setGroups] = useState<Group[]>(() => {
     try {
-      const saved = localStorage.getItem('chaisplit_groups_list_v2')
+      if (!user) return []
+      const saved = localStorage.getItem(`chaisplit_groups_user_${user.id}`)
       if (!saved) return []
       const parsed: Group[] = JSON.parse(saved)
       return parsed.map(g => ({
@@ -76,9 +78,12 @@ export const Dashboard: React.FC<DashboardProps> = () => {
       return []
     }
   })
+
   const [activeGroupId, setActiveGroupId] = useState<string | null>(() => {
-    return localStorage.getItem('chaisplit_active_group_id') || null
+    if (!user) return null
+    return localStorage.getItem(`chaisplit_active_group_user_${user.id}`) || null
   })
+
   const [showCreateGroupModal, setShowCreateGroupModal] = useState(false)
   const [newGroupName, setNewGroupName] = useState('')
   const [showJoinGroupModal, setShowJoinGroupModal] = useState(false)
@@ -92,55 +97,110 @@ export const Dashboard: React.FC<DashboardProps> = () => {
   const [isLoadingGroups, setIsLoadingGroups] = useState(true)
   const [isLoadingShops, setIsLoadingShops] = useState(true)
 
-  // Fetch real groups from Supabase
+  // Re-sync groups state when logged-in user changes (or upon initial login/logout)
   useEffect(() => {
-    if (!supabase) {
+    if (!user) {
+      setGroups([])
+      setActiveGroupId(null)
+      return
+    }
+    try {
+      const saved = localStorage.getItem(`chaisplit_groups_user_${user.id}`)
+      if (saved) {
+        const parsed: Group[] = JSON.parse(saved)
+        setGroups(parsed)
+        const savedActive = localStorage.getItem(`chaisplit_active_group_user_${user.id}`)
+        if (savedActive && parsed.some(g => g.id === savedActive)) {
+          setActiveGroupId(savedActive)
+        } else if (parsed.length > 0) {
+          setActiveGroupId(parsed[0].id)
+        } else {
+          setActiveGroupId(null)
+        }
+      } else {
+        setGroups([])
+        setActiveGroupId(null)
+      }
+    } catch {
+      setGroups([])
+      setActiveGroupId(null)
+    }
+  }, [user?.id])
+
+  // Save groups scoped strictly to current user ID
+  useEffect(() => {
+    if (user?.id) {
+      localStorage.setItem(`chaisplit_groups_user_${user.id}`, JSON.stringify(groups))
+    }
+  }, [groups, user?.id])
+
+  // Save active group id scoped strictly to current user ID
+  useEffect(() => {
+    if (user?.id && activeGroupId) {
+      localStorage.setItem(`chaisplit_active_group_user_${user.id}`, activeGroupId)
+    } else if (user?.id && !activeGroupId) {
+      localStorage.removeItem(`chaisplit_active_group_user_${user.id}`)
+    }
+  }, [activeGroupId, user?.id])
+
+  // Fetch real groups from Supabase - STRICT SECURITY: User sees ONLY groups they created or were invited to!
+  useEffect(() => {
+    if (!supabase || !user) {
+      if (!user) setGroups([])
       setIsLoadingGroups(false)
       return
     }
     const client = supabase
     const loadGroups = async () => {
       try {
-        const { data, error } = await client.from('groups').select('*')
-        if (!error && data && data.length > 0) {
-          let groupMemberRows: any[] = []
-          try {
-            const { data: gm } = await client.from('group_members').select('*')
-            if (gm) groupMemberRows = gm
-          } catch {}
+        const { data: allGroupsData, error } = await client.from('groups').select('*')
+        let groupMemberRows: any[] = []
+        try {
+          const { data: gm } = await client.from('group_members').select('*')
+          if (gm) groupMemberRows = gm
+        } catch {}
 
-          setGroups(prev => {
-            return data.map((g: any) => {
-              const existing = prev.find(p => p.id === g.id)
-              const gmUsers: User[] = groupMemberRows
-                .filter(r => r.group_id === g.id)
-                .map(r => allUsers.find(u => u.id === r.user_id))
-                .filter((u): u is User => Boolean(u))
-
-              const baseMembers = allUsers.filter(u => u.id === g.admin_id || (user && u.id === user.id))
-              const memberMap = new Map<string, User>()
-              baseMembers.forEach(m => memberMap.set(m.id, m))
-              if (existing?.members) {
-                existing.members.forEach(m => memberMap.set(m.id, m))
-              }
-              gmUsers.forEach(m => memberMap.set(m.id, m))
-
-              return {
-                id: g.id,
-                name: g.name,
-                code: g.code || g.id || `TEA-${Math.floor(1000 + Math.random() * 9000)}`,
-                department: g.department || 'Office',
-                adminId: g.admin_id,
-                shopId: g.shop_id,
-                shopName: g.shop_name,
-                shopEmoji: g.shop_emoji || '☕',
-                members: Array.from(memberMap.values()),
-                createdDate: g.created_at ? new Date(g.created_at).toISOString().split('T')[0] : 'Today'
-              }
-            })
+        if (!error && allGroupsData) {
+          // SECURITY FILTER: User is group admin OR explicitly listed in group_members table
+          const myGroupsData = allGroupsData.filter((g: any) => {
+            const isAdmin = g.admin_id === user.id
+            const isMember = groupMemberRows.some(r => r.group_id === g.id && r.user_id === user.id)
+            return isAdmin || isMember
           })
-          if (!activeGroupId && data[0]) {
-            setActiveGroupId(data[0].id)
+
+          const mappedGroups: Group[] = myGroupsData.map((g: any) => {
+            const adminUser = allUsers.find(u => u.id === g.admin_id) || (g.admin_id === user.id ? user : null)
+            const gmUsers: User[] = groupMemberRows
+              .filter(r => r.group_id === g.id)
+              .map(r => allUsers.find(u => u.id === r.user_id) || (r.user_id === user.id ? user : null))
+              .filter((u): u is User => Boolean(u))
+
+            const memberMap = new Map<string, User>()
+            if (adminUser) memberMap.set(adminUser.id, adminUser)
+            gmUsers.forEach(m => memberMap.set(m.id, m))
+
+            return {
+              id: g.id,
+              name: g.name,
+              code: g.code || g.id || `TEA-${Math.floor(1000 + Math.random() * 9000)}`,
+              department: g.department || 'Office',
+              adminId: g.admin_id,
+              shopId: g.shop_id,
+              shopName: g.shop_name,
+              shopEmoji: g.shop_emoji || '☕',
+              members: Array.from(memberMap.values()),
+              createdDate: g.created_at ? new Date(g.created_at).toISOString().split('T')[0] : 'Today'
+            }
+          })
+
+          setGroups(mappedGroups)
+          if (mappedGroups.length > 0) {
+            setActiveGroupId(prev => {
+              if (prev && mappedGroups.some(g => g.id === prev)) return prev
+              return mappedGroups[0].id
+            })
+          } else {
+            setActiveGroupId(null)
           }
         }
       } catch (err) {
@@ -150,7 +210,7 @@ export const Dashboard: React.FC<DashboardProps> = () => {
       }
     }
     loadGroups()
-  }, [allUsers, user, activeGroupId])
+  }, [allUsers, user?.id])
 
   // Fetch real shops from Supabase
   useEffect(() => {
@@ -204,10 +264,66 @@ export const Dashboard: React.FC<DashboardProps> = () => {
     loadShops()
   }, [])
 
-  // Realtime subscription for shops and groups
+  // Realtime subscription for shops, groups, and group_members
   useEffect(() => {
-    if (!supabase) return
+    if (!supabase || !user) return
     const client = supabase
+
+    const refreshGroups = async () => {
+      try {
+        const { data: allGroupsData } = await client.from('groups').select('*')
+        let groupMemberRows: any[] = []
+        try {
+          const { data: gm } = await client.from('group_members').select('*')
+          if (gm) groupMemberRows = gm
+        } catch {}
+
+        if (allGroupsData) {
+          const myGroupsData = allGroupsData.filter((g: any) => {
+            const isAdmin = g.admin_id === user.id
+            const isMember = groupMemberRows.some(r => r.group_id === g.id && r.user_id === user.id)
+            return isAdmin || isMember
+          })
+
+          const mappedGroups: Group[] = myGroupsData.map((g: any) => {
+            const adminUser = allUsers.find(u => u.id === g.admin_id) || (g.admin_id === user.id ? user : null)
+            const gmUsers: User[] = groupMemberRows
+              .filter(r => r.group_id === g.id)
+              .map(r => allUsers.find(u => u.id === r.user_id) || (r.user_id === user.id ? user : null))
+              .filter((u): u is User => Boolean(u))
+
+            const memberMap = new Map<string, User>()
+            if (adminUser) memberMap.set(adminUser.id, adminUser)
+            gmUsers.forEach(m => memberMap.set(m.id, m))
+
+            return {
+              id: g.id,
+              name: g.name,
+              code: g.code || g.id || `TEA-${Math.floor(1000 + Math.random() * 9000)}`,
+              department: g.department || 'Office',
+              adminId: g.admin_id,
+              shopId: g.shop_id,
+              shopName: g.shop_name,
+              shopEmoji: g.shop_emoji || '☕',
+              members: Array.from(memberMap.values()),
+              createdDate: g.created_at ? new Date(g.created_at).toISOString().split('T')[0] : 'Today'
+            }
+          })
+
+          setGroups(mappedGroups)
+          if (mappedGroups.length > 0) {
+            setActiveGroupId(prev => {
+              if (prev && mappedGroups.some(g => g.id === prev)) return prev
+              return mappedGroups[0].id
+            })
+          } else {
+            setActiveGroupId(null)
+          }
+        }
+      } catch (err) {
+        console.warn('Realtime group refresh error:', err)
+      }
+    }
 
     const channel = client
       .channel('realtime_shops_and_groups')
@@ -224,50 +340,18 @@ export const Dashboard: React.FC<DashboardProps> = () => {
           })))
         }
       })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'groups' }, async () => {
-        const { data } = await client.from('groups').select('*')
-        if (data && data.length > 0) {
-          setGroups(prev => {
-            return data.map((g: any) => {
-              const existing = prev.find(p => p.id === g.id)
-              const baseMembers = allUsers.filter(u => u.id === g.admin_id || (user && u.id === user.id))
-              const memberMap = new Map<string, User>()
-              baseMembers.forEach(m => memberMap.set(m.id, m))
-              if (existing?.members) {
-                existing.members.forEach(m => memberMap.set(m.id, m))
-              }
-              return {
-                id: g.id,
-                name: g.name,
-                code: g.code || g.id || `TEA-${Math.floor(1000 + Math.random() * 9000)}`,
-                department: g.department || 'Office',
-                adminId: g.admin_id,
-                shopId: g.shop_id,
-                shopName: g.shop_name,
-                shopEmoji: g.shop_emoji || '☕',
-                members: Array.from(memberMap.values()),
-                createdDate: g.created_at ? new Date(g.created_at).toISOString().split('T')[0] : 'Today'
-              }
-            })
-          })
-        }
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'groups' }, () => {
+        refreshGroups()
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'group_members' }, () => {
+        refreshGroups()
       })
       .subscribe()
 
     return () => {
       client.removeChannel(channel)
     }
-  }, [allUsers, user])
-
-  useEffect(() => {
-    localStorage.setItem('chaisplit_groups_list_v2', JSON.stringify(groups))
-  }, [groups])
-
-  useEffect(() => {
-    if (activeGroupId) {
-      localStorage.setItem('chaisplit_active_group_id', activeGroupId)
-    }
-  }, [activeGroupId])
+  }, [allUsers, user?.id])
 
   // Shops tab state
   const [shops, setShops] = useState<Shop[]>(() => {
@@ -330,7 +414,7 @@ export const Dashboard: React.FC<DashboardProps> = () => {
   // Handle create new group
   const handleCreateGroup = (e: React.FormEvent) => {
     e.preventDefault()
-    if (!newGroupName.trim()) return
+    if (!newGroupName.trim() || !user) return
 
     const generatedGroupId = `GRP-${Math.floor(1000 + Math.random() * 9000)}`
     const chosenShop = shops.find(s => s.id === selectedShopId) || shops[0] || null
@@ -340,11 +424,11 @@ export const Dashboard: React.FC<DashboardProps> = () => {
       name: newGroupName.trim(),
       code: generatedGroupId,
       department: 'Office',
-      adminId: user?.id,
+      adminId: user.id,
       shopId: chosenShop?.id,
       shopName: chosenShop?.name,
       shopEmoji: chosenShop?.emoji,
-      members: user ? [user] : [],
+      members: [user],
       createdDate: new Date().toISOString().split('T')[0]
     }
 
@@ -362,14 +446,20 @@ export const Dashboard: React.FC<DashboardProps> = () => {
         name: createdGroup.name,
         code: createdGroup.code,
         department: createdGroup.department,
-        admin_id: createdGroup.adminId || null,
+        admin_id: user.id,
         shop_id: createdGroup.shopId || null,
         shop_name: createdGroup.shopName,
         shop_emoji: createdGroup.shopEmoji
-      }).then(() => {}, (e: any) => console.warn(e))
+      }).then(() => {
+        // Also insert admin into group_members table
+        client.from('group_members').insert({
+          group_id: createdGroup.id,
+          user_id: user.id
+        }).then(() => {}, (e: any) => console.warn(e))
+      }, (e: any) => console.warn(e))
     }
 
-    // Persist to local registry
+    // Persist to local registry for offline fallback
     try {
       const saved = localStorage.getItem('chaisplit_all_registered_groups')
       const all: Group[] = saved ? JSON.parse(saved) : []
@@ -381,10 +471,10 @@ export const Dashboard: React.FC<DashboardProps> = () => {
   }
 
   // Handle join group with Group ID
-  const handleJoinGroup = (e: React.FormEvent) => {
+  const handleJoinGroup = async (e: React.FormEvent) => {
     e.preventDefault()
     const cleanId = joinGroupIdInput.trim().toUpperCase()
-    if (!cleanId) return
+    if (!cleanId || !user) return
 
     // 1. Check if already in user's groups
     const alreadyJoined = groups.find(g => g.code.toUpperCase() === cleanId)
@@ -398,58 +488,95 @@ export const Dashboard: React.FC<DashboardProps> = () => {
       return
     }
 
-    // 2. Check in Supabase groups table
+    setJoinGroupError(null)
+
+    // 2. Query Supabase groups table
     if (supabase) {
-      const client = supabase
-      client
-        .from('groups')
-        .select('*')
-        .ilike('code', cleanId)
-        .maybeSingle()
-        .then(({ data }) => {
-          if (data) {
-            const groupToAdd: Group = {
-              id: data.id,
-              name: data.name,
-              code: data.code,
-              department: data.department || 'Office',
-              adminId: data.admin_id,
-              shopId: data.shop_id,
-              shopName: data.shop_name,
-              shopEmoji: data.shop_emoji || '☕',
-              members: user ? [user] : [],
-              createdDate: 'Today'
-            }
-            setGroups(prev => [groupToAdd, ...prev.filter(g => g.id !== groupToAdd.id)])
-            setActiveGroupId(groupToAdd.id)
-            setCopyNotice(`Joined "${groupToAdd.name}"! 🎉`)
-            setTimeout(() => setCopyNotice(null), 3000)
+      try {
+        const client = supabase
+        const { data: foundGroup, error } = await client
+          .from('groups')
+          .select('*')
+          .ilike('code', cleanId)
+          .maybeSingle()
+
+        if (error) {
+          setJoinGroupError('Error searching for group. Please try again.')
+          return
+        }
+
+        if (foundGroup) {
+          // Add user to group_members in Supabase
+          await client.from('group_members').upsert({
+            group_id: foundGroup.id,
+            user_id: user.id
+          }, { onConflict: 'group_id,user_id' })
+
+          // Fetch all group members for this group
+          let gmRows: any[] = []
+          try {
+            const { data: gm } = await client.from('group_members').select('*').eq('group_id', foundGroup.id)
+            if (gm) gmRows = gm
+          } catch {}
+
+          const adminUser = allUsers.find(u => u.id === foundGroup.admin_id) || (foundGroup.admin_id === user.id ? user : null)
+          const gmUsers: User[] = gmRows
+            .map(r => allUsers.find(u => u.id === r.user_id) || (r.user_id === user.id ? user : null))
+            .filter((u): u is User => Boolean(u))
+
+          const memberMap = new Map<string, User>()
+          if (adminUser) memberMap.set(adminUser.id, adminUser)
+          gmUsers.forEach(m => memberMap.set(m.id, m))
+          memberMap.set(user.id, user)
+
+          const groupToAdd: Group = {
+            id: foundGroup.id,
+            name: foundGroup.name,
+            code: foundGroup.code,
+            department: foundGroup.department || 'Office',
+            adminId: foundGroup.admin_id,
+            shopId: foundGroup.shop_id,
+            shopName: foundGroup.shop_name,
+            shopEmoji: foundGroup.shop_emoji || '☕',
+            members: Array.from(memberMap.values()),
+            createdDate: foundGroup.created_at ? new Date(foundGroup.created_at).toISOString().split('T')[0] : 'Today'
           }
-        }, (e: any) => console.warn(e))
+
+          setGroups(prev => [groupToAdd, ...prev.filter(g => g.id !== groupToAdd.id)])
+          setActiveGroupId(groupToAdd.id)
+          setShowJoinGroupModal(false)
+          setJoinGroupIdInput('')
+          setJoinGroupError(null)
+          setCopyNotice(`Joined "${groupToAdd.name}"! 🎉`)
+          setTimeout(() => setCopyNotice(null), 3000)
+          return
+        }
+      } catch (err: any) {
+        console.warn('Error joining group in Supabase:', err)
+        setJoinGroupError(err?.message || 'Failed to join group.')
+        return
+      }
     }
 
-    // 3. Check in registered groups registry
+    // 3. Offline check in registered groups registry
     let allRegistered: Group[] = []
     try {
       const saved = localStorage.getItem('chaisplit_all_registered_groups')
       if (saved) allRegistered = JSON.parse(saved)
     } catch {}
 
-    const foundGroup = allRegistered.find(g => g.code.toUpperCase() === cleanId)
-
-    if (foundGroup) {
-      const updatedMembers = user && !foundGroup.members.some(m => m.id === user.id)
-        ? [...foundGroup.members, user]
-        : foundGroup.members
+    const foundOffline = allRegistered.find(g => g.code.toUpperCase() === cleanId)
+    if (foundOffline) {
+      const updatedMembers = !foundOffline.members.some(m => m.id === user.id)
+        ? [...foundOffline.members, user]
+        : foundOffline.members
 
       const groupToAdd: Group = {
-        ...foundGroup,
-        id: `group-joined-${Date.now()}`,
-        adminId: foundGroup.adminId || foundGroup.members[0]?.id || user?.id,
+        ...foundOffline,
         members: updatedMembers
       }
 
-      setGroups(prev => [groupToAdd, ...prev])
+      setGroups(prev => [groupToAdd, ...prev.filter(g => g.id !== groupToAdd.id)])
       setActiveGroupId(groupToAdd.id)
       setShowJoinGroupModal(false)
       setJoinGroupIdInput('')
@@ -459,49 +586,28 @@ export const Dashboard: React.FC<DashboardProps> = () => {
       return
     }
 
-    // 4. Dynamic group creation for newly provided ID
-    const dynamicGroup: Group = {
-      id: `group-joined-${Date.now()}`,
-      name: `Team Club (${cleanId})`,
-      code: cleanId,
-      department: 'Office',
-      adminId: user?.id,
-      shopId: shops[0]?.id,
-      shopName: shops[0]?.name || 'Chayakkada',
-      shopEmoji: shops[0]?.emoji || '☕',
-      members: user ? [user] : [],
-      createdDate: new Date().toISOString().split('T')[0]
-    }
-
-    if (supabase) {
-      const client = supabase
-      client.from('groups').insert({
-        id: dynamicGroup.id,
-        name: dynamicGroup.name,
-        code: dynamicGroup.code,
-        department: dynamicGroup.department,
-        admin_id: dynamicGroup.adminId || null,
-        shop_id: dynamicGroup.shopId || null,
-        shop_name: dynamicGroup.shopName,
-        shop_emoji: dynamicGroup.shopEmoji
-      }).then(() => {}, (e: any) => console.warn(e))
-    }
-
-    setGroups(prev => [dynamicGroup, ...prev])
-    setActiveGroupId(dynamicGroup.id)
-    setShowJoinGroupModal(false)
-    setJoinGroupIdInput('')
-    setJoinGroupError(null)
-    setCopyNotice(`Joined group with ID ${cleanId}! 🎉`)
-    setTimeout(() => setCopyNotice(null), 3000)
+    // Never auto-create fake groups: if group code not found, show error!
+    setJoinGroupError(`No group found with Code "${cleanId}". Please check the code with your group admin.`)
   }
 
-  // Handle delete group
+  // Handle delete group (Strictly Admin only)
   const handleDeleteGroup = (groupId: string, e: React.MouseEvent) => {
     e.stopPropagation()
-    if (supabase) {
+    const targetGroup = groups.find(g => g.id === groupId)
+    if (targetGroup && targetGroup.adminId && user && targetGroup.adminId !== user.id) {
+      setCopyNotice('Only the group admin can delete this group.')
+      setTimeout(() => setCopyNotice(null), 3000)
+      return
+    }
+
+    if (supabase && user) {
       const client = supabase
-      client.from('groups').delete().eq('id', groupId).then(() => {}, (e: any) => console.warn(e))
+      client
+        .from('groups')
+        .delete()
+        .eq('id', groupId)
+        .eq('admin_id', user.id)
+        .then(() => {}, (e: any) => console.warn(e))
     }
     setGroups(prev => {
       const updated = prev.filter(g => g.id !== groupId)
@@ -510,7 +616,7 @@ export const Dashboard: React.FC<DashboardProps> = () => {
       }
       return updated
     })
-    setCopyNotice('Group removed')
+    setCopyNotice('Group deleted')
     setTimeout(() => setCopyNotice(null), 3000)
   }
 
@@ -604,6 +710,11 @@ export const Dashboard: React.FC<DashboardProps> = () => {
   // Past sessions total spent
   const totalHistorySpent = pastSessions.reduce((sum, s) => sum + s.totalAmount, 0)
 
+  // Security check: Only display active session if user is actually in that group
+  const isUserInActiveSessionGroup = Boolean(
+    activeSession && groups.some(g => g.id === activeSession.groupId)
+  )
+
   return (
     <div className="flex flex-col min-h-[calc(100vh-3.5rem)] justify-between">
       
@@ -639,7 +750,7 @@ export const Dashboard: React.FC<DashboardProps> = () => {
                 </div>
               </div>
 
-              {activeSession ? (
+              {activeSession && isUserInActiveSessionGroup ? (
                 <button
                   onClick={() => {
                     const targetGroup = groups.find(g => g.id === activeSession?.groupId) || activeGroup
@@ -673,7 +784,7 @@ export const Dashboard: React.FC<DashboardProps> = () => {
             </div>
 
             {/* Active Session Content */}
-            {activeSession ? (
+            {activeSession && isUserInActiveSessionGroup ? (
               <div className="space-y-4">
                 {/* Active Session Highlight Card */}
                 <div className="p-4 rounded-2xl bg-gradient-to-br from-amber-600 via-orange-600 to-amber-700 text-white shadow-md relative overflow-hidden space-y-3">
@@ -1099,6 +1210,14 @@ export const Dashboard: React.FC<DashboardProps> = () => {
                 setGroups(prev => prev.map(g => g.id === updatedGroup.id ? updatedGroup : g))
               }}
               onExitGroup={(groupId) => {
+                if (supabase && user) {
+                  supabase
+                    .from('group_members')
+                    .delete()
+                    .eq('group_id', groupId)
+                    .eq('user_id', user.id)
+                    .then(() => {}, (err: any) => console.warn(err))
+                }
                 setGroups(prev => {
                   const updated = prev.filter(g => g.id !== groupId)
                   if (activeGroupId === groupId) {
@@ -1257,16 +1376,18 @@ export const Dashboard: React.FC<DashboardProps> = () => {
                           </p>
                         </div>
 
-                        <div className="flex items-center gap-1.5">
-                          <button
-                            type="button"
-                            onClick={(e) => handleDeleteGroup(group.id, e)}
-                            className="p-1.5 rounded-lg text-stone-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors cursor-pointer"
-                            title="Delete group"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </div>
+                        {group.adminId === user?.id && (
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={(e) => handleDeleteGroup(group.id, e)}
+                              className="p-1.5 rounded-lg text-stone-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors cursor-pointer"
+                              title="Delete group (Admin only)"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        )}
                       </div>
 
                       {/* Direct button to separate Tea Break page when active */}

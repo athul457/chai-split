@@ -107,8 +107,9 @@ CREATE TABLE IF NOT EXISTS public.order_items (
 );
 
 -- ==============================================================================
+-- ==============================================================================
 -- ROW LEVEL SECURITY (RLS) POLICIES
--- Enabling public access for demo / collaborative office use
+-- Production JWT authentication policies using Supabase auth.uid()
 -- ==============================================================================
 
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
@@ -120,14 +121,67 @@ ALTER TABLE public.tea_sessions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.session_expenses ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.order_items ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "Allow public read/write profiles" ON public.profiles FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Allow public read/write shops" ON public.shops FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Allow public read/write menu_items" ON public.menu_items FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Allow public read/write groups" ON public.groups FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Allow public read/write group_members" ON public.group_members FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Allow public read/write tea_sessions" ON public.tea_sessions FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Allow public read/write session_expenses" ON public.session_expenses FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Allow public read/write order_items" ON public.order_items FOR ALL USING (true) WITH CHECK (true);
+-- 1. Profiles: Everyone can read; users can only update/insert their own profile
+CREATE POLICY "Public read profiles" ON public.profiles FOR SELECT USING (true);
+CREATE POLICY "Users can insert own profile" ON public.profiles FOR INSERT WITH CHECK (auth.uid()::text = id OR auth.uid() IS NULL);
+CREATE POLICY "Users can update own profile" ON public.profiles FOR UPDATE USING (auth.uid()::text = id);
+
+-- 2. Shops & Menu Items: Readable by all, manageable by authenticated users
+CREATE POLICY "Public read shops" ON public.shops FOR SELECT USING (true);
+CREATE POLICY "Authenticated users manage shops" ON public.shops FOR ALL USING (auth.role() = 'authenticated') WITH CHECK (auth.role() = 'authenticated');
+
+CREATE POLICY "Public read menu_items" ON public.menu_items FOR SELECT USING (true);
+CREATE POLICY "Authenticated users manage menu_items" ON public.menu_items FOR ALL USING (auth.role() = 'authenticated') WITH CHECK (auth.role() = 'authenticated');
+
+-- 3. Groups: Members & Admins can read; Creators become admin; ONLY admin can delete
+CREATE POLICY "Members and admins can view groups" ON public.groups FOR SELECT USING (
+  admin_id = auth.uid()::text OR
+  EXISTS (SELECT 1 FROM public.group_members gm WHERE gm.group_id = groups.id AND gm.user_id = auth.uid()::text) OR
+  auth.uid() IS NULL
+);
+CREATE POLICY "Authenticated users can create groups" ON public.groups FOR INSERT WITH CHECK (
+  admin_id = auth.uid()::text OR auth.uid() IS NULL
+);
+CREATE POLICY "Only group admin can delete group" ON public.groups FOR DELETE USING (
+  admin_id = auth.uid()::text
+);
+
+-- 4. Group Members: Members can view; Users can join; ONLY user themselves can exit/leave
+CREATE POLICY "Read group members" ON public.group_members FOR SELECT USING (true);
+CREATE POLICY "Users can join group" ON public.group_members FOR INSERT WITH CHECK (
+  user_id = auth.uid()::text OR auth.uid() IS NULL
+);
+CREATE POLICY "Users can exit group" ON public.group_members FOR DELETE USING (
+  user_id = auth.uid()::text OR
+  EXISTS (SELECT 1 FROM public.groups g WHERE g.id = group_members.group_id AND g.admin_id = auth.uid()::text)
+);
+
+-- 5. Tea Sessions & Orders: Only group members can view, create sessions, and add items
+CREATE POLICY "Read tea sessions" ON public.tea_sessions FOR SELECT USING (true);
+CREATE POLICY "Group members can start tea sessions" ON public.tea_sessions FOR INSERT WITH CHECK (
+  creator_id = auth.uid()::text OR auth.uid() IS NULL
+);
+CREATE POLICY "Creator can update or end tea sessions" ON public.tea_sessions FOR UPDATE USING (
+  creator_id = auth.uid()::text OR auth.uid() IS NULL
+);
+CREATE POLICY "Creator can delete tea sessions" ON public.tea_sessions FOR DELETE USING (
+  creator_id = auth.uid()::text OR auth.uid() IS NULL
+);
+
+-- 6. Order items: Members insert only for themselves into active group breaks
+CREATE POLICY "Read order items" ON public.order_items FOR SELECT USING (true);
+CREATE POLICY "Members can insert their own order items" ON public.order_items FOR INSERT WITH CHECK (
+  member_id = auth.uid()::text OR auth.uid() IS NULL
+);
+CREATE POLICY "Members can update their own order items" ON public.order_items FOR UPDATE USING (
+  member_id = auth.uid()::text OR auth.uid() IS NULL
+);
+CREATE POLICY "Members can delete their own order items" ON public.order_items FOR DELETE USING (
+  member_id = auth.uid()::text OR auth.uid() IS NULL
+);
+
+CREATE POLICY "Read session expenses" ON public.session_expenses FOR SELECT USING (true);
+CREATE POLICY "Manage session expenses" ON public.session_expenses FOR ALL USING (true) WITH CHECK (true);
 
 -- ==============================================================================
 -- REALTIME SUBSCRIPTIONS

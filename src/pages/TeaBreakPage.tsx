@@ -118,13 +118,24 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
   const myTotal = currentUserExpense?.total || 0
   const myItemCount = currentUserExpense?.items.reduce((acc, i) => acc + i.quantity, 0) || 0
 
-  // User adds item for themselves
+  // User adds item for themselves (Security: strictly verified group members only)
   const handleSelfAddItem = (item: MenuItem) => {
+    const isMember = Boolean(
+      effectiveUser && (
+        group.adminId === effectiveUser.id ||
+        group.members.some(m => m.id === effectiveUser.id)
+      )
+    )
+
+    if (!isMember) {
+      showToast('You must be a member of this group to order items.')
+      return
+    }
+
     const targetUserId =
       currentUserExpense?.memberId ||
       effectiveUserId ||
-      effectiveUser?.id ||
-      group.members[0]?.id
+      effectiveUser?.id
 
     if (!targetUserId) {
       showToast('Please join the group or select your profile first.')
@@ -136,11 +147,18 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
 
   // User removes item for themselves
   const handleSelfRemoveItem = (menuItemId: string) => {
+    const isMember = Boolean(
+      effectiveUser && (
+        group.adminId === effectiveUser.id ||
+        group.members.some(m => m.id === effectiveUser.id)
+      )
+    )
+    if (!isMember) return
+
     const targetUserId =
       currentUserExpense?.memberId ||
       effectiveUserId ||
-      effectiveUser?.id ||
-      group.members[0]?.id
+      effectiveUser?.id
 
     if (!targetUserId) return
     removeItemFromMember(targetUserId, menuItemId)

@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { Coffee, ArrowLeft, UserPlus, Mail, User, Building, AlertCircle } from 'lucide-react'
+import { Coffee, ArrowLeft, UserPlus, Mail, User, Building, Lock, AlertCircle } from 'lucide-react'
 import { ChaiLoader } from '../components/ChaiLoader'
 import type { PageRoute } from '../types'
 import { useAuth } from '../context/AuthContext'
@@ -12,6 +12,7 @@ export const RegisterPage: React.FC<RegisterPageProps> = ({ onNavigate }) => {
   const { register } = useAuth()
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
   const [teamName, setTeamName] = useState('Floor 3 Tea Club')
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
@@ -30,7 +31,7 @@ export const RegisterPage: React.FC<RegisterPageProps> = ({ onNavigate }) => {
     }
 
     setLoading(true)
-    const result = await register(name, email, teamName)
+    const result = await register(name, email, password, teamName)
     setLoading(false)
 
     if (result.success) {
@@ -107,6 +108,27 @@ export const RegisterPage: React.FC<RegisterPageProps> = ({ onNavigate }) => {
                 value={email}
                 onChange={e => setEmail(e.target.value)}
                 placeholder="tanmay@office.com"
+                className="w-full pl-10 pr-3.5 py-2.5 rounded-xl border border-stone-200 dark:border-stone-700 bg-stone-50/50 dark:bg-stone-800 text-sm text-stone-900 dark:text-stone-100 placeholder:text-stone-400 focus:outline-none focus:ring-2 focus:ring-amber-500/30 focus:border-amber-500 transition-all"
+              />
+            </div>
+          </div>
+
+          <div className="space-y-1.5 text-left">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-semibold text-stone-700 dark:text-stone-300" htmlFor="register-password">
+                Password
+              </label>
+              <span className="text-[11px] text-stone-400">Optional (min 6 chars)</span>
+            </div>
+            <div className="relative">
+              <Lock className="w-4 h-4 text-stone-400 absolute left-3.5 top-3" />
+              <input
+                id="register-password"
+                type="password"
+                value={password}
+                onChange={e => setPassword(e.target.value)}
+                placeholder="••••••••"
+                minLength={6}
                 className="w-full pl-10 pr-3.5 py-2.5 rounded-xl border border-stone-200 dark:border-stone-700 bg-stone-50/50 dark:bg-stone-800 text-sm text-stone-900 dark:text-stone-100 placeholder:text-stone-400 focus:outline-none focus:ring-2 focus:ring-amber-500/30 focus:border-amber-500 transition-all"
               />
             </div>
