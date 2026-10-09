@@ -23,7 +23,7 @@ import React, { useMemo, useState } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { useExpense } from '../context/ExpenseContext'
 import { ChaiLoader } from '../components/ChaiLoader'
-import type { Group, MenuItem, User } from '../types'
+import type { Group, MenuItem, User, MemberExpense } from '../types'
 
 interface TeaBreakPageProps {
   group: Group
@@ -99,21 +99,17 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
 
   const selectedAssignee = group.members.find(m => m.id === selectedAssigneeId) || group.members[0] || effectiveUser
 
-  // Current user's expense in active break
+  // Current user's expense in active break (Strictly isolated to logged-in user)
   const effectiveUserId =
     effectiveUser?.id ||
     currentUser?.id ||
-    activeSession?.creatorId ||
-    activeSession?.payerId ||
-    activeSession?.expenses[0]?.memberId ||
-    group.members[0]?.id ||
     ''
 
   const currentUserExpense = activeSession?.expenses.find(e =>
-    e.memberId === effectiveUserId ||
+    (effectiveUserId && e.memberId === effectiveUserId) ||
     (effectiveUser?.userCode && e.memberId === effectiveUser.userCode) ||
     (effectiveUser?.name && e.memberName.toLowerCase() === effectiveUser.name.toLowerCase())
-  ) || (activeSession?.expenses.length === 1 ? activeSession.expenses[0] : undefined)
+  )
 
   const myTotal = currentUserExpense?.total || 0
   const myItemCount = currentUserExpense?.items.reduce((acc, i) => acc + i.quantity, 0) || 0
@@ -267,20 +263,41 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
 
   const orderedMembersCount = activeSession?.expenses.filter(e => e.items.length > 0).length || 0
 
-  // Sort members based on total price in ascending order (₹0 first, then ₹12, ₹50, ₹90...)
+  // Merge activeSession expenses with group.members so every teammate is visible
   const sortedExpenses = useMemo(() => {
     if (!activeSession) return []
     const myId = effectiveUser?.id || currentUser?.id
-    return [...activeSession.expenses].sort((a, b) => {
+
+    const map = new Map<string, MemberExpense>()
+
+    // Add session expenses
+    activeSession.expenses.forEach(exp => {
+      map.set(exp.memberId, exp)
+    })
+
+    // Ensure every member of this group has a card
+    group.members.forEach(m => {
+      if (!map.has(m.id)) {
+        map.set(m.id, {
+          memberId: m.id,
+          memberName: m.name,
+          memberAvatar: m.avatar || m.name.slice(0, 2).toUpperCase(),
+          items: [],
+          total: 0,
+          isPaid: m.id === activeSession.payerId
+        })
+      }
+    })
+
+    return Array.from(map.values()).sort((a, b) => {
+      if (a.memberId === myId) return -1
+      if (b.memberId === myId) return 1
       if (a.total !== b.total) {
         return a.total - b.total
       }
-      // If totals are equal, put current user first, then sort by name
-      if (a.memberId === myId) return -1
-      if (b.memberId === myId) return 1
       return a.memberName.localeCompare(b.memberName)
     })
-  }, [activeSession, effectiveUser?.id, currentUser?.id])
+  }, [activeSession, group.members, effectiveUser?.id, currentUser?.id])
 
   // Target shop for this tea break session
   const breakShopId = activeSession?.shopId || group.shopId || 'shop-chayakkada'
