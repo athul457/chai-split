@@ -142,10 +142,20 @@ export const GroupDetailsPage: React.FC<GroupDetailsPageProps> = ({
     onUpdateGroup(updatedGroup)
     if (supabase) {
       try {
-        await supabase.from('group_members').insert({
+        // Ensure profile exists so foreign key constraint never fails
+        await supabase.from('profiles').upsert({
+          id: colleague.id,
+          name: colleague.name,
+          email: colleague.email || `${colleague.id}@team.chaisplit.internal`,
+          avatar: colleague.avatar || '👤',
+          team_name: colleague.teamName || group.name,
+          user_code: colleague.userCode
+        }, { onConflict: 'id' })
+
+        await supabase.from('group_members').upsert({
           group_id: group.id,
           user_id: colleague.id
-        })
+        }, { onConflict: 'group_id,user_id' })
       } catch (err) {
         console.warn('Failed to add member to Supabase:', err)
       }
@@ -250,11 +260,11 @@ export const GroupDetailsPage: React.FC<GroupDetailsPageProps> = ({
             { onConflict: 'id' }
           )
 
-          // Insert into group_members
-          await supabase.from('group_members').insert({
+          // Upsert into group_members
+          await supabase.from('group_members').upsert({
             group_id: group.id,
             user_id: memberToAdd.id
-          })
+          }, { onConflict: 'group_id,user_id' })
         } catch (syncErr) {
           console.warn('Failed to sync group member to Supabase:', syncErr)
         }

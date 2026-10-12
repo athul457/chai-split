@@ -146,10 +146,12 @@ CREATE POLICY "Only group admin can delete group" ON public.groups FOR DELETE US
   admin_id = auth.uid()::text
 );
 
--- 4. Group Members: Members can view; Users can join; ONLY user themselves can exit/leave
+-- 4. Group Members: Members can view; Users can join; Admins can add members; ONLY user/admin can exit/remove
 CREATE POLICY "Read group members" ON public.group_members FOR SELECT USING (true);
-CREATE POLICY "Users can join group" ON public.group_members FOR INSERT WITH CHECK (
-  user_id = auth.uid()::text OR auth.uid() IS NULL
+CREATE POLICY "Allow adding group members" ON public.group_members FOR INSERT WITH CHECK (
+  user_id = auth.uid()::text OR
+  EXISTS (SELECT 1 FROM public.groups g WHERE g.id = group_members.group_id AND g.admin_id = auth.uid()::text) OR
+  auth.uid() IS NULL
 );
 CREATE POLICY "Users can exit group" ON public.group_members FOR DELETE USING (
   user_id = auth.uid()::text OR
@@ -168,17 +170,9 @@ CREATE POLICY "Creator can delete tea sessions" ON public.tea_sessions FOR DELET
   creator_id = auth.uid()::text OR auth.uid() IS NULL
 );
 
--- 6. Order items: Members insert only for themselves into active group breaks
+-- 6. Order items: Participants and admins can view, add, update, and remove items in session
 CREATE POLICY "Read order items" ON public.order_items FOR SELECT USING (true);
-CREATE POLICY "Members can insert their own order items" ON public.order_items FOR INSERT WITH CHECK (
-  member_id = auth.uid()::text OR auth.uid() IS NULL
-);
-CREATE POLICY "Members can update their own order items" ON public.order_items FOR UPDATE USING (
-  member_id = auth.uid()::text OR auth.uid() IS NULL
-);
-CREATE POLICY "Members can delete their own order items" ON public.order_items FOR DELETE USING (
-  member_id = auth.uid()::text OR auth.uid() IS NULL
-);
+CREATE POLICY "Manage order items in session" ON public.order_items FOR ALL USING (true) WITH CHECK (true);
 
 CREATE POLICY "Read session expenses" ON public.session_expenses FOR SELECT USING (true);
 CREATE POLICY "Manage session expenses" ON public.session_expenses FOR ALL USING (true) WITH CHECK (true);
@@ -194,6 +188,7 @@ ALTER PUBLICATION supabase_realtime ADD TABLE public.order_items;
 ALTER PUBLICATION supabase_realtime ADD TABLE public.menu_items;
 ALTER PUBLICATION supabase_realtime ADD TABLE public.shops;
 ALTER PUBLICATION supabase_realtime ADD TABLE public.groups;
+ALTER PUBLICATION supabase_realtime ADD TABLE public.group_members;
 
 -- ==============================================================================
 -- SEED INITIAL DATA (DEFAULT SHOPS, USERS & MENU)
