@@ -296,13 +296,13 @@ export const Dashboard: React.FC<DashboardProps> = () => {
 
         if (allGroupsData) {
           const myGroupsData = allGroupsData.filter((g: any) => {
-            const isAdmin = g.admin_id === user.id
-            const isMember = groupMemberRows.some(r => r.group_id === g.id && r.user_id === user.id)
+            const isAdmin = g.admin_id === user.id || (user.email && allUsers.some(u => u.id === g.admin_id && u.email.toLowerCase() === user.email.toLowerCase()))
+            const isMember = groupMemberRows.some(r => r.group_id === g.id && (r.user_id === user.id || (user.email && allUsers.some(u => u.id === r.user_id && u.email.toLowerCase() === user.email.toLowerCase()))))
             return isAdmin || isMember
           })
 
           const mappedGroups: Group[] = myGroupsData.map((g: any) => {
-            const adminUser = allUsers.find(u => u.id === g.admin_id) || (g.admin_id === user.id ? user : null)
+            const adminUser = allUsers.find(u => u.id === g.admin_id || (user.email && u.email.toLowerCase() === user.email.toLowerCase())) || (g.admin_id === user.id ? user : null)
             const gmUsers: User[] = groupMemberRows
               .filter(r => r.group_id === g.id)
               .map(r => allUsers.find(u => u.id === r.user_id) || (r.user_id === user.id ? user : null))
@@ -326,11 +326,27 @@ export const Dashboard: React.FC<DashboardProps> = () => {
             }
           })
 
-          setGroups(mappedGroups)
-          if (mappedGroups.length > 0) {
+          // Merge with locally stored groups to prevent member disappearance during active editing
+          let localGroups: Group[] = []
+          try {
+            const saved = localStorage.getItem(`chaisplit_groups_user_${user.id}`)
+            if (saved) localGroups = JSON.parse(saved)
+          } catch {}
+
+          const groupMap = new Map<string, Group>()
+          localGroups.forEach(lg => {
+            if (lg.adminId === user.id || lg.members?.some(m => m.id === user.id)) {
+              groupMap.set(lg.id, lg)
+            }
+          })
+          mappedGroups.forEach(mg => groupMap.set(mg.id, mg))
+
+          const finalGroups = Array.from(groupMap.values())
+          setGroups(finalGroups)
+          if (finalGroups.length > 0) {
             setActiveGroupId(prev => {
-              if (prev && mappedGroups.some(g => g.id === prev)) return prev
-              return mappedGroups[0].id
+              if (prev && finalGroups.some(g => g.id === prev)) return prev
+              return finalGroups[0].id
             })
           } else {
             setActiveGroupId(null)
@@ -342,7 +358,20 @@ export const Dashboard: React.FC<DashboardProps> = () => {
     }
 
     const channel = client
-      .channel('realtime_shops_and_groups')
+      .channel('realtime_shops_and_groups', {
+        config: { broadcast: { self: false } }
+      })
+      .on('broadcast', { event: 'GROUP_UPDATED' }, ({ payload }) => {
+        if (payload?.group) {
+          setGroups(prev => {
+            const exists = prev.some(g => g.id === payload.group.id)
+            if (exists) {
+              return prev.map(g => g.id === payload.group.id ? payload.group : g)
+            }
+            return [payload.group, ...prev]
+          })
+        }
+      })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'shops' }, async () => {
         const { data } = await client.from('shops').select('*')
         if (data) {
@@ -1274,6 +1303,14 @@ export const Dashboard: React.FC<DashboardProps> = () => {
               }}
               onUpdateGroup={(updatedGroup) => {
                 setGroups(prev => prev.map(g => g.id === updatedGroup.id ? updatedGroup : g))
+                if (supabase) {
+                  const client = supabase
+                  client.channel('realtime_shops_and_groups').send({
+                    type: 'broadcast',
+                    event: 'GROUP_UPDATED',
+                    payload: { group: updatedGroup }
+                  }).catch(() => {})
+                }
               }}
               onExitGroup={(groupId) => {
                 if (supabase && user) {

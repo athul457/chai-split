@@ -130,6 +130,8 @@ export const ExpenseProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   // Fetch active session from Supabase
   const latestFetchIdRef = useRef(0)
+  const broadcastChannelRef = useRef<any>(null)
+  const lastLocalActionTimeRef = useRef<number>(0)
 
   const fetchActiveSession = useCallback(async () => {
     if (!supabase) return
@@ -221,7 +223,19 @@ export const ExpenseProvider: React.FC<{ children: React.ReactNode }> = ({ child
         expenses
       }
 
-      setActiveSession(fullSession)
+      setActiveSession(prev => {
+        // If there was a recent user action/broadcast (within 2.5s) on the same session,
+        // and the fetched DB session has fewer items than current activeSession,
+        // keep current activeSession to avoid race-condition flicker!
+        if (prev && prev.id === fullSession.id && Date.now() - lastLocalActionTimeRef.current < 2500) {
+          const prevTotalItems = prev.expenses.reduce((sum, e) => sum + e.items.reduce((s, i) => s + i.quantity, 0), 0)
+          const newTotalItems = fullSession.expenses.reduce((sum, e) => sum + e.items.reduce((s, i) => s + i.quantity, 0), 0)
+          if (prevTotalItems > newTotalItems) {
+            return prev
+          }
+        }
+        return fullSession
+      })
     } catch (err) {
       console.warn('Error fetching active session from Supabase:', err)
     }
@@ -282,13 +296,68 @@ export const ExpenseProvider: React.FC<{ children: React.ReactNode }> = ({ child
     }, 80)
   }, [fetchActiveSession])
 
-  // Realtime subscription
+  // Supabase Realtime & Broadcast helpers
+  const broadcastSessionUpdated = useCallback((session: TeaSession) => {
+    lastLocalActionTimeRef.current = Date.now()
+    if (broadcastChannelRef.current) {
+      broadcastChannelRef.current.send({
+        type: 'broadcast',
+        event: 'SESSION_UPDATED',
+        payload: { session }
+      }).catch((e: any) => console.warn('Broadcast send error:', e))
+    }
+  }, [])
+
+  const broadcastSessionSettled = useCallback((settled: TeaSession) => {
+    lastLocalActionTimeRef.current = Date.now()
+    if (broadcastChannelRef.current) {
+      broadcastChannelRef.current.send({
+        type: 'broadcast',
+        event: 'SESSION_SETTLED',
+        payload: { settled }
+      }).catch((e: any) => console.warn('Broadcast send error:', e))
+    }
+  }, [])
+
+  const broadcastSessionCancelled = useCallback((sessionId: string) => {
+    lastLocalActionTimeRef.current = Date.now()
+    if (broadcastChannelRef.current) {
+      broadcastChannelRef.current.send({
+        type: 'broadcast',
+        event: 'SESSION_CANCELLED',
+        payload: { sessionId }
+      }).catch((e: any) => console.warn('Broadcast send error:', e))
+    }
+  }, [])
+
+  // Realtime subscription & Broadcast channel
   useEffect(() => {
     if (!supabase) return
     const client = supabase
 
     const channel = client
-      .channel('realtime_tea_breaks')
+      .channel('realtime_tea_breaks', {
+        config: { broadcast: { self: false } }
+      })
+      .on('broadcast', { event: 'SESSION_UPDATED' }, ({ payload }) => {
+        if (payload?.session) {
+          lastLocalActionTimeRef.current = Date.now()
+          setActiveSession(payload.session)
+        }
+      })
+      .on('broadcast', { event: 'SESSION_SETTLED' }, ({ payload }) => {
+        lastLocalActionTimeRef.current = Date.now()
+        if (payload?.settled) {
+          setPastSessions(prev => [payload.settled, ...prev.filter(s => s.id !== payload.settled.id)])
+        }
+        setActiveSession(null)
+        localStorage.removeItem(ACTIVE_SESSION_KEY)
+      })
+      .on('broadcast', { event: 'SESSION_CANCELLED' }, () => {
+        lastLocalActionTimeRef.current = Date.now()
+        setActiveSession(null)
+        localStorage.removeItem(ACTIVE_SESSION_KEY)
+      })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'tea_sessions' }, () => {
         debouncedFetchActiveSession()
         fetchPastSessions()
@@ -303,13 +372,19 @@ export const ExpenseProvider: React.FC<{ children: React.ReactNode }> = ({ child
         fetchMenuItems()
       })
       .subscribe((status) => {
+        if (status === 'SUBSCRIBED') {
+          broadcastChannelRef.current = channel
+        }
         if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
           console.warn('[Realtime] Channel error/timeout, refreshing session...')
           debouncedFetchActiveSession()
         }
       })
 
+    broadcastChannelRef.current = channel
+
     return () => {
+      broadcastChannelRef.current = null
       if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current)
       client.removeChannel(channel)
     }
@@ -415,13 +490,18 @@ export const ExpenseProvider: React.FC<{ children: React.ReactNode }> = ({ child
       }).then(() => {}, (e: any) => console.warn(e))
     }
 
+    let targetUpdated: TeaSession | null = null
     setActiveSession(prev => {
       if (!prev) return null
-      return {
+      targetUpdated = {
         ...prev,
         expenses: [...prev.expenses, newExpense]
       }
+      return targetUpdated
     })
+    if (targetUpdated) {
+      broadcastSessionUpdated(targetUpdated)
+    }
   }
 
   const syncExpenseToSupabase = async (sessionId: string, exp: MemberExpense, sessionTotal?: number) => {
@@ -516,6 +596,7 @@ export const ExpenseProvider: React.FC<{ children: React.ReactNode }> = ({ child
     let targetExpenseToSync: MemberExpense | null = null
     let targetSessionId = activeSession.id
     let targetSessionTotal = 0
+    let targetUpdatedSession: TeaSession | null = null
 
     setActiveSession(prev => {
       if (!prev) return null
@@ -583,6 +664,7 @@ export const ExpenseProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
         targetExpenseToSync = updated.expenses.find(e => e.memberId === memberId) || newExp
         targetSessionTotal = updated.totalAmount
+        targetUpdatedSession = updated
         return updated
       }
 
@@ -593,8 +675,13 @@ export const ExpenseProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
       targetExpenseToSync = updated.expenses.find(e => e.memberId === memberId) || null
       targetSessionTotal = updated.totalAmount
+      targetUpdatedSession = updated
       return updated
     })
+
+    if (targetUpdatedSession) {
+      broadcastSessionUpdated(targetUpdatedSession)
+    }
 
     if (targetExpenseToSync) {
       syncExpenseToSupabase(targetSessionId, targetExpenseToSync, targetSessionTotal)
@@ -607,6 +694,7 @@ export const ExpenseProvider: React.FC<{ children: React.ReactNode }> = ({ child
     let targetExpenseToSync: MemberExpense | null = null
     let targetSessionId = activeSession.id
     let targetSessionTotal = 0
+    let targetUpdatedSession: TeaSession | null = null
 
     setActiveSession(prev => {
       if (!prev) return null
@@ -637,8 +725,13 @@ export const ExpenseProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
       targetExpenseToSync = updated.expenses.find(e => e.memberId === memberId) || null
       targetSessionTotal = updated.totalAmount
+      targetUpdatedSession = updated
       return updated
     })
+
+    if (targetUpdatedSession) {
+      broadcastSessionUpdated(targetUpdatedSession)
+    }
 
     if (targetExpenseToSync) {
       syncExpenseToSupabase(targetSessionId, targetExpenseToSync, targetSessionTotal)
@@ -648,6 +741,7 @@ export const ExpenseProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const toggleMemberPaid = (memberId: string) => {
     if (!activeSession) return
 
+    let targetUpdated: TeaSession | null = null
     setActiveSession(prev => {
       if (!prev) return null
 
@@ -674,11 +768,16 @@ export const ExpenseProvider: React.FC<{ children: React.ReactNode }> = ({ child
         }
       })
 
-      return {
+      targetUpdated = {
         ...prev,
         expenses: updatedExpenses
       }
+      return targetUpdated
     })
+
+    if (targetUpdated) {
+      broadcastSessionUpdated(targetUpdated)
+    }
   }
 
   const setPayer = (payerId: string) => {
@@ -686,6 +785,7 @@ export const ExpenseProvider: React.FC<{ children: React.ReactNode }> = ({ child
     const user = allUsers.find(u => u.id === payerId)
     if (!user) return
 
+    let targetUpdated: TeaSession | null = null
     setActiveSession(prev => {
       if (!prev) return null
       const updated = {
@@ -708,8 +808,13 @@ export const ExpenseProvider: React.FC<{ children: React.ReactNode }> = ({ child
           .then(() => {}, (e: any) => console.warn(e))
       }
 
-      return recalculateSessionTotals(updated)
+      targetUpdated = recalculateSessionTotals(updated)
+      return targetUpdated
     })
+
+    if (targetUpdated) {
+      broadcastSessionUpdated(targetUpdated)
+    }
   }
 
   const deleteActiveSession = (userId?: string): { success: boolean; message: string } => {
@@ -724,11 +829,13 @@ export const ExpenseProvider: React.FC<{ children: React.ReactNode }> = ({ child
       }
     }
 
+    const sessionId = activeSession.id
     if (supabase) {
       const client = supabase
-      client.from('tea_sessions').delete().eq('id', activeSession.id).then(() => {}, (e: any) => console.warn(e))
+      client.from('tea_sessions').delete().eq('id', sessionId).then(() => {}, (e: any) => console.warn(e))
     }
 
+    broadcastSessionCancelled(sessionId)
     setActiveSession(null)
     localStorage.removeItem(ACTIVE_SESSION_KEY)
     return { success: true, message: 'Tea break deleted successfully.' }
@@ -853,6 +960,7 @@ export const ExpenseProvider: React.FC<{ children: React.ReactNode }> = ({ child
     }
 
     setActiveSession(newSess)
+    broadcastSessionUpdated(newSess)
     return true
   }
 
@@ -882,6 +990,7 @@ export const ExpenseProvider: React.FC<{ children: React.ReactNode }> = ({ child
       client.from('session_expenses').update({ is_paid: true }).eq('session_id', activeSession.id).then(() => {}, (e: any) => console.warn(e))
     }
 
+    broadcastSessionSettled(settled)
     setPastSessions(prev => [settled, ...prev])
     setActiveSession(null)
     localStorage.removeItem(ACTIVE_SESSION_KEY)
