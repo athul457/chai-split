@@ -224,17 +224,27 @@ export const ExpenseProvider: React.FC<{ children: React.ReactNode }> = ({ child
       }
 
       setActiveSession(prev => {
-        // If there was a recent user action/broadcast (within 2.5s) on the same session,
-        // and the fetched DB session has fewer items than current activeSession,
-        // keep current activeSession to avoid race-condition flicker!
-        if (prev && prev.id === fullSession.id && Date.now() - lastLocalActionTimeRef.current < 2500) {
-          const prevTotalItems = prev.expenses.reduce((sum, e) => sum + e.items.reduce((s, i) => s + i.quantity, 0), 0)
-          const newTotalItems = fullSession.expenses.reduce((sum, e) => sum + e.items.reduce((s, i) => s + i.quantity, 0), 0)
-          if (prevTotalItems > newTotalItems) {
-            return prev
+        if (!prev || prev.id !== fullSession.id) return fullSession
+
+        // Smart collaborative merge for up to 30 members:
+        // If an in-memory member cup has items, do NOT let a lagging DB query wipe them out!
+        const mergedExpenses = fullSession.expenses.map(dbExp => {
+          const localExp = prev.expenses.find(le => le.memberId === dbExp.memberId)
+          if (!localExp) return dbExp
+          if (localExp.items.length > dbExp.items.length) {
+            return localExp
           }
-        }
-        return fullSession
+          return dbExp
+        })
+
+        // Retain any in-memory members that might not yet be returned by DB
+        prev.expenses.forEach(localExp => {
+          if (!mergedExpenses.some(me => me.memberId === localExp.memberId)) {
+            mergedExpenses.push(localExp)
+          }
+        })
+
+        return recalculateSessionTotals({ ...fullSession, expenses: mergedExpenses })
       })
     } catch (err) {
       console.warn('Error fetching active session from Supabase:', err)
@@ -296,7 +306,18 @@ export const ExpenseProvider: React.FC<{ children: React.ReactNode }> = ({ child
     }, 80)
   }, [fetchActiveSession])
 
-  // Supabase Realtime & Broadcast helpers
+  // Supabase Realtime & Broadcast helpers (Atomic per-member sync for up to 30 people)
+  const broadcastMemberExpenseUpdated = useCallback((sessionId: string, memberId: string, expense: MemberExpense) => {
+    lastLocalActionTimeRef.current = Date.now()
+    if (broadcastChannelRef.current) {
+      broadcastChannelRef.current.send({
+        type: 'broadcast',
+        event: 'MEMBER_EXPENSE_UPDATED',
+        payload: { sessionId, memberId, expense }
+      }).catch((e: any) => console.warn('Broadcast member error:', e))
+    }
+  }, [])
+
   const broadcastSessionUpdated = useCallback((session: TeaSession) => {
     lastLocalActionTimeRef.current = Date.now()
     if (broadcastChannelRef.current) {
@@ -338,6 +359,22 @@ export const ExpenseProvider: React.FC<{ children: React.ReactNode }> = ({ child
     const channel = client
       .channel('realtime_tea_breaks', {
         config: { broadcast: { self: false } }
+      })
+      .on('broadcast', { event: 'MEMBER_EXPENSE_UPDATED' }, ({ payload }) => {
+        if (!payload || !payload.memberId || !payload.expense) return
+        lastLocalActionTimeRef.current = Date.now()
+        setActiveSession(prev => {
+          if (!prev || prev.id !== payload.sessionId) return prev
+          // Atomic update of ONLY this specific member's cup, keeping other 29 cups untouched!
+          const existingIdx = prev.expenses.findIndex(e => e.memberId === payload.memberId)
+          let newExpenses: MemberExpense[]
+          if (existingIdx > -1) {
+            newExpenses = prev.expenses.map((e, idx) => idx === existingIdx ? payload.expense : e)
+          } else {
+            newExpenses = [...prev.expenses, payload.expense]
+          }
+          return recalculateSessionTotals({ ...prev, expenses: newExpenses })
+        })
       })
       .on('broadcast', { event: 'SESSION_UPDATED' }, ({ payload }) => {
         if (payload?.session) {
@@ -390,9 +427,9 @@ export const ExpenseProvider: React.FC<{ children: React.ReactNode }> = ({ child
     }
   }, [debouncedFetchActiveSession, fetchPastSessions, fetchMenuItems])
 
-  // Automatic Polling Heartbeat: guarantees real-time sync across all users without manual reload
+  // Automatic Polling Heartbeat: relaxed 20s interval so 30 concurrent users do not thrash DB
   useEffect(() => {
-    const intervalMs = (activeSession && activeSession.status === 'active') ? 2000 : 5000
+    const intervalMs = (activeSession && activeSession.status === 'active') ? 20000 : 8000
     const timer = setInterval(() => {
       fetchActiveSession()
     }, intervalMs)
@@ -490,17 +527,15 @@ export const ExpenseProvider: React.FC<{ children: React.ReactNode }> = ({ child
       }).then(() => {}, (e: any) => console.warn(e))
     }
 
-    let targetUpdated: TeaSession | null = null
     setActiveSession(prev => {
       if (!prev) return null
-      targetUpdated = {
+      return {
         ...prev,
         expenses: [...prev.expenses, newExpense]
       }
-      return targetUpdated
     })
-    if (targetUpdated) {
-      broadcastSessionUpdated(targetUpdated)
+    if (newExpense) {
+      broadcastMemberExpenseUpdated(activeSession.id, user.id, newExpense)
     }
   }
 
@@ -596,7 +631,6 @@ export const ExpenseProvider: React.FC<{ children: React.ReactNode }> = ({ child
     let targetExpenseToSync: MemberExpense | null = null
     let targetSessionId = activeSession.id
     let targetSessionTotal = 0
-    let targetUpdatedSession: TeaSession | null = null
 
     setActiveSession(prev => {
       if (!prev) return null
@@ -664,7 +698,6 @@ export const ExpenseProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
         targetExpenseToSync = updated.expenses.find(e => e.memberId === memberId) || newExp
         targetSessionTotal = updated.totalAmount
-        targetUpdatedSession = updated
         return updated
       }
 
@@ -675,15 +708,13 @@ export const ExpenseProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
       targetExpenseToSync = updated.expenses.find(e => e.memberId === memberId) || null
       targetSessionTotal = updated.totalAmount
-      targetUpdatedSession = updated
       return updated
     })
 
-    if (targetUpdatedSession) {
-      broadcastSessionUpdated(targetUpdatedSession)
-    }
-
     if (targetExpenseToSync) {
+      // 1. Broadcast ONLY this member's cup update (atomic, no overwrite of other 29 teammates)
+      broadcastMemberExpenseUpdated(targetSessionId, memberId, targetExpenseToSync)
+      // 2. Persist in Supabase in the background
       syncExpenseToSupabase(targetSessionId, targetExpenseToSync, targetSessionTotal)
     }
   }
@@ -694,7 +725,6 @@ export const ExpenseProvider: React.FC<{ children: React.ReactNode }> = ({ child
     let targetExpenseToSync: MemberExpense | null = null
     let targetSessionId = activeSession.id
     let targetSessionTotal = 0
-    let targetUpdatedSession: TeaSession | null = null
 
     setActiveSession(prev => {
       if (!prev) return null
@@ -725,15 +755,13 @@ export const ExpenseProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
       targetExpenseToSync = updated.expenses.find(e => e.memberId === memberId) || null
       targetSessionTotal = updated.totalAmount
-      targetUpdatedSession = updated
       return updated
     })
 
-    if (targetUpdatedSession) {
-      broadcastSessionUpdated(targetUpdatedSession)
-    }
-
     if (targetExpenseToSync) {
+      // 1. Broadcast ONLY this member's cup update
+      broadcastMemberExpenseUpdated(targetSessionId, memberId, targetExpenseToSync)
+      // 2. Persist in Supabase in the background
       syncExpenseToSupabase(targetSessionId, targetExpenseToSync, targetSessionTotal)
     }
   }
@@ -741,7 +769,7 @@ export const ExpenseProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const toggleMemberPaid = (memberId: string) => {
     if (!activeSession) return
 
-    let targetUpdated: TeaSession | null = null
+    let updatedMemberExp: MemberExpense | null = null
     setActiveSession(prev => {
       if (!prev) return null
 
@@ -759,24 +787,25 @@ export const ExpenseProvider: React.FC<{ children: React.ReactNode }> = ({ child
             .then(() => {}, (e: any) => console.warn(e))
         }
 
-        return {
+        const updated = {
           ...exp,
           isPaid: willBePaid,
           paidAt: willBePaid
             ? new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
             : undefined
         }
+        updatedMemberExp = updated
+        return updated
       })
 
-      targetUpdated = {
+      return {
         ...prev,
         expenses: updatedExpenses
       }
-      return targetUpdated
     })
 
-    if (targetUpdated) {
-      broadcastSessionUpdated(targetUpdated)
+    if (updatedMemberExp) {
+      broadcastMemberExpenseUpdated(activeSession.id, memberId, updatedMemberExp)
     }
   }
 

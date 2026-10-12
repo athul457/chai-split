@@ -107,20 +107,26 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
 
   const currentUserExpense = activeSession?.expenses.find(e =>
     (effectiveUserId && e.memberId === effectiveUserId) ||
-    (effectiveUser?.userCode && e.memberId === effectiveUser.userCode) ||
+    (effectiveUser?.userCode && (e.memberId === effectiveUser.userCode || e.memberId.includes(effectiveUser.userCode))) ||
+    (effectiveUser?.email && (e.memberId.toLowerCase() === effectiveUser.email.toLowerCase() || e.memberName.toLowerCase() === effectiveUser.name.toLowerCase())) ||
     (effectiveUser?.name && e.memberName.toLowerCase() === effectiveUser.name.toLowerCase())
   )
 
   const myTotal = currentUserExpense?.total || 0
   const myItemCount = currentUserExpense?.items.reduce((acc, i) => acc + i.quantity, 0) || 0
 
-  // User adds item for themselves (Security: strictly verified group members only)
+  // User adds item for themselves (Collaborative: all group/session members can order)
   const handleSelfAddItem = (item: MenuItem) => {
     const isMember = Boolean(
-      effectiveUser && (
-        group.adminId === effectiveUser.id ||
-        group.members.some(m => m.id === effectiveUser.id)
-      )
+      !group ||
+      group.adminId === effectiveUser?.id ||
+      group.members.some(m =>
+        m.id === effectiveUser?.id ||
+        (m.userCode && effectiveUser?.userCode && m.userCode.toUpperCase() === effectiveUser.userCode.toUpperCase()) ||
+        (m.email && effectiveUser?.email && m.email.toLowerCase() === effectiveUser.email.toLowerCase()) ||
+        (m.name && effectiveUser?.name && m.name.toLowerCase() === effectiveUser.name.toLowerCase())
+      ) ||
+      Boolean(currentUserExpense)
     )
 
     if (!isMember) {
