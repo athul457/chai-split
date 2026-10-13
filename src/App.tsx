@@ -14,11 +14,11 @@ const MainApp: React.FC = () => {
   const { isAuthenticated } = useAuth()
   const [isAppLoading, setIsAppLoading] = useState(true)
 
-  // Smooth initial tea brewing splash screen
+  // Smooth initial tea brewing splash screen (3.5s per user request)
   useEffect(() => {
     const timer = setTimeout(() => {
       setIsAppLoading(false)
-    }, 650)
+    }, 3500)
     return () => clearTimeout(timer)
   }, [])
 

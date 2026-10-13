@@ -202,18 +202,14 @@ ON CONFLICT (id) DO NOTHING;
 -- (No dummy users seeded - real users will be created when registering)
 
 INSERT INTO public.menu_items (id, name, price, category, emoji, description, shop_id) VALUES
-  ('item-masala-chai', 'Kadak Masala Chai', 15, 'tea', '☕', 'Fresh brewed ginger & cardamom spiced tea', 'shop-chayakkada'),
-  ('item-ginger-tea', 'Adrak Ginger Chai', 20, 'tea', '🍵', 'Extra strong grated ginger chai', 'shop-chayakkada'),
-  ('item-elaichi-tea', 'Elaichi Special Chai', 20, 'tea', '🌿', 'Fragrant cardamom infused tea', 'shop-chayakkada'),
-  ('item-filter-coffee', 'Filter Coffee', 25, 'coffee', '☕', 'Traditional hot frothy filter kaapi', 'shop-chayakkada'),
-  ('item-samosa', 'Crispy Samosa & Chutney', 20, 'snacks', '🥟', 'Hot potato pea filled triangular pastry', 'shop-chayakkada'),
-  ('item-parippuvada', 'Parippu Vada (Crunchy Dal)', 15, 'snacks', '🧆', 'Crunchy Kerala lentil tea fritters', 'shop-chayakkada'),
-  ('item-pazhampori', 'Pazham Pori (Banana Fritters)', 18, 'snacks', '🍌', 'Golden crisp ripe banana fritters', 'shop-chayakkada'),
-  ('item-bun-maska', 'Bun Maska & Jam', 25, 'quick-bites', '🍞', 'Fresh soft bun slathered with salted butter', 'shop-chayakkada'),
-  ('item-egg-puff', 'Spicy Egg Puff', 25, 'quick-bites', '🥐', 'Flaky baked pastry filled with spicy masala egg', 'shop-chayakkada'),
-  ('item-lemon-tea', 'Honey Lemon Iced Tea', 25, 'drinks', '🍋', 'Refreshing cold brewed citrus tea', 'shop-chayakkada'),
-  ('item-amman-filter-kaapi', 'Degree Filter Kaapi', 20, 'coffee', '☕', 'Fresh chicory blend degree coffee', 'shop-amman'),
-  ('item-amman-samosa', 'Amman Onion Samosa (2 pcs)', 20, 'snacks', '🥟', 'Crispy small onion samosas', 'shop-amman'),
-  ('item-malabar-dum-chai', 'Malabar Dum Chai', 20, 'tea', '🫖', 'Slow steamed aromatic dum chai', 'shop-malabar'),
-  ('item-sulaimani', 'Malabar Sulaimani (Black Tea)', 15, 'tea', '🍵', 'Spiced black tea with mint and lemon', 'shop-malabar')
+  ('item-chaya', 'Chaya', 12, 'tea', '☕', 'Hot naadan chaya', 'shop-chayakkada'),
+  ('item-coffee', 'Coffee', 12, 'coffee', '☕', 'Hot filter coffee', 'shop-chayakkada'),
+  ('item-samoza', 'Samoza', 12, 'snacks', '🥟', 'Crispy hot samoza', 'shop-chayakkada'),
+  ('item-omlette', 'Omlette', 20, 'snacks', '🍳', 'Fresh double egg omlette', 'shop-chayakkada'),
+  ('item-dosha', 'Dosha', 12, 'snacks', '🥞', 'Hot crisp dosha', 'shop-chayakkada'),
+  ('item-porotta', 'Porotta', 12, 'snacks', '🫓', 'Kerala layered porotta', 'shop-chayakkada'),
+  ('item-puzhungiya-motta', 'Puzhungiya Motta', 10, 'snacks', '🥚', 'Boiled egg', 'shop-chayakkada'),
+  ('item-bulls-eye', 'Bull''s Eye', 10, 'snacks', '🍳', 'Half-boiled egg bullseye', 'shop-chayakkada'),
+  ('item-puffs', 'Puffs', 20, 'snacks', '🥐', 'Crispy puff', 'shop-chayakkada'),
+  ('item-parippvada', 'Parippvada', 10, 'snacks', '🧆', 'Crunchy parippuvada', 'shop-chayakkada')
 ON CONFLICT (id) DO NOTHING;

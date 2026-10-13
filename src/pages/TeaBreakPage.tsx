@@ -40,7 +40,8 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
   const effectiveUser = currentUser || authUser
 
   const {
-    activeSession,
+    activeSession: globalActiveSession,
+    getActiveSessionForGroup,
     cancelActiveSession,
     settleActiveSession,
     addItemToMember,
@@ -49,6 +50,10 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
     getMenuItemsForShop,
     generateWhatsAppSummary
   } = useExpense()
+
+  // Retrieve the break session specifically for this group
+  const activeSession = (group?.id ? getActiveSessionForGroup(group.id) : undefined) ||
+    (globalActiveSession?.groupId === group?.id ? globalActiveSession : globalActiveSession)
 
   const [toastNotice, setToastNotice] = useState<string | null>(null)
   const [showCancelConfirm, setShowCancelConfirm] = useState(false)
@@ -83,11 +88,21 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
   const effectiveAdminId = group.adminId || group.members[0]?.id || effectiveUser?.id
   const isAdmin = effectiveUser?.id === effectiveAdminId
 
-  // Break Creator / Owner detection (only who created the break can delete it)
+  // Break Creator / Owner detection
   const isBreakOwner = Boolean(
     activeSession && (
       effectiveUser?.id === activeSession.creatorId ||
       (!activeSession.creatorId && (effectiveUser?.id === activeSession.payerId || isAdmin))
+    )
+  )
+
+  // Anyone in the group can close or settle the ongoing break so a new break can be started
+  const canCloseBreak = Boolean(
+    activeSession && (
+      isBreakOwner ||
+      isAdmin ||
+      group.members.some(m => m.id === effectiveUser?.id) ||
+      effectiveUser?.id === group.adminId
     )
   )
 
@@ -143,71 +158,66 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
       showToast('Please join the group or select your profile first.')
       return
     }
-    addItemToMember(targetUserId, item)
+    addItemToMember(targetUserId, item, activeSession?.id)
     showToast(`Added ${item.name} to your cup! ☕`)
   }
 
   // User removes item for themselves
-  const handleSelfRemoveItem = (menuItemId: string) => {
-    const isMember = Boolean(
-      effectiveUser && (
-        group.adminId === effectiveUser.id ||
-        group.members.some(m => m.id === effectiveUser.id)
-      )
-    )
-    if (!isMember) return
-
+  const handleSelfRemoveItem = async (menuItemId: string) => {
     const targetUserId =
       currentUserExpense?.memberId ||
       effectiveUserId ||
       effectiveUser?.id
 
-    if (!targetUserId) return
-    removeItemFromMember(targetUserId, menuItemId)
+    if (!targetUserId) {
+      showToast('Profile not detected.')
+      return
+    }
+    await removeItemFromMember(targetUserId, menuItemId, activeSession?.id)
   }
 
   // Admin assigns item to selected colleague
   const handleAdminAssignItem = (item: MenuItem) => {
     if (!isAdmin || !selectedAssigneeId) return
-    addItemToMember(selectedAssigneeId, item)
+    addItemToMember(selectedAssigneeId, item, activeSession?.id)
     showToast(`Assigned ${item.name} to ${selectedAssignee?.name || 'teammate'}! 🥟`)
   }
 
-  // Settle break (owner or admin)
+  // Settle break (any group member or admin to close ongoing break and settle bill)
   const handleSettleBreak = () => {
-    if (!isBreakOwner || isSettling) {
-      if (!isBreakOwner) {
-        showToast(`Only ${activeSession?.creatorName || 'the creator'} can settle this break.`)
+    if (!canCloseBreak || isSettling) {
+      if (!canCloseBreak) {
+        showToast('You must be a member of this group to settle this break.')
       }
       return
     }
     setIsSettling(true)
     setTimeout(() => {
-      settleActiveSession()
+      settleActiveSession(activeSession?.id)
       showToast(`Tea break bill settled successfully! 🎉`)
       setIsSettling(false)
       onBack()
     }, 400)
   }
 
-  // Delete / End break (only who created the break)
+  // Delete / End break (allows closing ongoing break so a new break can be started)
   const handleCancelBreak = () => {
-    if (!isBreakOwner || isDeletingBreak) {
-      if (!isBreakOwner) {
-        showToast(`Only ${activeSession?.creatorName || 'the creator'} can delete this break.`)
+    if (!canCloseBreak || isDeletingBreak) {
+      if (!canCloseBreak) {
+        showToast('You must be a member of this group to end this break.')
       }
       return
     }
     setIsDeletingBreak(true)
     setTimeout(() => {
-      const res = cancelActiveSession(currentUser?.id)
+      const res = cancelActiveSession(currentUser?.id, activeSession?.id)
       setIsDeletingBreak(false)
       setShowCancelConfirm(false)
       if (res) {
-        showToast(`Tea break deleted. Anyone can now start a new break!`)
+        showToast(`Tea break closed. Anyone can now start a new break!`)
         onBack()
       } else {
-        showToast(`Only ${activeSession?.creatorName || 'the creator'} can delete this break.`)
+        showToast(`Could not close tea break. Please try again.`)
       }
     }, 350)
   }
@@ -306,19 +316,13 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
   }, [activeSession, group.members, effectiveUser?.id, currentUser?.id])
 
   // Target shop for this tea break session
-  const breakShopId = activeSession?.shopId || group.shopId || 'shop-chayakkada'
+  const breakShopId = activeSession?.shopId || group.shopId || (group.id ? `shop-${group.id}` : 'shop-chayakkada')
   const shopMenuItems = useMemo(() => {
-    const items = getMenuItemsForShop(breakShopId)
-    if (items.length > 0) return items
-    // Fallback if shop has no custom items listed yet
-    if (menuItems.length > 0) return menuItems
-    return []
+    return getMenuItemsForShop(breakShopId)
   }, [getMenuItemsForShop, breakShopId, menuItems])
 
-  // Sort menu items by price in ascending order
-  const sortedMenuItems = useMemo(() => {
-    return [...shopMenuItems].sort((a, b) => a.price - b.price)
-  }, [shopMenuItems])
+  // Menu items for this break
+  const sortedMenuItems = shopMenuItems
 
   if (!activeSession) {
     return (
@@ -502,7 +506,7 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
                   </span>
                   <div className="flex items-center gap-1 bg-stone-100 dark:bg-stone-700 p-0.5 rounded-md">
                     <button
-                      onClick={() => handleSelfRemoveItem(item.menuItemId)}
+                      onClick={() => handleSelfRemoveItem(item.id || item.menuItemId || item.name)}
                       className="w-5 h-5 rounded flex items-center justify-center hover:bg-stone-200 dark:hover:bg-stone-600 text-stone-600 dark:text-stone-300 cursor-pointer"
                     >
                       <Minus className="w-3 h-3" />
@@ -707,6 +711,7 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
               const isUser =
                 expense.memberId === effectiveUser?.id ||
                 expense.memberId === currentUser?.id ||
+                (currentUserExpense && expense.memberId === currentUserExpense.memberId) ||
                 (effectiveUser?.userCode && expense.memberId === effectiveUser.userCode)
               const isMemberAdmin = expense.memberId === effectiveAdminId
               const canEditThisMember = isAdmin || isUser
@@ -785,7 +790,7 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
                                   <button
                                     onClick={(e) => {
                                       e.stopPropagation()
-                                      removeItemFromMember(expense.memberId, item.menuItemId)
+                                      removeItemFromMember(expense.memberId, item.id || item.menuItemId || item.name, activeSession?.id)
                                     }}
                                     className="w-4 h-4 rounded flex items-center justify-center hover:bg-stone-200 dark:hover:bg-stone-700 text-stone-600 dark:text-stone-300 cursor-pointer"
                                     title="Decrease"
@@ -804,7 +809,7 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
                                           category: 'snacks',
                                           emoji: item.emoji || '☕'
                                         }
-                                      addItemToMember(expense.memberId, mi)
+                                      addItemToMember(expense.memberId, mi, activeSession?.id)
                                     }}
                                     className="w-4 h-4 rounded flex items-center justify-center hover:bg-stone-200 dark:hover:bg-stone-700 text-stone-600 dark:text-stone-300 cursor-pointer"
                                     title="Increase"
@@ -867,8 +872,8 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
             </div>
           </div>
 
-          {/* Option for End Task - Strictly visible only here */}
-          {isBreakOwner ? (
+          {/* Option for Close / Settle Break - Allows closing ongoing break to start a new break */}
+          {canCloseBreak ? (
             <div className="flex items-center gap-2 pt-1">
               <button
                 type="button"
@@ -877,7 +882,7 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
                 className="flex-1 py-2.5 px-3 rounded-xl border border-rose-300 dark:border-rose-800 hover:border-rose-500 bg-rose-50/80 dark:bg-rose-950/40 text-rose-600 dark:text-rose-300 hover:bg-rose-100 dark:hover:bg-rose-950/60 font-bold text-xs flex items-center justify-center gap-1.5 active:scale-95 transition-all cursor-pointer shadow-2xs"
               >
                 <Trash2 className="w-3.5 h-3.5 text-rose-500" />
-                <span>Delete / End Task</span>
+                <span>Close / End Break</span>
               </button>
 
               <button
@@ -901,14 +906,14 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
             <div className="p-2.5 rounded-xl bg-stone-50 dark:bg-stone-800/50 border border-stone-200 dark:border-stone-800 text-center text-[11px] text-stone-500 dark:text-stone-400 flex items-center justify-center gap-2">
               <Lock className="w-3.5 h-3.5 text-amber-600 shrink-0" />
               <span>
-                Only the break creator (<strong>{activeSession.creatorName || 'Break Owner'}</strong>) can delete or end this task.
+                Join this group to participate in or close this tea break.
               </span>
             </div>
           )}
         </div>
       </div>
 
-      {/* Modal: Cancel / End Task Confirmation */}
+      {/* Modal: Close / End Break Confirmation */}
       {showCancelConfirm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-900/50 backdrop-blur-xs animate-in fade-in">
           <div className="w-full max-w-sm bg-white dark:bg-stone-900 rounded-2xl shadow-2xl border border-stone-200 dark:border-stone-800 p-5 space-y-4 text-center">
@@ -918,10 +923,10 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
 
             <div className="space-y-1">
               <h3 className="font-heading font-bold text-base text-stone-900 dark:text-stone-100">
-                Delete &amp; End Tea Break Task?
+                Close Ongoing Tea Break?
               </h3>
               <p className="text-xs text-stone-500 dark:text-stone-400">
-                You created this tea break. Deleting it will end this session and allow you or any group member to start a new tea break.
+                Closing this break will end the current session for <strong>{group?.name}</strong> and allow anyone in this group to start a new tea break.
               </p>
             </div>
 
@@ -941,11 +946,11 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
                 className="px-4 py-2 rounded-xl text-xs font-semibold bg-rose-600 hover:bg-rose-700 disabled:opacity-80 text-white shadow-xs cursor-pointer active:scale-95 transition-all flex items-center gap-1.5"
               >
                 {isDeletingBreak ? (
-                  <ChaiLoader variant="spinner" size="sm" text="Deleting..." />
+                  <ChaiLoader variant="spinner" size="sm" text="Closing..." />
                 ) : (
                   <>
                     <Trash2 className="w-3.5 h-3.5" />
-                    <span>Yes, Delete Task</span>
+                    <span>Yes, Close Break</span>
                   </>
                 )}
               </button>
@@ -1052,7 +1057,7 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
                         <span>{item.name}</span>
                         <span className="font-bold text-amber-600">x{item.quantity}</span>
                         <button
-                          onClick={() => removeItemFromMember(selectedAssigneeId, item.menuItemId)}
+                          onClick={() => removeItemFromMember(selectedAssigneeId, item.id || item.menuItemId || item.name, activeSession?.id)}
                           className="w-3.5 h-3.5 rounded hover:bg-stone-100 dark:hover:bg-stone-700 flex items-center justify-center text-stone-400 hover:text-rose-600 cursor-pointer"
                         >
                           <Minus className="w-2 h-2" />

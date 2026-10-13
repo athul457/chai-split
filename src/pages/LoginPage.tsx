@@ -1,8 +1,9 @@
 import React, { useState } from 'react'
-import { Coffee, ArrowLeft, LogIn, Mail, Lock, AlertCircle } from 'lucide-react'
+import { Coffee, ArrowLeft, LogIn, Mail, Lock, AlertCircle, Sun, Moon } from 'lucide-react'
 import { ChaiLoader } from '../components/ChaiLoader'
 import type { PageRoute } from '../types'
 import { useAuth } from '../context/AuthContext'
+import { useTheme } from '../context/ThemeContext'
 
 interface LoginPageProps {
   onNavigate: (page: PageRoute) => void
@@ -10,6 +11,7 @@ interface LoginPageProps {
 
 export const LoginPage: React.FC<LoginPageProps> = ({ onNavigate }) => {
   const { login } = useAuth()
+  const { isDark, toggleTheme } = useTheme()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -135,6 +137,18 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onNavigate }) => {
             className="font-semibold text-amber-700 dark:text-amber-400 hover:underline cursor-pointer"
           >
             Register here
+          </button>
+        </div>
+
+        {/* Theme Toggle */}
+        <div className="pt-1 flex items-center justify-center">
+          <button
+            type="button"
+            onClick={toggleTheme}
+            className="inline-flex items-center gap-1.5 text-xs text-stone-400 hover:text-stone-700 dark:hover:text-stone-200 cursor-pointer transition-colors"
+          >
+            {isDark ? <Sun className="w-3.5 h-3.5 text-amber-400" /> : <Moon className="w-3.5 h-3.5 text-stone-600" />}
+            <span>{isDark ? 'Switch to White Mode' : 'Switch to Dark Mode'}</span>
           </button>
         </div>
 
