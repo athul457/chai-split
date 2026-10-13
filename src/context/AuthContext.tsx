@@ -114,28 +114,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               upiId: resolvedProfile.upi_id
             })
           } else {
-            const namePart = (authUser.email || 'user').split('@')[0]
-            const formattedName = namePart.charAt(0).toUpperCase() + namePart.slice(1)
-            const codePrefix = formattedName.replace(/[^a-zA-Z]/g, '').slice(0, 5).toUpperCase() || 'USER'
-            const fallbackProfile = {
-              id: authUser.id,
-              name: formattedName,
-              email: authUser.email || '',
-              avatar: formattedName.slice(0, 2).toUpperCase(),
-              team_name: 'Team',
-              user_code: `${codePrefix}${Math.floor(1000 + Math.random() * 9000)}`,
-              upi_id: `${namePart}@upi`
-            }
-            await client.from('profiles').upsert(fallbackProfile, { onConflict: 'id' })
-            setUser({
-              id: fallbackProfile.id,
-              name: fallbackProfile.name,
-              email: fallbackProfile.email,
-              avatar: fallbackProfile.avatar,
-              teamName: fallbackProfile.team_name,
-              userCode: fallbackProfile.user_code,
-              upiId: fallbackProfile.upi_id
-            })
+            // Profile does not exist in database (account was deleted/wiped)
+            // Log out session so deleted user does not auto-recreate in database
+            await client.auth.signOut().catch(() => {})
+            setSession(null)
+            setUser(null)
+            localStorage.removeItem(USER_STORAGE_KEY)
           }
         } catch (err) {
           console.warn('Profile recovery error:', err)
@@ -177,6 +161,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               userCode: resolvedProfile.user_code,
               upiId: resolvedProfile.upi_id
             })
+          } else {
+            setUser(null)
           }
         } catch (err) {
           console.warn('Auth state change profile resolution error:', err)
