@@ -1,5 +1,6 @@
 import {
     ArrowLeft,
+    AlertTriangle,
     CheckCircle2,
     ChevronDown,
     ChevronUp,
@@ -46,6 +47,7 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
     settleActiveSession,
     addItemToMember,
     removeItemFromMember,
+    confirmMemberOrder,
     menuItems,
     getMenuItemsForShop,
     generateWhatsAppSummary
@@ -60,6 +62,7 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
   const [showAssignModal, setShowAssignModal] = useState(false)
   const [isSettling, setIsSettling] = useState(false)
   const [isDeletingBreak, setIsDeletingBreak] = useState(false)
+  const [isConfirming, setIsConfirming] = useState(false)
 
   // Accordion state: other users' items only appear when clicked
   const [expandedMemberIds, setExpandedMemberIds] = useState<Set<string>>(() => {
@@ -129,9 +132,43 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
 
   const myTotal = currentUserExpense?.total || 0
   const myItemCount = currentUserExpense?.items.reduce((acc, i) => acc + i.quantity, 0) || 0
+  const isMyOrderConfirmed = Boolean(currentUserExpense?.isConfirmed)
+
+  // User confirms their own order/items
+  const handleConfirmMyOrder = async () => {
+    const targetUserId =
+      currentUserExpense?.memberId ||
+      effectiveUserId ||
+      effectiveUser?.id
+
+    if (!targetUserId) {
+      showToast('Profile not detected.')
+      return
+    }
+
+    if (!currentUserExpense || currentUserExpense.items.length === 0) {
+      showToast('Please add at least 1 item to your cup before confirming.')
+      return
+    }
+
+    setIsConfirming(true)
+    try {
+      await confirmMemberOrder(targetUserId, activeSession?.id)
+      showToast('Order confirmed! Your items are now locked. ✓')
+    } catch {
+      showToast('Could not confirm order. Please try again.')
+    } finally {
+      setIsConfirming(false)
+    }
+  }
 
   // User adds item for themselves (Collaborative: all group/session members can order)
   const handleSelfAddItem = (item: MenuItem) => {
+    if (isMyOrderConfirmed && !isAdmin) {
+      showToast('Your order is confirmed and locked. Cannot add items.')
+      return
+    }
+
     const isMember = Boolean(
       !group ||
       group.adminId === effectiveUser?.id ||
@@ -158,12 +195,18 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
       showToast('Please join the group or select your profile first.')
       return
     }
-    addItemToMember(targetUserId, item, activeSession?.id)
+    const adminEditorName = isAdmin ? (effectiveUser?.name || 'Admin') : undefined
+    addItemToMember(targetUserId, item, activeSession?.id, adminEditorName)
     showToast(`Added ${item.name} to your cup! ☕`)
   }
 
   // User removes item for themselves
   const handleSelfRemoveItem = async (menuItemId: string) => {
+    if (isMyOrderConfirmed && !isAdmin) {
+      showToast('Your order is confirmed and locked. Cannot edit items.')
+      return
+    }
+
     const targetUserId =
       currentUserExpense?.memberId ||
       effectiveUserId ||
@@ -173,13 +216,15 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
       showToast('Profile not detected.')
       return
     }
-    await removeItemFromMember(targetUserId, menuItemId, activeSession?.id)
+    const adminEditorName = isAdmin ? (effectiveUser?.name || 'Admin') : undefined
+    await removeItemFromMember(targetUserId, menuItemId, activeSession?.id, adminEditorName)
   }
 
   // Admin assigns item to selected colleague
   const handleAdminAssignItem = (item: MenuItem) => {
     if (!isAdmin || !selectedAssigneeId) return
-    addItemToMember(selectedAssigneeId, item, activeSession?.id)
+    const adminName = effectiveUser?.name || 'Admin'
+    addItemToMember(selectedAssigneeId, item, activeSession?.id, adminName)
     showToast(`Assigned ${item.name} to ${selectedAssignee?.name || 'teammate'}! 🥟`)
   }
 
@@ -466,18 +511,95 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
             <div>
               <h3 className="font-heading font-bold text-sm text-stone-900 dark:text-stone-100 flex items-center gap-1.5">
                 <span>My Cup</span>
-                <span className="text-xs text-amber-600 font-normal">(Add items for yourself)</span>
+                <span className="text-xs text-amber-600 font-normal">
+                  {isMyOrderConfirmed ? '(Order Confirmed)' : '(Add items for yourself)'}
+                </span>
               </h3>
               <p className="text-[10px] text-stone-400">
-                Logged in as <strong>{effectiveUser?.name || currentUserExpense?.memberName || 'You'}</strong> • Tap items below to add
+                Logged in as <strong>{effectiveUser?.name || currentUserExpense?.memberName || 'You'}</strong>
+                {isMyOrderConfirmed ? ' • Items are locked' : ' • Tap items below to add'}
               </p>
             </div>
           </div>
 
-          <span className="px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300 font-bold text-xs">
-            ₹{myTotal}
-          </span>
+          <div className="flex items-center gap-2">
+            {isMyOrderConfirmed ? (
+              <span className="px-2.5 py-1 rounded-xl bg-emerald-100 dark:bg-emerald-950/80 text-emerald-800 dark:text-emerald-300 font-bold text-xs flex items-center gap-1 border border-emerald-300 dark:border-emerald-800 shadow-2xs">
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                <span>Confirmed ✓</span>
+              </span>
+            ) : (
+              <button
+                type="button"
+                onClick={handleConfirmMyOrder}
+                disabled={isConfirming || !currentUserExpense || currentUserExpense.items.length === 0}
+                className="px-2.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold text-xs shadow-xs cursor-pointer transition-all active:scale-95 flex items-center gap-1.5"
+                title="Confirm and lock your items"
+              >
+                <CheckCircle2 className="w-3.5 h-3.5" />
+                <span>{isConfirming ? 'Confirming...' : 'Confirm Items'}</span>
+              </button>
+            )}
+
+            <span className="px-2.5 py-1 rounded-full bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300 font-bold text-xs">
+              ₹{myTotal}
+            </span>
+          </div>
         </div>
+
+        {/* Confirmation status notice */}
+        {isMyOrderConfirmed && (
+          <div className="p-2.5 rounded-xl bg-emerald-50/90 dark:bg-emerald-950/40 border border-emerald-200/90 dark:border-emerald-800/80 text-emerald-900 dark:text-emerald-200 text-xs flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Lock className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+              <div>
+                <span className="font-bold">Your order is confirmed and locked.</span>
+                <span className="text-[11px] text-emerald-700 dark:text-emerald-300 ml-1">
+                  ({currentUserExpense?.confirmedAt || 'Earlier'})
+                </span>
+                <p className="text-[10px] text-stone-500 dark:text-stone-400">
+                  {isAdmin
+                    ? 'As Admin, you can still adjust quantities if needed.'
+                    : 'You cannot edit your items anymore. Any changes will need to be made by the admin.'}
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ADMIN EDIT AUDIT NOTIFICATION BANNER */}
+        {currentUserExpense?.adminEdits && currentUserExpense.adminEdits.length > 0 && (
+          <div className="p-3 rounded-xl bg-amber-50 dark:bg-amber-950/50 border border-amber-300 dark:border-amber-700/80 text-amber-950 dark:text-amber-100 space-y-2 shadow-xs animate-in fade-in">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-1.5 font-bold text-xs text-amber-900 dark:text-amber-300">
+                <span className="p-1 rounded-md bg-amber-200 dark:bg-amber-900/80 text-amber-900 dark:text-amber-200">
+                  <AlertTriangle className="w-3.5 h-3.5" />
+                </span>
+                <span>Admin modified your confirmed order:</span>
+              </div>
+              <span className="text-[10px] font-bold text-amber-800 dark:text-amber-300 bg-amber-200/80 dark:bg-amber-900/60 px-2 py-0.5 rounded-full border border-amber-300 dark:border-amber-800">
+                {currentUserExpense.adminEdits.length} {currentUserExpense.adminEdits.length === 1 ? 'change' : 'changes'}
+              </span>
+            </div>
+            <div className="space-y-1.5 pt-0.5 divide-y divide-amber-200/60 dark:divide-amber-800/60">
+              {currentUserExpense.adminEdits.map((edit, idx) => (
+                <div key={idx} className="pt-1.5 first:pt-0 text-xs flex items-start justify-between gap-2">
+                  <div className="space-y-0.5">
+                    <div className="text-stone-800 dark:text-stone-200">
+                      👑 Admin <strong className="text-amber-700 dark:text-amber-400">{edit.adminName}</strong>{' '}
+                      {edit.action === 'added' ? 'added' : edit.action === 'removed' ? 'removed' : 'adjusted'}{' '}
+                      <strong className="font-bold underline decoration-amber-500">{edit.itemName}</strong>
+                    </div>
+                    <div className="text-[11px] text-stone-600 dark:text-stone-400 font-mono">
+                      Quantity: <span className="line-through text-stone-400">{edit.oldQuantity ?? 0}</span> ➔ <strong className="text-amber-700 dark:text-amber-300 font-bold">{edit.newQuantity ?? 0}</strong>
+                    </div>
+                  </div>
+                  <span className="text-[10px] text-stone-400 shrink-0 font-medium pt-0.5">{edit.editedAt}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Current user's items in their cup */}
         {currentUserExpense && currentUserExpense.items.length > 0 ? (
@@ -505,30 +627,39 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
                     ₹{item.price * item.quantity}
                   </span>
                   <div className="flex items-center gap-1 bg-stone-100 dark:bg-stone-700 p-0.5 rounded-md">
-                    <button
-                      onClick={() => handleSelfRemoveItem(item.id || item.menuItemId || item.name)}
-                      className="w-5 h-5 rounded flex items-center justify-center hover:bg-stone-200 dark:hover:bg-stone-600 text-stone-600 dark:text-stone-300 cursor-pointer"
-                    >
-                      <Minus className="w-3 h-3" />
-                    </button>
-                    <span className="font-bold text-[11px] px-1">{item.quantity}</span>
-                    <button
-                      onClick={() => {
-                        const mi =
-                          shopMenuItems.find(m => m.id === item.menuItemId) ||
-                          menuItems.find(m => m.id === item.menuItemId) || {
-                            id: item.menuItemId || item.id,
-                            name: item.name,
-                            price: item.price,
-                            category: 'snacks',
-                            emoji: item.emoji || '☕'
-                          }
-                        handleSelfAddItem(mi)
-                      }}
-                      className="w-5 h-5 rounded flex items-center justify-center hover:bg-stone-200 dark:hover:bg-stone-600 text-stone-600 dark:text-stone-300 cursor-pointer"
-                    >
-                      <Plus className="w-3 h-3" />
-                    </button>
+                    {(!isMyOrderConfirmed || isAdmin) ? (
+                      <>
+                        <button
+                          onClick={() => handleSelfRemoveItem(item.id || item.menuItemId || item.name)}
+                          className="w-5 h-5 rounded flex items-center justify-center hover:bg-stone-200 dark:hover:bg-stone-600 text-stone-600 dark:text-stone-300 cursor-pointer"
+                        >
+                          <Minus className="w-3 h-3" />
+                        </button>
+                        <span className="font-bold text-[11px] px-1">{item.quantity}</span>
+                        <button
+                          onClick={() => {
+                            const mi =
+                              shopMenuItems.find(m => m.id === item.menuItemId) ||
+                              menuItems.find(m => m.id === item.menuItemId) || {
+                                id: item.menuItemId || item.id,
+                                name: item.name,
+                                price: item.price,
+                                category: 'snacks',
+                                emoji: item.emoji || '☕'
+                              }
+                            handleSelfAddItem(mi)
+                          }}
+                          className="w-5 h-5 rounded flex items-center justify-center hover:bg-stone-200 dark:hover:bg-stone-600 text-stone-600 dark:text-stone-300 cursor-pointer"
+                        >
+                          <Plus className="w-3 h-3" />
+                        </button>
+                      </>
+                    ) : (
+                      <div className="flex items-center gap-1 px-1.5 py-0.5 text-[11px] font-bold text-stone-600 dark:text-stone-300">
+                        <Lock className="w-3 h-3 text-stone-400" />
+                        <span>Qty: {item.quantity}</span>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -551,7 +682,12 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
             </span>
           </div>
 
-          {shopMenuItems.length === 0 ? (
+          {isMyOrderConfirmed && !isAdmin ? (
+            <div className="p-3 text-center text-xs text-stone-500 bg-stone-50 dark:bg-stone-800/40 rounded-xl border border-stone-200 dark:border-stone-800 flex items-center justify-center gap-1.5">
+              <Lock className="w-3.5 h-3.5 text-amber-600" />
+              <span>Ordering locked. You have confirmed your items for this tea break.</span>
+            </div>
+          ) : shopMenuItems.length === 0 ? (
             <div className="p-4 text-center text-xs text-stone-400 bg-stone-50 dark:bg-stone-800/40 rounded-xl border border-dashed border-stone-200 dark:border-stone-800">
               No items available in {activeSession.shopName} menu yet.
             </div>
@@ -714,7 +850,8 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
                 (currentUserExpense && expense.memberId === currentUserExpense.memberId) ||
                 (effectiveUser?.userCode && expense.memberId === effectiveUser.userCode)
               const isMemberAdmin = expense.memberId === effectiveAdminId
-              const canEditThisMember = isAdmin || isUser
+              const isConfirmed = Boolean(expense.isConfirmed)
+              const canEditThisMember = isAdmin || (!isConfirmed && isUser)
               const memberItemCount = expense.items.reduce((sum, it) => sum + it.quantity, 0)
               const isExpanded = expandedMemberIds.has(expense.memberId)
 
@@ -744,6 +881,18 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
                             <span>Admin</span>
                           </span>
                         )}
+                        {isConfirmed && (
+                          <span className="px-1.5 py-0.2 rounded text-[9px] bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 font-bold flex items-center gap-0.5 border border-emerald-300 dark:border-emerald-800">
+                            <CheckCircle2 className="w-2.5 h-2.5 text-emerald-600" />
+                            <span>Confirmed</span>
+                          </span>
+                        )}
+                        {expense.adminEdits && expense.adminEdits.length > 0 && (
+                          <span className="px-1.5 py-0.2 rounded text-[9px] bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 font-bold flex items-center gap-0.5 border border-amber-300 dark:border-amber-800">
+                            <AlertTriangle className="w-2.5 h-2.5 text-amber-600" />
+                            <span>Admin Edited</span>
+                          </span>
+                        )}
                         <span className="text-[10px] text-stone-400">
                           ({memberItemCount} {memberItemCount === 1 ? 'item' : 'items'})
                         </span>
@@ -768,7 +917,22 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
 
                   {/* Member's items list - ONLY VISIBLE WHEN CLICKED */}
                   {isExpanded && (
-                    <div className="pt-1.5 animate-in fade-in duration-150">
+                    <div className="pt-1.5 animate-in fade-in duration-150 space-y-2">
+                      {/* Admin edit audit history for this member */}
+                      {expense.adminEdits && expense.adminEdits.length > 0 && (
+                        <div className="ml-8 p-2 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-300/80 dark:border-amber-800/80 text-[11px] space-y-1">
+                          <div className="font-bold text-amber-900 dark:text-amber-200 flex items-center gap-1">
+                            <AlertTriangle className="w-3 h-3 text-amber-600 shrink-0" />
+                            <span>Admin Modified Confirmed Order:</span>
+                          </div>
+                          {expense.adminEdits.map((ed, idx) => (
+                            <div key={idx} className="pl-4 text-stone-700 dark:text-stone-300 text-[10px]">
+                              • <strong>{ed.adminName}</strong> {ed.action} <strong>{ed.itemName}</strong> (Qty: {ed.oldQuantity ?? 0} ➔ <strong className="text-amber-700 dark:text-amber-400 font-bold">{ed.newQuantity ?? 0}</strong>) • {ed.editedAt}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
                       {expense.items.length > 0 ? (
                         <div className="flex flex-wrap gap-1.5 pl-8">
                           {expense.items.map(item => (
@@ -790,7 +954,8 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
                                   <button
                                     onClick={(e) => {
                                       e.stopPropagation()
-                                      removeItemFromMember(expense.memberId, item.id || item.menuItemId || item.name, activeSession?.id)
+                                      const adminName = isAdmin ? (effectiveUser?.name || 'Admin') : undefined
+                                      removeItemFromMember(expense.memberId, item.id || item.menuItemId || item.name, activeSession?.id, adminName)
                                     }}
                                     className="w-4 h-4 rounded flex items-center justify-center hover:bg-stone-200 dark:hover:bg-stone-700 text-stone-600 dark:text-stone-300 cursor-pointer"
                                     title="Decrease"
@@ -809,7 +974,8 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
                                           category: 'snacks',
                                           emoji: item.emoji || '☕'
                                         }
-                                      addItemToMember(expense.memberId, mi, activeSession?.id)
+                                      const adminName = isAdmin ? (effectiveUser?.name || 'Admin') : undefined
+                                      addItemToMember(expense.memberId, mi, activeSession?.id, adminName)
                                     }}
                                     className="w-4 h-4 rounded flex items-center justify-center hover:bg-stone-200 dark:hover:bg-stone-700 text-stone-600 dark:text-stone-300 cursor-pointer"
                                     title="Increase"
@@ -1039,49 +1205,69 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
             {/* Selected Member's current items summary */}
             {(() => {
               const assigneeExp = activeSession.expenses.find(e => e.memberId === selectedAssigneeId)
-              return assigneeExp && assigneeExp.items.length > 0 ? (
-                <div className="p-2 rounded-xl bg-stone-50 dark:bg-stone-800/60 border border-stone-200/70 dark:border-stone-700/70 space-y-1">
+              const isAssigneeConfirmed = Boolean(assigneeExp?.isConfirmed)
+              return assigneeExp ? (
+                <div className="p-2 rounded-xl bg-stone-50 dark:bg-stone-800/60 border border-stone-200/70 dark:border-stone-700/70 space-y-1.5">
                   <div className="flex items-center justify-between text-[10px] font-semibold text-stone-500 uppercase tracking-wider">
-                    <span>In {selectedAssignee?.name}'s Cup:</span>
+                    <span className="flex items-center gap-1.5">
+                      <span>In {selectedAssignee?.name}'s Cup:</span>
+                      {isAssigneeConfirmed && (
+                        <span className="px-1.5 py-0.2 rounded text-[9px] bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 font-bold border border-emerald-300 dark:border-emerald-800">
+                          ✓ Confirmed
+                        </span>
+                      )}
+                    </span>
                     <span className="text-amber-700 dark:text-amber-400 font-bold">
                       ₹{assigneeExp.total}
                     </span>
                   </div>
-                  <div className="flex flex-wrap gap-1">
-                    {assigneeExp.items.map(item => (
-                      <div
-                        key={item.id}
-                        className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-white dark:bg-stone-800 border border-stone-200 dark:border-stone-700 text-[10px]"
-                      >
-                        <span>{item.emoji}</span>
-                        <span>{item.name}</span>
-                        <span className="font-bold text-amber-600">x{item.quantity}</span>
-                        <button
-                          onClick={() => removeItemFromMember(selectedAssigneeId, item.id || item.menuItemId || item.name, activeSession?.id)}
-                          className="w-3.5 h-3.5 rounded hover:bg-stone-100 dark:hover:bg-stone-700 flex items-center justify-center text-stone-400 hover:text-rose-600 cursor-pointer"
+
+                  {isAssigneeConfirmed && (
+                    <div className="p-1.5 rounded-lg bg-amber-50 dark:bg-amber-950/40 border border-amber-300/80 dark:border-amber-800/80 text-[10px] text-amber-800 dark:text-amber-300 flex items-center gap-1">
+                      <AlertTriangle className="w-3 h-3 text-amber-600 shrink-0" />
+                      <span>{selectedAssignee?.name} confirmed their order. Any changes you make will be recorded as an admin edit.</span>
+                    </div>
+                  )}
+
+                  {assigneeExp.items.length > 0 ? (
+                    <div className="flex flex-wrap gap-1">
+                      {assigneeExp.items.map(item => (
+                        <div
+                          key={item.id}
+                          className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-white dark:bg-stone-800 border border-stone-200 dark:border-stone-700 text-[10px]"
                         >
-                          <Minus className="w-2 h-2" />
-                        </button>
-                        <button
-                          onClick={() => {
-                            const mi =
-                              shopMenuItems.find(m => m.id === item.menuItemId) ||
-                              menuItems.find(m => m.id === item.menuItemId) || {
-                                id: item.menuItemId || item.id,
-                                name: item.name,
-                                price: item.price,
-                                category: 'snacks',
-                                emoji: item.emoji || '☕'
-                              }
-                            handleAdminAssignItem(mi)
-                          }}
-                          className="w-3.5 h-3.5 rounded hover:bg-stone-100 dark:hover:bg-stone-700 flex items-center justify-center text-stone-400 hover:text-emerald-600 cursor-pointer"
-                        >
-                          <Plus className="w-2 h-2" />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
+                          <span>{item.emoji}</span>
+                          <span>{item.name}</span>
+                          <span className="font-bold text-amber-600">x{item.quantity}</span>
+                          <button
+                            onClick={() => removeItemFromMember(selectedAssigneeId, item.id || item.menuItemId || item.name, activeSession?.id, effectiveUser?.name || 'Admin')}
+                            className="w-3.5 h-3.5 rounded hover:bg-stone-100 dark:hover:bg-stone-700 flex items-center justify-center text-stone-400 hover:text-rose-600 cursor-pointer"
+                          >
+                            <Minus className="w-2 h-2" />
+                          </button>
+                          <button
+                            onClick={() => {
+                              const mi =
+                                shopMenuItems.find(m => m.id === item.menuItemId) ||
+                                menuItems.find(m => m.id === item.menuItemId) || {
+                                  id: item.menuItemId || item.id,
+                                  name: item.name,
+                                  price: item.price,
+                                  category: 'snacks',
+                                  emoji: item.emoji || '☕'
+                                }
+                              handleAdminAssignItem(mi)
+                            }}
+                            className="w-3.5 h-3.5 rounded hover:bg-stone-100 dark:hover:bg-stone-700 flex items-center justify-center text-stone-400 hover:text-emerald-600 cursor-pointer"
+                          >
+                            <Plus className="w-2 h-2" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-[10px] text-stone-400 italic">No items yet</div>
+                  )}
                 </div>
               ) : null
             })()}

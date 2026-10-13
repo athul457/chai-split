@@ -76,10 +76,18 @@ export const Dashboard: React.FC<DashboardProps> = () => {
       const saved = localStorage.getItem(`chaisplit_groups_user_${user.id}`)
       if (!saved) return []
       const parsed: Group[] = JSON.parse(saved)
-      return parsed.map(g => ({
-        ...g,
-        code: g.code || g.id || `TEA-${Math.floor(1000 + Math.random() * 9000)}`
-      }))
+      return parsed
+        .filter(g =>
+          g.adminId === user.id || g.members?.some(m =>
+            m.id === user.id ||
+            (m.userCode && user.userCode && m.userCode.toUpperCase() === user.userCode.toUpperCase()) ||
+            (m.email && user.email && m.email.toLowerCase() === user.email.toLowerCase())
+          )
+        )
+        .map(g => ({
+          ...g,
+          code: g.code || g.id || `TEA-${Math.floor(1000 + Math.random() * 9000)}`
+        }))
     } catch {
       return []
     }
@@ -125,12 +133,19 @@ export const Dashboard: React.FC<DashboardProps> = () => {
       const saved = localStorage.getItem(`chaisplit_groups_user_${user.id}`)
       if (saved) {
         const parsed: Group[] = JSON.parse(saved)
-        setGroups(parsed)
+        const userGroups = parsed.filter(g =>
+          g.adminId === user.id || g.members?.some(m =>
+            m.id === user.id ||
+            (m.userCode && user.userCode && m.userCode.toUpperCase() === user.userCode.toUpperCase()) ||
+            (m.email && user.email && m.email.toLowerCase() === user.email.toLowerCase())
+          )
+        )
+        setGroups(userGroups)
         const savedActive = localStorage.getItem(`chaisplit_active_group_user_${user.id}`)
-        if (savedActive && parsed.some(g => g.id === savedActive)) {
+        if (savedActive && userGroups.some(g => g.id === savedActive)) {
           setActiveGroupId(savedActive)
-        } else if (parsed.length > 0) {
-          setActiveGroupId(parsed[0].id)
+        } else if (userGroups.length > 0) {
+          setActiveGroupId(userGroups[0].id)
         } else {
           setActiveGroupId(null)
         }
@@ -142,7 +157,7 @@ export const Dashboard: React.FC<DashboardProps> = () => {
       setGroups([])
       setActiveGroupId(null)
     }
-  }, [user?.id])
+  }, [user?.id, user?.userCode, user?.email])
 
   // Save groups scoped strictly to current user ID
   useEffect(() => {
@@ -180,16 +195,28 @@ export const Dashboard: React.FC<DashboardProps> = () => {
         if (!error && allGroupsData) {
           // SECURITY FILTER: User is group admin OR explicitly listed in group_members table
           const myGroupsData = allGroupsData.filter((g: any) => {
-            const isAdmin = g.admin_id === user.id || (user.email && allUsers.some(u => u.id === g.admin_id && u.email.toLowerCase() === user.email.toLowerCase()))
-            const isMember = groupMemberRows.some(r => r.group_id === g.id && (r.user_id === user.id || (user.email && allUsers.some(u => u.id === r.user_id && u.email.toLowerCase() === user.email.toLowerCase()))))
+            const isAdmin = Boolean(
+              g.admin_id === user.id ||
+              (user.userCode && (g.admin_id === user.userCode || g.admin_id === `user-${user.userCode.toLowerCase()}`)) ||
+              (user.email && allUsers.some(u => (u.id === g.admin_id || u.userCode === g.admin_id) && u.email.toLowerCase() === user.email.toLowerCase()))
+            )
+
+            const isMember = groupMemberRows.some(r => {
+              if (r.group_id !== g.id) return false
+              if (r.user_id === user.id) return true
+              if (user.userCode && (r.user_id === user.userCode || r.user_id === `user-${user.userCode.toLowerCase()}`)) return true
+              if (user.email && allUsers.some(u => (u.id === r.user_id || u.userCode === r.user_id) && u.email.toLowerCase() === user.email.toLowerCase())) return true
+              return false
+            })
+
             return isAdmin || isMember
           })
 
           const mappedGroups: Group[] = myGroupsData.map((g: any) => {
-            const adminUser = allUsers.find(u => u.id === g.admin_id) || (g.admin_id === user.id ? user : null)
+            const adminUser = allUsers.find(u => u.id === g.admin_id || u.userCode === g.admin_id) || (g.admin_id === user.id ? user : null)
             const gmUsers: User[] = groupMemberRows
               .filter(r => r.group_id === g.id)
-              .map(r => allUsers.find(u => u.id === r.user_id) || (r.user_id === user.id ? user : null))
+              .map(r => allUsers.find(u => u.id === r.user_id || u.userCode === r.user_id) || (r.user_id === user.id ? user : null))
               .filter((u): u is User => Boolean(u))
 
             const memberMap = new Map<string, User>()
@@ -210,7 +237,7 @@ export const Dashboard: React.FC<DashboardProps> = () => {
             }
           })
 
-          // Merge with locally created groups for this user to guarantee persistence across refresh
+          // Merge with locally stored groups for this user ONLY if user is actually member/admin of them
           let localGroups: Group[] = []
           try {
             const saved = localStorage.getItem(`chaisplit_groups_user_${user.id}`)
@@ -219,13 +246,26 @@ export const Dashboard: React.FC<DashboardProps> = () => {
 
           const groupMap = new Map<string, Group>()
           localGroups.forEach(lg => {
-            if (lg.adminId === user.id || lg.members?.some(m => m.id === user.id)) {
+            const isMemberOrAdmin = lg.adminId === user.id || lg.members?.some(m =>
+              m.id === user.id ||
+              (m.userCode && user.userCode && m.userCode.toUpperCase() === user.userCode.toUpperCase()) ||
+              (m.email && user.email && m.email.toLowerCase() === user.email.toLowerCase())
+            )
+            if (isMemberOrAdmin) {
               groupMap.set(lg.id, lg)
             }
           })
           mappedGroups.forEach(mg => groupMap.set(mg.id, mg))
 
-          const finalGroups = Array.from(groupMap.values())
+          // Filter strictly: NEVER show a group to a user who is not part of the group
+          const finalGroups = Array.from(groupMap.values()).filter(g =>
+            g.adminId === user.id || g.members?.some(m =>
+              m.id === user.id ||
+              (m.userCode && user.userCode && m.userCode.toUpperCase() === user.userCode.toUpperCase()) ||
+              (m.email && user.email && m.email.toLowerCase() === user.email.toLowerCase())
+            )
+          )
+
           setGroups(finalGroups)
           if (finalGroups.length > 0) {
             setActiveGroupId(prev => {
@@ -243,7 +283,7 @@ export const Dashboard: React.FC<DashboardProps> = () => {
       }
     }
     loadGroups()
-  }, [allUsers, user?.id])
+  }, [allUsers, user?.id, user?.userCode, user?.email])
 
   // Fetch real shops from Supabase
   useEffect(() => {
@@ -310,16 +350,28 @@ export const Dashboard: React.FC<DashboardProps> = () => {
 
         if (allGroupsData) {
           const myGroupsData = allGroupsData.filter((g: any) => {
-            const isAdmin = g.admin_id === user.id || (user.email && allUsers.some(u => u.id === g.admin_id && u.email.toLowerCase() === user.email.toLowerCase()))
-            const isMember = groupMemberRows.some(r => r.group_id === g.id && (r.user_id === user.id || (user.email && allUsers.some(u => u.id === r.user_id && u.email.toLowerCase() === user.email.toLowerCase()))))
+            const isAdmin = Boolean(
+              g.admin_id === user.id ||
+              (user.userCode && (g.admin_id === user.userCode || g.admin_id === `user-${user.userCode.toLowerCase()}`)) ||
+              (user.email && allUsers.some(u => (u.id === g.admin_id || u.userCode === g.admin_id) && u.email.toLowerCase() === user.email.toLowerCase()))
+            )
+
+            const isMember = groupMemberRows.some(r => {
+              if (r.group_id !== g.id) return false
+              if (r.user_id === user.id) return true
+              if (user.userCode && (r.user_id === user.userCode || r.user_id === `user-${user.userCode.toLowerCase()}`)) return true
+              if (user.email && allUsers.some(u => (u.id === r.user_id || u.userCode === r.user_id) && u.email.toLowerCase() === user.email.toLowerCase())) return true
+              return false
+            })
+
             return isAdmin || isMember
           })
 
           const mappedGroups: Group[] = myGroupsData.map((g: any) => {
-            const adminUser = allUsers.find(u => u.id === g.admin_id) || (g.admin_id === user.id ? user : null)
+            const adminUser = allUsers.find(u => u.id === g.admin_id || u.userCode === g.admin_id) || (g.admin_id === user.id ? user : null)
             const gmUsers: User[] = groupMemberRows
               .filter(r => r.group_id === g.id)
-              .map(r => allUsers.find(u => u.id === r.user_id) || (r.user_id === user.id ? user : null))
+              .map(r => allUsers.find(u => u.id === r.user_id || u.userCode === r.user_id) || (r.user_id === user.id ? user : null))
               .filter((u): u is User => Boolean(u))
 
             const memberMap = new Map<string, User>()
@@ -340,7 +392,7 @@ export const Dashboard: React.FC<DashboardProps> = () => {
             }
           })
 
-          // Merge with locally stored groups to prevent member disappearance during active editing
+          // Merge with locally stored groups for this user ONLY if user is actually member/admin of them
           let localGroups: Group[] = []
           try {
             const saved = localStorage.getItem(`chaisplit_groups_user_${user.id}`)
@@ -349,13 +401,26 @@ export const Dashboard: React.FC<DashboardProps> = () => {
 
           const groupMap = new Map<string, Group>()
           localGroups.forEach(lg => {
-            if (lg.adminId === user.id || lg.members?.some(m => m.id === user.id)) {
+            const isMemberOrAdmin = lg.adminId === user.id || lg.members?.some(m =>
+              m.id === user.id ||
+              (m.userCode && user.userCode && m.userCode.toUpperCase() === user.userCode.toUpperCase()) ||
+              (m.email && user.email && m.email.toLowerCase() === user.email.toLowerCase())
+            )
+            if (isMemberOrAdmin) {
               groupMap.set(lg.id, lg)
             }
           })
           mappedGroups.forEach(mg => groupMap.set(mg.id, mg))
 
-          const finalGroups = Array.from(groupMap.values())
+          // Filter strictly: NEVER show a group to a user who is not part of the group
+          const finalGroups = Array.from(groupMap.values()).filter(g =>
+            g.adminId === user.id || g.members?.some(m =>
+              m.id === user.id ||
+              (m.userCode && user.userCode && m.userCode.toUpperCase() === user.userCode.toUpperCase()) ||
+              (m.email && user.email && m.email.toLowerCase() === user.email.toLowerCase())
+            )
+          )
+
           setGroups(finalGroups)
           if (finalGroups.length > 0) {
             setActiveGroupId(prev => {
@@ -376,13 +441,28 @@ export const Dashboard: React.FC<DashboardProps> = () => {
         config: { broadcast: { self: false } }
       })
       .on('broadcast', { event: 'GROUP_UPDATED' }, ({ payload }) => {
-        if (payload?.group) {
+        if (payload?.group && user) {
+          const group: Group = payload.group
+          const isUserInGroup = Boolean(
+            group.adminId === user.id ||
+            group.members?.some(m =>
+              m.id === user.id ||
+              (m.userCode && user.userCode && m.userCode.toUpperCase() === user.userCode.toUpperCase()) ||
+              (m.email && user.email && m.email.toLowerCase() === user.email.toLowerCase())
+            )
+          )
+
           setGroups(prev => {
-            const exists = prev.some(g => g.id === payload.group.id)
-            if (exists) {
-              return prev.map(g => g.id === payload.group.id ? payload.group : g)
+            if (isUserInGroup) {
+              const exists = prev.some(g => g.id === group.id)
+              if (exists) {
+                return prev.map(g => g.id === group.id ? group : g)
+              }
+              return [group, ...prev]
+            } else {
+              // Strictly remove the group if current user is not in it!
+              return prev.filter(g => g.id !== group.id)
             }
-            return [payload.group, ...prev]
           })
         }
       })
@@ -625,7 +705,9 @@ export const Dashboard: React.FC<DashboardProps> = () => {
     if (!cleanId || !user) return
 
     // 1. Check if already in user's groups
-    const alreadyJoined = groups.find(g => g.code.toUpperCase() === cleanId)
+    const alreadyJoined = groups.find(
+      g => g.code.toUpperCase() === cleanId || g.id.toUpperCase() === cleanId
+    )
     if (alreadyJoined) {
       setActiveGroupId(alreadyJoined.id)
       setShowJoinGroupModal(false)
@@ -638,14 +720,14 @@ export const Dashboard: React.FC<DashboardProps> = () => {
 
     setJoinGroupError(null)
 
-    // 2. Query Supabase groups table
+    // 2. Query Supabase groups table by code OR id
     if (supabase) {
       try {
         const client = supabase
         const { data: foundGroup, error } = await client
           .from('groups')
           .select('*')
-          .ilike('code', cleanId)
+          .or(`code.ilike.${cleanId},id.eq.${cleanId}`)
           .maybeSingle()
 
         if (error) {
@@ -697,6 +779,13 @@ export const Dashboard: React.FC<DashboardProps> = () => {
           setJoinGroupError(null)
           setCopyNotice(`Joined "${groupToAdd.name}"! 🎉`)
           setTimeout(() => setCopyNotice(null), 3000)
+
+          // Broadcast member update to other peers
+          client.channel('realtime_shops_and_groups').send({
+            type: 'broadcast',
+            event: 'GROUP_UPDATED',
+            payload: { group: groupToAdd }
+          }).catch(() => {})
           return
         }
       } catch (err: any) {
@@ -713,7 +802,9 @@ export const Dashboard: React.FC<DashboardProps> = () => {
       if (saved) allRegistered = JSON.parse(saved)
     } catch {}
 
-    const foundOffline = allRegistered.find(g => g.code.toUpperCase() === cleanId)
+    const foundOffline = allRegistered.find(
+      g => g.code.toUpperCase() === cleanId || g.id.toUpperCase() === cleanId
+    )
     if (foundOffline) {
       const updatedMembers = !foundOffline.members.some(m => m.id === user.id)
         ? [...foundOffline.members, user]

@@ -1,9 +1,28 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react'
 import confetti from 'canvas-confetti'
-import type { TeaSession, MenuItem, OrderItem, MemberExpense, User } from '../types'
+import type { TeaSession, MenuItem, OrderItem, MemberExpense, User, AdminEditRecord } from '../types'
 import { DEFAULT_MENU } from '../lib/mockData'
 import { useAuth } from './AuthContext'
 import { supabase } from '../lib/supabase'
+
+interface SessionMeta {
+  confirmations?: Record<string, {
+    isConfirmed: boolean
+    confirmedAt?: string
+    adminEdits?: AdminEditRecord[]
+  }>
+}
+
+const parseSessionMeta = (notes?: string): SessionMeta => {
+  if (!notes) return {}
+  try {
+    if (notes.trim().startsWith('{')) {
+      const parsed = JSON.parse(notes)
+      return parsed && typeof parsed === 'object' ? parsed : {}
+    }
+  } catch {}
+  return {}
+}
 
 interface ExpenseContextType {
   activeSession: TeaSession | null
@@ -11,8 +30,9 @@ interface ExpenseContextType {
   getActiveSessionForGroup: (groupId?: string) => TeaSession | undefined
   pastSessions: TeaSession[]
   menuItems: MenuItem[]
-  addItemToMember: (memberId: string, menuItem: MenuItem, sessionId?: string) => Promise<boolean> | void
-  removeItemFromMember: (memberId: string, menuItemId: string, sessionId?: string) => Promise<boolean> | void
+  addItemToMember: (memberId: string, menuItem: MenuItem, sessionId?: string, adminEditorName?: string) => Promise<boolean> | void
+  removeItemFromMember: (memberId: string, menuItemId: string, sessionId?: string, adminEditorName?: string) => Promise<boolean> | void
+  confirmMemberOrder: (memberId: string, sessionId?: string) => Promise<boolean> | void
   toggleMemberPaid: (memberId: string, sessionId?: string) => void
   setPayer: (payerId: string, sessionId?: string) => void
   addNewSession: (
@@ -204,6 +224,8 @@ export const ExpenseProvider: React.FC<{ children: React.ReactNode }> = ({ child
         const thisSessionExpensesData = (expensesData || []).filter((e: any) => e.session_id === sessionData.id)
         const thisSessionOrderItemsData = (orderItemsData || []).filter((i: any) => i.session_id === sessionData.id)
 
+        const sessionMeta = parseSessionMeta(sessionData.notes)
+
         const expenses: MemberExpense[] = thisSessionExpensesData.map((exp: any) => {
           const expPrefix = `${sessionData.id}-${exp.member_id}-`
           const memberItems: OrderItem[] = thisSessionOrderItemsData
@@ -221,6 +243,7 @@ export const ExpenseProvider: React.FC<{ children: React.ReactNode }> = ({ child
             })
 
           const calculatedMemberTotal = memberItems.reduce((sum, it) => sum + it.price * it.quantity, 0)
+          const meta = sessionMeta.confirmations?.[exp.member_id]
 
           return {
             memberId: exp.member_id,
@@ -229,7 +252,10 @@ export const ExpenseProvider: React.FC<{ children: React.ReactNode }> = ({ child
             total: memberItems.length > 0 ? calculatedMemberTotal : (Number(exp.total) || 0),
             isPaid: !!exp.is_paid,
             paidAt: exp.paid_at || undefined,
-            items: memberItems
+            items: memberItems,
+            isConfirmed: !!meta?.isConfirmed,
+            confirmedAt: meta?.confirmedAt,
+            adminEdits: meta?.adminEdits || []
           }
         })
 
@@ -311,6 +337,7 @@ export const ExpenseProvider: React.FC<{ children: React.ReactNode }> = ({ child
         const mapped: TeaSession[] = data.map((s: any) => {
           const sessionExp = allPastExpenses.filter(e => e.session_id === s.id)
           const sessionItems = allPastOrderItems.filter(i => i.session_id === s.id)
+          const sMeta = parseSessionMeta(s.notes)
 
           const expenses: MemberExpense[] = sessionExp.map((e: any) => {
             const memberItems: OrderItem[] = sessionItems
@@ -325,6 +352,7 @@ export const ExpenseProvider: React.FC<{ children: React.ReactNode }> = ({ child
               }))
 
             const calculatedTotal = memberItems.reduce((sum, item) => sum + item.price * item.quantity, 0)
+            const meta = sMeta.confirmations?.[e.member_id]
 
             return {
               memberId: e.member_id,
@@ -333,7 +361,10 @@ export const ExpenseProvider: React.FC<{ children: React.ReactNode }> = ({ child
               items: memberItems,
               total: memberItems.length > 0 ? calculatedTotal : (Number(e.total) || 0),
               isPaid: !!e.is_paid,
-              paidAt: e.paid_at || undefined
+              paidAt: e.paid_at || undefined,
+              isConfirmed: !!meta?.isConfirmed,
+              confirmedAt: meta?.confirmedAt,
+              adminEdits: meta?.adminEdits || []
             }
           })
 
@@ -625,7 +656,10 @@ export const ExpenseProvider: React.FC<{ children: React.ReactNode }> = ({ child
       return {
         ...exp,
         total: memberTotal,
-        isPaid: exp.memberId === session.payerId ? true : exp.isPaid
+        isPaid: exp.memberId === session.payerId ? true : exp.isPaid,
+        isConfirmed: exp.isConfirmed,
+        confirmedAt: exp.confirmedAt,
+        adminEdits: exp.adminEdits
       }
     })
 
@@ -647,7 +681,9 @@ export const ExpenseProvider: React.FC<{ children: React.ReactNode }> = ({ child
       memberAvatar: user.avatar,
       items: [],
       total: 0,
-      isPaid: false
+      isPaid: false,
+      isConfirmed: false,
+      adminEdits: []
     }
 
     if (supabase) {
@@ -806,7 +842,76 @@ export const ExpenseProvider: React.FC<{ children: React.ReactNode }> = ({ child
     }
   }
 
-  const addItemToMember = async (memberId: string, menuItem: MenuItem, sessionId?: string): Promise<boolean> => {
+  const confirmMemberOrder = async (memberId: string, sessionId?: string): Promise<boolean> => {
+    const targetSession = (sessionId ? activeSessions.find(s => s.id === sessionId) : null) || activeSession
+    if (!targetSession) return false
+
+    lastLocalActionTimeRef.current = Date.now()
+    const targetSessionId = targetSession.id
+    const nowStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+
+    let updatedExp: MemberExpense | null = null
+    const updatedExpenses = targetSession.expenses.map(exp => {
+      if (exp.memberId !== memberId) return exp
+      const updated: MemberExpense = {
+        ...exp,
+        isConfirmed: true,
+        confirmedAt: nowStr
+      }
+      updatedExp = updated
+      return updated
+    })
+
+    if (!updatedExp) return false
+
+    const currentMeta = parseSessionMeta(targetSession.notes)
+    const updatedConfirmations = {
+      ...(currentMeta.confirmations || {}),
+      [memberId]: {
+        isConfirmed: true,
+        confirmedAt: nowStr,
+        adminEdits: (updatedExp as MemberExpense).adminEdits || []
+      }
+    }
+    const newNotes = JSON.stringify({ ...currentMeta, confirmations: updatedConfirmations })
+
+    const updatedSession = recalculateSessionTotals({
+      ...targetSession,
+      notes: newNotes,
+      expenses: updatedExpenses
+    })
+
+    setActiveSessions(prevSessions =>
+      prevSessions.map(sess => (sess.id === targetSessionId ? updatedSession : sess))
+    )
+    setActiveSession(prev => (prev?.id === targetSessionId ? updatedSession : prev))
+
+    try {
+      if (activeSession?.id === targetSessionId || !activeSession) {
+        localStorage.setItem(ACTIVE_SESSION_KEY, JSON.stringify(updatedSession))
+      }
+    } catch {}
+
+    broadcastMemberExpenseUpdated(targetSessionId, memberId, updatedExp)
+    broadcastSessionUpdated(updatedSession)
+
+    if (supabase) {
+      supabase
+        .from('tea_sessions')
+        .update({ notes: newNotes })
+        .eq('id', targetSessionId)
+        .then(() => {}, (e: any) => console.warn('Sync session notes error:', e))
+    }
+
+    return true
+  }
+
+  const addItemToMember = async (
+    memberId: string,
+    menuItem: MenuItem,
+    sessionId?: string,
+    adminEditorName?: string
+  ): Promise<boolean> => {
     const targetSession = (sessionId ? activeSessions.find(s => s.id === sessionId) : null) || activeSession
     if (!targetSession) return false
 
@@ -814,6 +919,8 @@ export const ExpenseProvider: React.FC<{ children: React.ReactNode }> = ({ child
     const targetSessionId = targetSession.id
 
     let memberFound = false
+    let newAdminEditsForMember: AdminEditRecord[] | undefined
+
     const updatedExpenses = targetSession.expenses.map(exp => {
       if (exp.memberId !== memberId) return exp
       memberFound = true
@@ -825,12 +932,15 @@ export const ExpenseProvider: React.FC<{ children: React.ReactNode }> = ({ child
           (i.name && i.name.toLowerCase().trim() === menuItem.name.toLowerCase().trim())
       )
       let updatedItems: OrderItem[] = []
+      let oldQuantity = 0
 
       if (itemIdx > -1) {
+        oldQuantity = exp.items[itemIdx].quantity
         updatedItems = exp.items.map((item, idx) =>
           idx === itemIdx ? { ...item, quantity: item.quantity + 1 } : item
         )
       } else {
+        oldQuantity = 0
         updatedItems = [
           ...exp.items,
           {
@@ -844,10 +954,25 @@ export const ExpenseProvider: React.FC<{ children: React.ReactNode }> = ({ child
         ]
       }
 
+      let updatedAdminEdits = exp.adminEdits || []
+      if (exp.isConfirmed && adminEditorName) {
+        const editRecord: AdminEditRecord = {
+          adminName: adminEditorName,
+          itemName: menuItem.name,
+          action: oldQuantity === 0 ? 'added' : 'updated',
+          oldQuantity,
+          newQuantity: oldQuantity + 1,
+          editedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        }
+        updatedAdminEdits = [...updatedAdminEdits, editRecord]
+        newAdminEditsForMember = updatedAdminEdits
+      }
+
       return {
         ...exp,
         items: updatedItems,
-        isPaid: exp.memberId === targetSession.payerId ? true : false
+        isPaid: exp.memberId === targetSession.payerId ? true : false,
+        adminEdits: updatedAdminEdits
       }
     })
 
@@ -872,15 +997,40 @@ export const ExpenseProvider: React.FC<{ children: React.ReactNode }> = ({ child
           }
         ],
         total: menuItem.price,
-        isPaid: memberId === targetSession.payerId
+        isPaid: memberId === targetSession.payerId,
+        isConfirmed: false,
+        adminEdits: []
       }
       updatedSession = recalculateSessionTotals({
         ...targetSession,
         expenses: [...targetSession.expenses, newExp]
       })
     } else {
+      let finalNotes = targetSession.notes
+      if (newAdminEditsForMember) {
+        const currentMeta = parseSessionMeta(targetSession.notes)
+        const currentMemberExp = updatedExpenses.find(e => e.memberId === memberId)
+        const updatedConfirmations = {
+          ...(currentMeta.confirmations || {}),
+          [memberId]: {
+            isConfirmed: true,
+            confirmedAt: currentMemberExp?.confirmedAt,
+            adminEdits: newAdminEditsForMember
+          }
+        }
+        finalNotes = JSON.stringify({ ...currentMeta, confirmations: updatedConfirmations })
+        if (supabase) {
+          supabase
+            .from('tea_sessions')
+            .update({ notes: finalNotes })
+            .eq('id', targetSessionId)
+            .then(() => {}, (e: any) => console.warn(e))
+        }
+      }
+
       updatedSession = recalculateSessionTotals({
         ...targetSession,
+        notes: finalNotes,
         expenses: updatedExpenses
       })
     }
@@ -911,7 +1061,12 @@ export const ExpenseProvider: React.FC<{ children: React.ReactNode }> = ({ child
     return false
   }
 
-  const removeItemFromMember = async (memberId: string, menuItemId: string, sessionId?: string): Promise<boolean> => {
+  const removeItemFromMember = async (
+    memberId: string,
+    menuItemId: string,
+    sessionId?: string,
+    adminEditorName?: string
+  ): Promise<boolean> => {
     const targetSession = (sessionId ? activeSessions.find(s => s.id === sessionId) : null) || activeSession
     if (!targetSession) return false
 
@@ -921,12 +1076,17 @@ export const ExpenseProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
     let memberFound = false
     let targetExpenseToSync: MemberExpense | null = null
+    let newAdminEditsForMember: AdminEditRecord[] | undefined
 
     const updatedExpenses = targetSession.expenses.map(exp => {
       if (exp.memberId !== memberId) return exp
       memberFound = true
 
       let decremented = false
+      let removedItemName = ''
+      let oldQuantity = 0
+      let newQuantity = 0
+
       const updatedItems = exp.items
         .map(item => {
           if (decremented) return item
@@ -940,16 +1100,34 @@ export const ExpenseProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
           if (isMatch) {
             decremented = true
+            removedItemName = item.name
+            oldQuantity = item.quantity
+            newQuantity = item.quantity - 1
             return { ...item, quantity: item.quantity - 1 }
           }
           return item
         })
         .filter(item => item.quantity > 0)
 
+      let updatedAdminEdits = exp.adminEdits || []
+      if (decremented && exp.isConfirmed && adminEditorName) {
+        const editRecord: AdminEditRecord = {
+          adminName: adminEditorName,
+          itemName: removedItemName || 'Item',
+          action: newQuantity === 0 ? 'removed' : 'updated',
+          oldQuantity,
+          newQuantity,
+          editedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        }
+        updatedAdminEdits = [...updatedAdminEdits, editRecord]
+        newAdminEditsForMember = updatedAdminEdits
+      }
+
       const updatedExp: MemberExpense = {
         ...exp,
         items: updatedItems,
-        total: updatedItems.reduce((sum, it) => sum + it.price * it.quantity, 0)
+        total: updatedItems.reduce((sum, it) => sum + it.price * it.quantity, 0),
+        adminEdits: updatedAdminEdits
       }
       targetExpenseToSync = updatedExp
       return updatedExp
@@ -957,8 +1135,31 @@ export const ExpenseProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
     if (!memberFound) return false
 
+    let finalNotes = targetSession.notes
+    if (newAdminEditsForMember) {
+      const currentMeta = parseSessionMeta(targetSession.notes)
+      const currentMemberExp = updatedExpenses.find(e => e.memberId === memberId)
+      const updatedConfirmations = {
+        ...(currentMeta.confirmations || {}),
+        [memberId]: {
+          isConfirmed: true,
+          confirmedAt: currentMemberExp?.confirmedAt,
+          adminEdits: newAdminEditsForMember
+        }
+      }
+      finalNotes = JSON.stringify({ ...currentMeta, confirmations: updatedConfirmations })
+      if (supabase) {
+        supabase
+          .from('tea_sessions')
+          .update({ notes: finalNotes })
+          .eq('id', targetSessionId)
+          .then(() => {}, (e: any) => console.warn(e))
+      }
+    }
+
     const updatedSession = recalculateSessionTotals({
       ...targetSession,
+      notes: finalNotes,
       expenses: updatedExpenses
     })
 
@@ -1153,7 +1354,9 @@ export const ExpenseProvider: React.FC<{ children: React.ReactNode }> = ({ child
         memberAvatar: u.avatar || u.name.slice(0, 2).toUpperCase(),
         items: [],
         total: 0,
-        isPaid: u.id === effectivePayerId
+        isPaid: u.id === effectivePayerId,
+        isConfirmed: false,
+        adminEdits: []
       }))
     }
 
@@ -1478,6 +1681,7 @@ export const ExpenseProvider: React.FC<{ children: React.ReactNode }> = ({ child
         menuItems,
         addItemToMember,
         removeItemFromMember,
+        confirmMemberOrder,
         toggleMemberPaid,
         setPayer,
         addNewSession,

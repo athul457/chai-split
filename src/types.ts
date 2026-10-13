@@ -27,6 +27,15 @@ export interface OrderItem {
   emoji: string
 }
 
+export interface AdminEditRecord {
+  adminName: string
+  itemName: string
+  action: 'updated' | 'removed' | 'added'
+  oldQuantity?: number
+  newQuantity?: number
+  editedAt: string
+}
+
 export interface MemberExpense {
   memberId: string
   memberName: string
@@ -35,6 +44,9 @@ export interface MemberExpense {
   total: number
   isPaid: boolean
   paidAt?: string
+  isConfirmed?: boolean
+  confirmedAt?: string
+  adminEdits?: AdminEditRecord[]
 }
 
 export interface TeaSession {
