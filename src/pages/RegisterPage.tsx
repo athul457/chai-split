@@ -1,8 +1,9 @@
 import React, { useState } from 'react'
-import { Coffee, ArrowLeft, UserPlus, Mail, User, Building, Lock, AlertCircle } from 'lucide-react'
+import { Coffee, ArrowLeft, UserPlus, Mail, User, Lock, AlertCircle, Sun, Moon } from 'lucide-react'
 import { ChaiLoader } from '../components/ChaiLoader'
 import type { PageRoute } from '../types'
 import { useAuth } from '../context/AuthContext'
+import { useTheme } from '../context/ThemeContext'
 
 interface RegisterPageProps {
   onNavigate: (page: PageRoute) => void
@@ -10,10 +11,10 @@ interface RegisterPageProps {
 
 export const RegisterPage: React.FC<RegisterPageProps> = ({ onNavigate }) => {
   const { register } = useAuth()
+  const { isDark, toggleTheme } = useTheme()
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
-  const [teamName, setTeamName] = useState('Floor 3 Tea Club')
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
 
@@ -31,7 +32,7 @@ export const RegisterPage: React.FC<RegisterPageProps> = ({ onNavigate }) => {
     }
 
     setLoading(true)
-    const result = await register(name, email, password, teamName)
+    const result = await register(name, email, password)
     setLoading(false)
 
     if (result.success) {
@@ -134,23 +135,6 @@ export const RegisterPage: React.FC<RegisterPageProps> = ({ onNavigate }) => {
             </div>
           </div>
 
-          <div className="space-y-1.5 text-left">
-            <label className="text-xs font-semibold text-stone-700 dark:text-stone-300" htmlFor="register-team">
-              Office Team / Floor
-            </label>
-            <div className="relative">
-              <Building className="w-4 h-4 text-stone-400 absolute left-3.5 top-3" />
-              <input
-                id="register-team"
-                type="text"
-                value={teamName}
-                onChange={e => setTeamName(e.target.value)}
-                placeholder="e.g. Floor 3 Tech & Design"
-                className="w-full pl-10 pr-3.5 py-2.5 rounded-xl border border-stone-200 dark:border-stone-700 bg-stone-50/50 dark:bg-stone-800 text-sm text-stone-900 dark:text-stone-100 placeholder:text-stone-400 focus:outline-none focus:ring-2 focus:ring-amber-500/30 focus:border-amber-500 transition-all"
-              />
-            </div>
-          </div>
-
           <button
             type="submit"
             disabled={loading}
@@ -176,6 +160,18 @@ export const RegisterPage: React.FC<RegisterPageProps> = ({ onNavigate }) => {
             className="font-semibold text-amber-700 dark:text-amber-400 hover:underline cursor-pointer"
           >
             Log in instead
+          </button>
+        </div>
+
+        {/* Theme Toggle */}
+        <div className="pt-1 flex items-center justify-center">
+          <button
+            type="button"
+            onClick={toggleTheme}
+            className="inline-flex items-center gap-1.5 text-xs text-stone-400 hover:text-stone-700 dark:hover:text-stone-200 cursor-pointer transition-colors"
+          >
+            {isDark ? <Sun className="w-3.5 h-3.5 text-amber-400" /> : <Moon className="w-3.5 h-3.5 text-stone-600" />}
+            <span>{isDark ? 'Switch to White Mode' : 'Switch to Dark Mode'}</span>
           </button>
         </div>
 

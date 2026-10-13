@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useMemo } from 'react'
 import {
   Coffee,
   Plus,
@@ -10,22 +10,21 @@ import {
   Wallet,
   Copy,
   X,
-  MapPin,
   Users,
   Store,
-  ArrowRight,
   Trash2,
-  KeyRound
+  KeyRound,
+  Search
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { useExpense } from '../context/ExpenseContext'
 import { BottomNav } from '../components/BottomNav'
-import { ShopItemsPage } from './ShopItemsPage'
 import { GroupDetailsPage } from './GroupDetailsPage'
 import { TeaBreakPage } from './TeaBreakPage'
+import { HistoryPage } from './HistoryPage'
 import { DEFAULT_SHOPS } from '../lib/mockData'
 import { supabase } from '../lib/supabase'
-import { ShopCardSkeleton, GroupCardSkeleton } from '../components/ChaiSkeleton'
+import { GroupCardSkeleton } from '../components/ChaiSkeleton'
 import type { PageRoute, BottomTab, Shop, MenuItem, Group, User } from '../types'
 
 interface DashboardProps {
@@ -36,31 +35,38 @@ export const Dashboard: React.FC<DashboardProps> = () => {
   const { user, allUsers } = useAuth()
   const {
     activeSession,
+    activeSessions,
+    getActiveSessionForGroup,
     pastSessions,
     menuItems,
-    getMenuItemsForShop,
     addItemToMember,
     removeItemFromMember,
     toggleMemberPaid,
     settleActiveSession,
     addMemberToSession,
     addCustomMenuItem,
-    removeMenuItemsForShop,
     getShopItemSummary,
     generateWhatsAppSummary
   } = useExpense()
 
-  // Navigation tab state (Shops is the default home tab)
-  const [activeTab, setActiveTab] = useState<BottomTab>('shops')
+  // Navigation tab state (Home is the default home tab)
+  const [activeTab, setActiveTab] = useState<BottomTab>('home')
+
+  // Search filter for groups
+  const [groupSearchQuery, setGroupSearchQuery] = useState('')
 
   // Modals & form state
-  const [selectedCategory, setSelectedCategory] = useState<string>('all')
   const [showAddItemModal, setShowAddItemModal] = useState(false)
   const [customItemName, setCustomItemName] = useState('')
   const [customItemPrice, setCustomItemPrice] = useState('20')
   const [customItemEmoji, setCustomItemEmoji] = useState('☕')
   const [selectedMemberForQuickAdd, setSelectedMemberForQuickAdd] = useState<string>('')
   const [copyNotice, setCopyNotice] = useState<string | null>(null)
+
+  // Create Group form states (Group Name + Shop Name + Emoji)
+  const [newGroupShopName, setNewGroupShopName] = useState('')
+  const [newGroupShopEmoji, setNewGroupShopEmoji] = useState('☕')
+  const [includeStarterMenu, setIncludeStarterMenu] = useState(true)
 
 
   // Groups tab state - Strictly isolated per logged-in user
@@ -95,7 +101,18 @@ export const Dashboard: React.FC<DashboardProps> = () => {
   const [viewingBreakGroupId, setViewingBreakGroupId] = useState<string | null>(null)
   const viewingBreakGroup = viewingBreakGroupId ? (groups.find(g => g.id === viewingBreakGroupId) || null) : null
   const [isLoadingGroups, setIsLoadingGroups] = useState(true)
-  const [isLoadingShops, setIsLoadingShops] = useState(true)
+
+  // Filtered groups based on Home search input
+  const filteredGroups = useMemo(() => {
+    const query = groupSearchQuery.trim().toLowerCase()
+    if (!query) return groups
+    return groups.filter(g =>
+      g.name.toLowerCase().includes(query) ||
+      (g.code && g.code.toLowerCase().includes(query)) ||
+      (g.shopName && g.shopName.toLowerCase().includes(query)) ||
+      (g.department && g.department.toLowerCase().includes(query))
+    )
+  }, [groups, groupSearchQuery])
 
   // Re-sync groups state when logged-in user changes (or upon initial login/logout)
   useEffect(() => {
@@ -169,7 +186,7 @@ export const Dashboard: React.FC<DashboardProps> = () => {
           })
 
           const mappedGroups: Group[] = myGroupsData.map((g: any) => {
-            const adminUser = allUsers.find(u => u.id === g.admin_id || (user.email && u.email.toLowerCase() === user.email.toLowerCase())) || (g.admin_id === user.id ? user : null)
+            const adminUser = allUsers.find(u => u.id === g.admin_id) || (g.admin_id === user.id ? user : null)
             const gmUsers: User[] = groupMemberRows
               .filter(r => r.group_id === g.id)
               .map(r => allUsers.find(u => u.id === r.user_id) || (r.user_id === user.id ? user : null))
@@ -231,7 +248,6 @@ export const Dashboard: React.FC<DashboardProps> = () => {
   // Fetch real shops from Supabase
   useEffect(() => {
     if (!supabase) {
-      setIsLoadingShops(false)
       return
     }
     const client = supabase
@@ -273,8 +289,6 @@ export const Dashboard: React.FC<DashboardProps> = () => {
         }
       } catch (err) {
         console.warn('Failed to load shops from Supabase:', err)
-      } finally {
-        setIsLoadingShops(false)
       }
     }
     loadShops()
@@ -302,7 +316,7 @@ export const Dashboard: React.FC<DashboardProps> = () => {
           })
 
           const mappedGroups: Group[] = myGroupsData.map((g: any) => {
-            const adminUser = allUsers.find(u => u.id === g.admin_id || (user.email && u.email.toLowerCase() === user.email.toLowerCase())) || (g.admin_id === user.id ? user : null)
+            const adminUser = allUsers.find(u => u.id === g.admin_id) || (g.admin_id === user.id ? user : null)
             const gmUsers: User[] = groupMemberRows
               .filter(r => r.group_id === g.id)
               .map(r => allUsers.find(u => u.id === r.user_id) || (r.user_id === user.id ? user : null))
@@ -417,15 +431,6 @@ export const Dashboard: React.FC<DashboardProps> = () => {
     }
   }, [shops])
 
-  const [showAddShopModal, setShowAddShopModal] = useState(false)
-  const [newShopName, setNewShopName] = useState('')
-  const [newShopLocation, setNewShopLocation] = useState('')
-  const [newShopSpecialty, setNewShopSpecialty] = useState('')
-  const [newShopEmoji, setNewShopEmoji] = useState('☕')
-  const [selectedShopId, setSelectedShopId] = useState<string>(() => DEFAULT_SHOPS[0]?.id || '')
-
-  // Shop items new page state
-  const [viewingShopItems, setViewingShopItems] = useState<Shop | null>(null)
   const [customItemCategory, setCustomItemCategory] = useState<MenuItem['category']>('snacks')
 
   // Copy helper
@@ -456,30 +461,39 @@ export const Dashboard: React.FC<DashboardProps> = () => {
     setCustomItemPrice('20')
   }
 
-  // Handle create new group
+  // Handle create new group with dedicated Shop Name & Starter Menu
   const handleCreateGroup = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!newGroupName.trim() || !user) return
 
     const generatedGroupId = `GRP-${Math.floor(1000 + Math.random() * 9000)}`
-    const chosenShop = shops.find(s => s.id === selectedShopId) || shops[0] || null
+    const shopName = newGroupShopName.trim() || `${newGroupName.trim()} Tapri`
+    const shopEmoji = newGroupShopEmoji || '☕'
+    const newShopId = `shop-${Date.now()}`
 
-    // Determine valid shopId in Supabase to avoid foreign key violations
-    let validShopId: string | null = null
-    if (supabase && chosenShop?.id) {
-      try {
-        const { data: dbShop } = await supabase
-          .from('shops')
-          .select('id')
-          .eq('id', chosenShop.id)
-          .maybeSingle()
-        if (dbShop) {
-          validShopId = dbShop.id
-        }
-      } catch (err) {
-        console.warn('Shop verification error:', err)
-      }
+    const newShop: Shop = {
+      id: newShopId,
+      name: shopName,
+      location: 'Local Tapri',
+      specialty: 'Chai & Snacks',
+      rating: 4.8,
+      emoji: shopEmoji
     }
+
+    const starterItems: MenuItem[] = includeStarterMenu
+      ? [
+          { id: `${newShopId}-1`, name: 'Chaya', price: 12, category: 'tea', emoji: '☕', shopId: newShopId, description: 'Hot naadan chaya' },
+          { id: `${newShopId}-2`, name: 'Coffee', price: 12, category: 'coffee', emoji: '☕', shopId: newShopId, description: 'Hot filter coffee' },
+          { id: `${newShopId}-3`, name: 'Samoza', price: 12, category: 'snacks', emoji: '🥟', shopId: newShopId, description: 'Crispy hot samoza' },
+          { id: `${newShopId}-4`, name: 'Omlette', price: 20, category: 'snacks', emoji: '🍳', shopId: newShopId, description: 'Fresh double egg omlette' },
+          { id: `${newShopId}-5`, name: 'Dosha', price: 12, category: 'snacks', emoji: '🥞', shopId: newShopId, description: 'Hot crisp dosha' },
+          { id: `${newShopId}-6`, name: 'Porotta', price: 12, category: 'snacks', emoji: '🫓', shopId: newShopId, description: 'Kerala layered porotta' },
+          { id: `${newShopId}-7`, name: 'Puzhungiya Motta', price: 10, category: 'snacks', emoji: '🥚', shopId: newShopId, description: 'Boiled egg' },
+          { id: `${newShopId}-8`, name: "Bull's Eye", price: 10, category: 'snacks', emoji: '🍳', shopId: newShopId, description: 'Half-boiled egg bullseye' },
+          { id: `${newShopId}-9`, name: 'Puffs', price: 20, category: 'snacks', emoji: '🥐', shopId: newShopId, description: 'Crispy puff' },
+          { id: `${newShopId}-10`, name: 'Parippvada', price: 10, category: 'snacks', emoji: '🧆', shopId: newShopId, description: 'Crunchy parippuvada' }
+        ]
+      : []
 
     const createdGroup: Group = {
       id: `group-${Date.now()}`,
@@ -487,19 +501,27 @@ export const Dashboard: React.FC<DashboardProps> = () => {
       code: generatedGroupId,
       department: 'Office',
       adminId: user.id,
-      shopId: validShopId || chosenShop?.id,
-      shopName: chosenShop?.name || 'Chayakkada',
-      shopEmoji: chosenShop?.emoji || '☕',
+      shopId: newShopId,
+      shopName: shopName,
+      shopEmoji: shopEmoji,
       members: [user],
       createdDate: new Date().toISOString().split('T')[0]
     }
 
     // 1. Update React state immediately
+    setShops(prev => [newShop, ...prev.filter(s => s.id !== newShop.id)])
     setGroups(prev => [createdGroup, ...prev.filter(g => g.id !== createdGroup.id)])
     setActiveGroupId(createdGroup.id)
+    setViewingGroupId(createdGroup.id)
     setShowCreateGroupModal(false)
     setNewGroupName('')
-    setSelectedShopId(shops[0]?.id || '')
+    setNewGroupShopName('')
+    setNewGroupShopEmoji('☕')
+
+    // Also populate starter items into expense context immediately
+    starterItems.forEach(item => {
+      addCustomMenuItem(item.name, item.price, item.emoji, item.category, newShopId)
+    })
 
     // 2. Persist to user-scoped localStorage immediately so refresh can NEVER lose it
     try {
@@ -516,10 +538,10 @@ export const Dashboard: React.FC<DashboardProps> = () => {
       localStorage.setItem('chaisplit_all_registered_groups', JSON.stringify([createdGroup, ...all.filter(g => g.id !== createdGroup.id)]))
     } catch {}
 
-    setCopyNotice(`Created group "${createdGroup.name}" (ID: ${generatedGroupId})! 🎉`)
+    setCopyNotice(`Created group "${createdGroup.name}" with shop "${shopName}"! 🎉`)
     setTimeout(() => setCopyNotice(null), 3000)
 
-    // 4. Persist to Supabase with profile guarantee & proper foreign keys
+    // 4. Persist to Supabase
     if (supabase) {
       const client = supabase
       try {
@@ -534,14 +556,38 @@ export const Dashboard: React.FC<DashboardProps> = () => {
           upi_id: user.upiId
         }, { onConflict: 'id' })
 
-        // Insert group row (using validShopId so shop_id foreign key never fails)
+        // Insert shop row
+        await client.from('shops').upsert({
+          id: newShop.id,
+          name: newShop.name,
+          location: newShop.location,
+          specialty: newShop.specialty,
+          rating: newShop.rating,
+          emoji: newShop.emoji
+        })
+
+        // Insert starter items if any
+        if (starterItems.length > 0) {
+          const dbItems = starterItems.map(item => ({
+            id: item.id,
+            name: item.name,
+            price: item.price,
+            category: item.category,
+            emoji: item.emoji,
+            description: item.description,
+            shop_id: newShopId
+          }))
+          await client.from('menu_items').upsert(dbItems)
+        }
+
+        // Insert group row
         const { error: groupErr } = await client.from('groups').insert({
           id: createdGroup.id,
           name: createdGroup.name,
           code: createdGroup.code,
           department: createdGroup.department,
           admin_id: user.id,
-          shop_id: validShopId,
+          shop_id: newShopId,
           shop_name: createdGroup.shopName,
           shop_emoji: createdGroup.shopEmoji
         })
@@ -559,6 +605,13 @@ export const Dashboard: React.FC<DashboardProps> = () => {
         if (memberErr) {
           console.error('Failed to insert group_member in Supabase:', memberErr)
         }
+
+        // Broadcast to Realtime peers
+        client.channel('realtime_shops_and_groups').send({
+          type: 'broadcast',
+          event: 'GROUP_UPDATED',
+          payload: { group: createdGroup }
+        }).catch(() => {})
       } catch (err) {
         console.error('Supabase group creation error:', err)
       }
@@ -715,83 +768,15 @@ export const Dashboard: React.FC<DashboardProps> = () => {
     setTimeout(() => setCopyNotice(null), 3000)
   }
 
-  // Handle add new shop
-  const handleAddShop = (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!newShopName.trim()) return
-    const createdShop: Shop = {
-      id: `shop-${Date.now()}`,
-      name: newShopName.trim(),
-      location: newShopLocation.trim() || 'Near Office',
-      specialty: newShopSpecialty.trim() || 'Tea & Snacks',
-      rating: 4.8,
-      emoji: newShopEmoji || '☕'
-    }
 
-    if (supabase) {
-      const client = supabase
-      client.from('shops').insert({
-        id: createdShop.id,
-        name: createdShop.name,
-        location: createdShop.location,
-        specialty: createdShop.specialty,
-        rating: createdShop.rating,
-        emoji: createdShop.emoji
-      }).then(() => {}, (e: any) => console.warn(e))
+  // Session menu items for this break
+  const filteredMenuItems = useMemo(() => {
+    if (activeSession?.shopId) {
+      const shopItems = menuItems.filter(item => item.shopId === activeSession.shopId)
+      if (shopItems.length > 0) return shopItems
     }
-
-    setShops(prev => [createdShop, ...prev])
-    setShowAddShopModal(false)
-    setNewShopName('')
-    setNewShopLocation('')
-    setNewShopSpecialty('')
-    setCopyNotice(`Added ${createdShop.name} to shops!`)
-    setTimeout(() => setCopyNotice(null), 3000)
-  }
-
-  // Handle delete shop
-  const handleDeleteShop = (shopId: string, shopName: string, e?: React.MouseEvent) => {
-    if (e) {
-      e.stopPropagation()
-      e.preventDefault()
-    }
-
-    if (supabase) {
-      const client = supabase
-      client
-        .from('menu_items')
-        .delete()
-        .eq('shop_id', shopId)
-        .then(() => {
-          client
-            .from('shops')
-            .delete()
-            .eq('id', shopId)
-            .then(() => {}, (err: any) => console.warn('Supabase delete shop err:', err))
-        }, () => {
-          client
-            .from('shops')
-            .delete()
-            .eq('id', shopId)
-            .then(() => {}, (err: any) => console.warn('Supabase delete shop err:', err))
-        })
-    }
-
-    setShops(prev => prev.filter(s => s.id !== shopId))
-    if (removeMenuItemsForShop) {
-      removeMenuItemsForShop(shopId)
-    }
-    if (viewingShopItems?.id === shopId) {
-      setViewingShopItems(null)
-    }
-    setCopyNotice(`Deleted shop "${shopName}"`)
-    setTimeout(() => setCopyNotice(null), 3000)
-  }
-
-  // Filtered menu
-  const filteredMenuItems = selectedCategory === 'all'
-    ? menuItems
-    : menuItems.filter(item => item.category === selectedCategory)
+    return menuItems
+  }, [activeSession?.shopId, menuItems])
 
   // Shop breakdown
   const shopItems = getShopItemSummary()
@@ -802,16 +787,43 @@ export const Dashboard: React.FC<DashboardProps> = () => {
   const unpaidMembers = activeSession?.expenses.filter(e => !e.isPaid && e.memberId !== activeSession.payerId && e.total > 0) || []
   const paidMembers = activeSession?.expenses.filter(e => e.isPaid && e.memberId !== activeSession.payerId && e.total > 0) || []
 
-  // Past sessions total spent
-  const totalHistorySpent = pastSessions.reduce((sum, s) => sum + s.totalAmount, 0)
+  // Target live break to feature on Dashboard top banner (for user's groups)
+  const featuredActiveBreak = useMemo(() => {
+    if (activeGroup?.id) {
+      const gBreak = getActiveSessionForGroup(activeGroup.id)
+      if (gBreak && gBreak.status === 'active') return gBreak
+    }
+    const foundInAny = activeSessions.find(s => s.status === 'active' && groups.some(g => g.id === s.groupId))
+    if (foundInAny) return foundInAny
+    if (activeSession && activeSession.status === 'active' && groups.some(g => g.id === activeSession.groupId)) {
+      return activeSession
+    }
+    return null
+  }, [activeGroup?.id, getActiveSessionForGroup, activeSessions, groups, activeSession])
 
   // Security check: Only display active session if user is actually in that group
   const isUserInActiveSessionGroup = Boolean(
     activeSession && groups.some(g => g.id === activeSession.groupId)
   )
 
+  // Count past sessions belonging to the user's groups for navigation badge
+  const userPastSessionsCount = useMemo(() => {
+    if (!user) return 0
+    const userGrpIds = new Set(groups.map(g => g.id))
+    const userGrpNames = new Set(groups.map(g => g.name.toLowerCase().trim()))
+
+    return pastSessions.filter(s => {
+      if (s.groupId && userGrpIds.has(s.groupId)) return true
+      if (s.groupName && userGrpNames.has(s.groupName.toLowerCase().trim())) return true
+      if (!s.groupId && !s.groupName) {
+        return s.payerId === user.id || s.creatorId === user.id || s.expenses?.some(e => e.memberId === user.id)
+      }
+      return false
+    }).length
+  }, [pastSessions, groups, user])
+
   return (
-    <div className="flex flex-col min-h-[calc(100vh-3.5rem)] justify-between">
+    <div className="flex flex-col min-h-[calc(100vh-4rem)] justify-between">
       
       {/* Scrollable Main Content */}
       <div className="w-full px-3.5 py-4 pb-20 space-y-4 flex-1">
@@ -830,7 +842,7 @@ export const Dashboard: React.FC<DashboardProps> = () => {
         )}
 
         {/* -------------------- 1. DETAILS TAB (Live Break & Expense Tracking) -------------------- */}
-        {(activeTab === 'details' || activeTab === 'home') && (
+        {activeTab === 'details' && (
           <div className="space-y-4">
             {/* Top Bar with Break Status */}
             <div className="p-3.5 rounded-2xl bg-white dark:bg-stone-900 border border-stone-200/80 dark:border-stone-800 shadow-2xs flex items-center justify-between">
@@ -920,7 +932,7 @@ export const Dashboard: React.FC<DashboardProps> = () => {
                       </button>
 
                       <button
-                        onClick={settleActiveSession}
+                        onClick={() => settleActiveSession()}
                         id="settle-bill-btn"
                         className="px-2.5 py-1.5 rounded-xl bg-emerald-500 hover:bg-emerald-600 active:scale-95 text-white font-semibold text-xs shadow-xs flex items-center gap-1 cursor-pointer"
                       >
@@ -1059,7 +1071,7 @@ export const Dashboard: React.FC<DashboardProps> = () => {
                                     ₹{item.price * item.quantity}
                                   </span>
                                   <button
-                                    onClick={() => removeItemFromMember(expense.memberId, item.menuItemId)}
+                                    onClick={() => removeItemFromMember(expense.memberId, item.id || item.menuItemId || item.name, activeSession.id)}
                                     className="w-3.5 h-3.5 rounded hover:bg-stone-100 dark:hover:bg-stone-700 flex items-center justify-center text-stone-400 hover:text-rose-600 ml-0.5 cursor-pointer"
                                   >
                                     <Minus className="w-2.5 h-2.5" />
@@ -1093,23 +1105,6 @@ export const Dashboard: React.FC<DashboardProps> = () => {
                       <Plus className="w-3 h-3" />
                       <span>Custom</span>
                     </button>
-                  </div>
-
-                  {/* Menu Pills */}
-                  <div className="flex items-center gap-1 overflow-x-auto pb-1 text-[11px] font-semibold">
-                    {['all', 'tea', 'coffee', 'snacks', 'quick-bites'].map(cat => (
-                      <button
-                        key={cat}
-                        onClick={() => setSelectedCategory(cat)}
-                        className={`px-2 py-0.5 rounded-lg capitalize whitespace-nowrap cursor-pointer transition-all ${
-                          selectedCategory === cat
-                            ? 'bg-amber-600 text-white'
-                            : 'bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-400'
-                        }`}
-                      >
-                        {cat}
-                      </button>
-                    ))}
                   </div>
 
                   {/* Menu Grid */}
@@ -1278,8 +1273,8 @@ export const Dashboard: React.FC<DashboardProps> = () => {
           </div>
         )}
 
-        {/* -------------------- 2. GROUPS TAB -------------------- */}
-        {activeTab === 'groups' && (
+        {/* -------------------- 2. HOME / GROUPS TAB -------------------- */}
+        {(activeTab === 'home' || activeTab === 'groups') && (
           viewingBreakGroup ? (
             /* DEDICATED SEPARATE BREAK PAGE - ZERO GROUP DETAILS SHOWN HERE */
             <TeaBreakPage
@@ -1335,49 +1330,139 @@ export const Dashboard: React.FC<DashboardProps> = () => {
             />
           ) : (
           <div className="space-y-4 animate-in fade-in">
-            {/* Header when groups exist */}
-            {groups.length > 0 && (
-              <div className="p-3.5 rounded-2xl bg-white dark:bg-stone-900 border border-stone-200/80 dark:border-stone-800 shadow-2xs flex items-center justify-between">
-                <div>
-                  <h2 className="font-heading font-bold text-base text-stone-900 dark:text-stone-100 flex items-center gap-1.5">
-                    <Users className="w-4 h-4 text-amber-600" />
-                    <span>Office Groups</span>
-                    <span className="ml-1 px-1.5 py-0.2 rounded-full text-[10px] font-bold bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300">
-                      {groups.length}
-                    </span>
+            {/* Welcome User Profile Banner */}
+            <div className="p-4 rounded-2xl bg-gradient-to-r from-amber-600 via-orange-600 to-amber-700 text-white shadow-md flex items-center justify-between gap-3">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="w-10 h-10 rounded-2xl bg-white/20 backdrop-blur-xs text-white font-extrabold text-base flex items-center justify-center shrink-0 border border-white/30 shadow-2xs">
+                  {user?.avatar || user?.name?.slice(0, 2).toUpperCase() || '☕'}
+                </div>
+                <div className="min-w-0">
+                  <div className="text-[10px] uppercase font-bold tracking-wider text-amber-200">
+                    ChaiBreak Hub
+                  </div>
+                  <h2 className="font-heading font-extrabold text-base text-white truncate">
+                    Welcome, {user?.name || 'Friend'}! ☕
                   </h2>
-                  <p className="text-[11px] text-stone-400">
-                    Your teams &amp; tea break clubs
-                  </p>
+                </div>
+              </div>
+
+              {user && (
+                <button
+                  type="button"
+                  onClick={() => handleCopy(user.userCode || user.id, 'My Unique ID')}
+                  className="px-2.5 py-1.5 rounded-xl bg-white/20 hover:bg-white/30 text-white text-[11px] font-bold flex items-center gap-1.5 backdrop-blur-xs cursor-pointer active:scale-95 transition-all shrink-0"
+                  title="Click to copy your unique ID for colleagues to add you"
+                >
+                  <KeyRound className="w-3.5 h-3.5 text-amber-200" />
+                  <span>ID: {user.userCode || user.id}</span>
+                </button>
+              )}
+            </div>
+
+            {/* Live Break Quick Access Banner (if any) */}
+            {featuredActiveBreak && (
+              <div className="p-3.5 rounded-2xl bg-gradient-to-r from-emerald-500/15 via-teal-500/10 to-amber-500/10 border border-emerald-500/40 shadow-xs flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping inline-block" />
+                    <span className="text-[10px] uppercase font-bold tracking-wider text-emerald-700 dark:text-emerald-400">
+                      Live Tea Break in Progress
+                    </span>
+                  </div>
+                  <div className="font-bold text-xs text-stone-900 dark:text-stone-100 truncate mt-0.5">
+                    {featuredActiveBreak.title}
+                  </div>
+                  <div className="text-[10px] text-stone-500 dark:text-stone-400 truncate">
+                    📍 {featuredActiveBreak.shopName} • Total ₹{featuredActiveBreak.totalAmount}
+                  </div>
                 </div>
 
-                <div className="flex items-center gap-1.5">
-                  <button
-                    onClick={() => {
-                      setJoinGroupIdInput('')
-                      setJoinGroupError(null)
-                      setShowJoinGroupModal(true)
-                    }}
-                    id="join-group-header-btn"
-                    className="px-2.5 py-1.5 rounded-xl font-semibold text-xs border border-stone-200 dark:border-stone-700 hover:border-amber-500 text-stone-700 dark:text-stone-300 hover:text-amber-700 dark:hover:text-amber-400 bg-stone-50 dark:bg-stone-800 shadow-2xs cursor-pointer flex items-center gap-1 active:scale-95 transition-all"
-                  >
-                    <KeyRound className="w-3.5 h-3.5 text-amber-600" />
-                    <span>Join</span>
-                  </button>
-
-                  <button
-                    onClick={() => setShowCreateGroupModal(true)}
-                    id="create-group-header-btn"
-                    className="px-2.5 py-1.5 rounded-xl font-semibold text-xs bg-amber-600 hover:bg-amber-700 text-white shadow-xs cursor-pointer flex items-center gap-1 active:scale-95 transition-all"
-                  >
-                    <Plus className="w-3.5 h-3.5" />
-                    <span>Create</span>
-                  </button>
-                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const targetGroup = groups.find(g => g.id === featuredActiveBreak.groupId) || activeGroup
+                    if (targetGroup) {
+                      setViewingGroupId(null)
+                      setViewingBreakGroupId(targetGroup.id)
+                    }
+                  }}
+                  className="px-3 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-bold text-xs shadow-sm cursor-pointer active:scale-95 transition-all flex items-center gap-1 shrink-0"
+                >
+                  <Coffee className="w-3.5 h-3.5" />
+                  <span>Enter Break ☕</span>
+                </button>
               </div>
             )}
 
-            {/* Loading or Empty State: If groups are fetching or none found */}
+            {/* Search Bar & Action Buttons */}
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <div className="relative flex-1">
+                  <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-stone-400 pointer-events-none" />
+                  <input
+                    type="text"
+                    value={groupSearchQuery}
+                    onChange={e => setGroupSearchQuery(e.target.value)}
+                    placeholder="Search groups by name, tapri or ID..."
+                    className="w-full pl-9 pr-8 py-2.5 rounded-xl border border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-900 text-xs text-stone-900 dark:text-stone-100 placeholder:text-stone-400 focus:outline-none focus:ring-2 focus:ring-amber-500 shadow-2xs"
+                  />
+                  {groupSearchQuery && (
+                    <button
+                      type="button"
+                      onClick={() => setGroupSearchQuery('')}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-stone-400 hover:text-stone-600 p-0.5"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setJoinGroupIdInput('')
+                    setJoinGroupError(null)
+                    setShowJoinGroupModal(true)
+                  }}
+                  id="join-group-search-btn"
+                  className="px-3 py-2.5 rounded-xl border border-stone-200 dark:border-stone-700 hover:border-amber-500 text-stone-700 dark:text-stone-300 hover:text-amber-700 dark:hover:text-amber-400 bg-white dark:bg-stone-900 shadow-2xs cursor-pointer flex items-center gap-1 active:scale-95 transition-all text-xs font-semibold shrink-0"
+                  title="Join Group with Group ID"
+                >
+                  <KeyRound className="w-3.5 h-3.5 text-amber-600" />
+                  <span>Join</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setShowCreateGroupModal(true)}
+                  id="create-group-search-btn"
+                  className="px-3.5 py-2.5 rounded-xl font-bold text-xs bg-amber-600 hover:bg-amber-700 text-white shadow-xs cursor-pointer flex items-center gap-1 active:scale-95 transition-all shrink-0"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Create</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Groups Header */}
+            {groups.length > 0 && (
+              <div className="flex items-center justify-between text-xs font-bold text-stone-700 dark:text-stone-300 px-0.5 pt-1">
+                <span className="flex items-center gap-1.5">
+                  <Users className="w-3.5 h-3.5 text-amber-600" />
+                  <span>My Tea Groups</span>
+                  <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300">
+                    {filteredGroups.length}
+                  </span>
+                </span>
+                {groupSearchQuery && (
+                  <span className="text-[11px] font-normal text-stone-400">
+                    Matching "{groupSearchQuery}"
+                  </span>
+                )}
+              </div>
+            )}
+
+            {/* Loading / Empty / Filtered List */}
             {isLoadingGroups && groups.length === 0 ? (
               <GroupCardSkeleton count={3} />
             ) : groups.length === 0 ? (
@@ -1387,10 +1472,10 @@ export const Dashboard: React.FC<DashboardProps> = () => {
                 </div>
                 <div className="space-y-1.5">
                   <h3 className="font-heading font-extrabold text-base text-stone-900 dark:text-stone-100">
-                    No Groups Found
+                    No Groups Joined Yet
                   </h3>
                   <p className="text-xs text-stone-500 dark:text-stone-400 max-w-xs mx-auto leading-relaxed">
-                    You haven't joined or created any groups yet. Create a group or join using a Group ID from your colleague!
+                    Create a group with your favorite tea stall, or enter a Group ID from your colleague to join.
                   </p>
                 </div>
                 <div className="pt-2 flex flex-col sm:flex-row items-center justify-center gap-2">
@@ -1417,17 +1502,31 @@ export const Dashboard: React.FC<DashboardProps> = () => {
                   </button>
                 </div>
               </div>
+            ) : filteredGroups.length === 0 ? (
+              <div className="p-6 text-center rounded-2xl bg-white dark:bg-stone-900 border border-dashed border-stone-200 dark:border-stone-800 space-y-2">
+                <p className="text-xs text-stone-500 dark:text-stone-400">
+                  No groups found matching "{groupSearchQuery}".
+                </p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setJoinGroupIdInput(groupSearchQuery.toUpperCase())
+                    setJoinGroupError(null)
+                    setShowJoinGroupModal(true)
+                  }}
+                  className="text-xs font-bold text-amber-600 hover:underline cursor-pointer inline-flex items-center gap-1"
+                >
+                  <KeyRound className="w-3 h-3" />
+                  <span>Try joining "{groupSearchQuery.toUpperCase()}" with Group ID →</span>
+                </button>
+              </div>
             ) : (
-              /* Groups List */
+              /* Groups Cards */
               <div className="space-y-3">
-                {groups.map(group => {
+                {filteredGroups.map(group => {
                   const isActive = group.id === activeGroupId || (!activeGroupId && group === groups[0])
-                  const isGroupBreakActive = Boolean(
-                    activeSession && (
-                      activeSession.groupId === group.id ||
-                      (!activeSession.groupId && (activeSession.shopName === group.shopName || group.id === 'group-eng-fl3'))
-                    )
-                  )
+                  const groupActiveBreak = (group.id ? getActiveSessionForGroup(group.id) : null) || (activeSession?.groupId === group.id ? activeSession : null)
+                  const isGroupBreakActive = Boolean(groupActiveBreak && groupActiveBreak.status === 'active')
                   return (
                     <div
                       key={group.id}
@@ -1532,8 +1631,8 @@ export const Dashboard: React.FC<DashboardProps> = () => {
                             }}
                             className="px-2 py-1 rounded-lg bg-stone-100 dark:bg-stone-800 hover:bg-stone-200 dark:hover:bg-stone-700 text-stone-700 dark:text-stone-300 font-medium text-[11px] flex items-center gap-1 cursor-pointer transition-colors"
                           >
-                            <Users className="w-3 h-3 text-amber-600" />
-                            <span>Group Info</span>
+                            <Store className="w-3 h-3 text-amber-600" />
+                            <span>View Group &amp; Menu →</span>
                           </button>
 
                           <button
@@ -1579,168 +1678,9 @@ export const Dashboard: React.FC<DashboardProps> = () => {
           )
         )}
 
-        {/* -------------------- 3. SHOPS TAB (with New Page for items) -------------------- */}
-        {activeTab === 'shops' && (
-          viewingShopItems ? (
-            /* Dedicated New Page for Shop Menu Items */
-            <ShopItemsPage
-              shop={viewingShopItems}
-              onBack={() => setViewingShopItems(null)}
-              onDeleteShop={(shop) => handleDeleteShop(shop.id, shop.name)}
-            />
-          ) : (
-            /* Shops List */
-            <div className="space-y-4 animate-in fade-in">
-              {/* Header */}
-              <div className="p-3.5 rounded-2xl bg-white dark:bg-stone-900 border border-stone-200/80 dark:border-stone-800 shadow-2xs flex items-center justify-between">
-                <h2 className="font-heading font-bold text-base text-stone-900 dark:text-stone-100 flex items-center gap-1.5">
-                  <Store className="w-4 h-4 text-amber-600" />
-                  <span>Shops</span>
-                </h2>
-
-                <button
-                  onClick={() => setShowAddShopModal(true)}
-                  className="px-2.5 py-1.5 rounded-xl font-semibold text-xs bg-amber-600 hover:bg-amber-700 text-white shadow-xs cursor-pointer flex items-center gap-1"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  <span>Shop</span>
-                </button>
-              </div>
-
-              {/* Shop Cards */}
-              {isLoadingShops && shops.length === 0 ? (
-                <ShopCardSkeleton count={3} />
-              ) : shops.length === 0 ? (
-                <div className="p-8 text-center bg-white dark:bg-stone-900 rounded-2xl border border-dashed border-stone-200 dark:border-stone-800 text-stone-500 text-xs space-y-3">
-                  <span className="text-3xl block">🏪</span>
-                  <p className="font-semibold text-stone-700 dark:text-stone-300">No shops available</p>
-                  <p className="text-[11px] text-stone-400">Add your favorite chai tapri or cafe to get started.</p>
-                  <button
-                    onClick={() => setShowAddShopModal(true)}
-                    className="px-3 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs cursor-pointer inline-flex items-center gap-1 shadow-xs"
-                  >
-                    <Plus className="w-3.5 h-3.5" />
-                    <span>Add Shop</span>
-                  </button>
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {shops.map(shop => (
-                    <div
-                      key={shop.id}
-                      id={`shop-card-${shop.id}`}
-                      onClick={() => setViewingShopItems(shop)}
-                      className="p-4 rounded-2xl bg-white dark:bg-stone-900 border border-stone-200/80 dark:border-stone-800 shadow-2xs space-y-3 hover:border-amber-400 dark:hover:border-amber-500/80 hover:shadow-md transition-all cursor-pointer group"
-                      role="button"
-                      tabIndex={0}
-                    >
-                      <div className="flex items-start justify-between">
-                        <div className="flex items-start gap-3">
-                          <span className="text-3xl p-2.5 rounded-2xl bg-amber-50 dark:bg-amber-950/60 border border-amber-100 dark:border-amber-900/40 group-hover:scale-105 transition-transform">
-                            {shop.emoji}
-                          </span>
-                          <div>
-                            <div className="flex items-center gap-2">
-                              <h3 className="font-heading font-bold text-sm text-stone-900 dark:text-stone-100 group-hover:text-amber-800 dark:group-hover:text-amber-300 transition-colors">
-                                {shop.name}
-                              </h3>
-                              <span className="px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300 font-bold text-[10px]">
-                                {getMenuItemsForShop(shop.id).length} items
-                              </span>
-                            </div>
-                            <div className="flex items-center gap-1 text-[11px] text-stone-500 dark:text-stone-400 mt-0.5">
-                              <MapPin className="w-3 h-3 text-stone-400 shrink-0" />
-                              <span>{shop.location}</span>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="pt-2 border-t border-stone-100 dark:border-stone-800 flex items-center justify-between text-xs">
-                        <span className="text-[11px] text-stone-500 truncate max-w-[190px]">
-                          Specialty: <strong className="text-stone-700 dark:text-stone-300">{shop.specialty}</strong>
-                        </span>
-
-                        <span className="text-[11px] font-bold text-amber-700 dark:text-amber-400 group-hover:translate-x-0.5 transition-transform flex items-center gap-0.5">
-                          <span>View Menu</span>
-                          <ArrowRight className="w-3 h-3" />
-                        </span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )
-        )}
-
-        {/* -------------------- 4. HISTORY TAB -------------------- */}
+        {/* -------------------- 4. REDESIGNED HISTORY TAB -------------------- */}
         {activeTab === 'history' && (
-          <div className="space-y-4 animate-in fade-in">
-            {/* Header */}
-            <div className="p-3.5 rounded-2xl bg-white dark:bg-stone-900 border border-stone-200/80 dark:border-stone-800 shadow-2xs flex items-center justify-between">
-              <div>
-                <h2 className="font-heading font-bold text-base text-stone-900 dark:text-stone-100 flex items-center gap-1.5">
-                  <Receipt className="w-4 h-4 text-emerald-600" />
-                  <span>Bills History</span>
-                </h2>
-                <p className="text-[11px] text-stone-400">
-                  Archived tea breaks &amp; payments
-                </p>
-              </div>
-
-              <span className="px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 font-bold text-xs">
-                Total: ₹{totalHistorySpent}
-              </span>
-            </div>
-
-            {/* List */}
-            {pastSessions.length === 0 ? (
-              <div className="p-8 text-center bg-white dark:bg-stone-900 rounded-2xl border border-stone-200 dark:border-stone-800 text-stone-400 text-xs">
-                No past settled sessions yet. Settle an active session to see it archived here!
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {pastSessions.map(sess => (
-                  <div
-                    key={sess.id}
-                    className="p-3.5 rounded-2xl bg-white dark:bg-stone-900 border border-stone-200 dark:border-stone-800 shadow-2xs space-y-2.5"
-                  >
-                    <div className="flex items-start justify-between">
-                      <div>
-                        <h3 className="font-heading font-bold text-stone-900 dark:text-stone-100 text-sm">
-                          {sess.title}
-                        </h3>
-                        <p className="text-[11px] text-stone-400">
-                          {sess.shopName} • {sess.createdAt}
-                        </p>
-                      </div>
-
-                      <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 font-bold text-xs">
-                        ₹{sess.totalAmount}
-                      </span>
-                    </div>
-
-                    <div className="pt-2 border-t border-stone-100 dark:border-stone-800 text-[11px]">
-                      <div className="text-stone-500 mb-1">
-                        Paid by <strong className="text-stone-800 dark:text-stone-200">{sess.payerName}</strong>:
-                      </div>
-                      <div className="flex flex-wrap gap-1">
-                        {sess.expenses.map(e => (
-                          <span
-                            key={e.memberId}
-                            className="px-1.5 py-0.5 rounded bg-stone-100 dark:bg-stone-800 text-stone-700 dark:text-stone-300 text-[10px]"
-                          >
-                            {e.memberName}: ₹{e.total}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
+          <HistoryPage groups={groups} currentUser={user} />
         )}
 
       </div>
@@ -1749,12 +1689,11 @@ export const Dashboard: React.FC<DashboardProps> = () => {
       <BottomNav
         activeTab={activeTab}
         onChangeTab={(tab) => {
-          setViewingShopItems(null)
           setViewingGroupId(null)
           setViewingBreakGroupId(null)
           setActiveTab(tab)
         }}
-        historyCount={pastSessions.length}
+        historyCount={userPastSessionsCount}
       />
 
       {/* -------------------- MODALS -------------------- */}
@@ -1783,7 +1722,8 @@ export const Dashboard: React.FC<DashboardProps> = () => {
               </button>
             </div>
 
-            <form onSubmit={handleCreateGroup} className="space-y-3 text-left">
+            <form onSubmit={handleCreateGroup} className="space-y-3.5 text-left">
+              {/* Group Name */}
               <div className="space-y-1">
                 <label className="text-xs font-semibold text-stone-700 dark:text-stone-300">
                   Group Name <span className="text-amber-600">*</span>
@@ -1798,70 +1738,74 @@ export const Dashboard: React.FC<DashboardProps> = () => {
                 />
               </div>
 
-              {/* Option to select shop from the shop page - single selection only */}
-              <div className="space-y-1.5">
+              {/* Shop / Tapri Name */}
+              <div className="space-y-1">
                 <div className="flex items-center justify-between">
                   <label className="text-xs font-semibold text-stone-700 dark:text-stone-300">
-                    Select Shop <span className="text-amber-600">*</span>
+                    Shop / Tapri Name <span className="text-amber-600">*</span>
                   </label>
                   <span className="text-[10px] text-stone-400 font-medium">
-                    (Select 1 shop from Shops page)
+                    (Linked directly to this group)
                   </span>
                 </div>
-
-                {shops.length > 0 ? (
-                  <div className="space-y-1.5 max-h-44 overflow-y-auto pr-0.5">
-                    {shops.map(shop => {
-                      const isSelected = (selectedShopId || shops[0]?.id) === shop.id
-                      return (
-                        <button
-                          type="button"
-                          key={shop.id}
-                          onClick={() => setSelectedShopId(shop.id)}
-                          className={`w-full p-2.5 rounded-xl border text-left flex items-center justify-between transition-all cursor-pointer ${
-                            isSelected
-                              ? 'border-amber-600 bg-amber-50/80 dark:bg-amber-950/40 ring-1 ring-amber-500 shadow-2xs'
-                              : 'border-stone-200 dark:border-stone-800 bg-stone-50/50 dark:bg-stone-800/40 hover:bg-stone-100 dark:hover:bg-stone-800'
-                          }`}
-                        >
-                          <div className="flex items-center gap-2.5 min-w-0">
-                            <span className="text-xl shrink-0">{shop.emoji || '🏪'}</span>
-                            <div className="truncate">
-                              <div className="font-semibold text-xs text-stone-900 dark:text-stone-100 truncate flex items-center gap-1.5">
-                                <span>{shop.name}</span>
-                                {isSelected && (
-                                  <span className="text-[9px] font-bold px-1.5 py-0.2 rounded-full bg-amber-600 text-white">
-                                    Selected
-                                  </span>
-                                )}
-                              </div>
-                              <div className="text-[10px] text-stone-500 dark:text-stone-400 truncate">
-                                {shop.location}
-                              </div>
-                            </div>
-                          </div>
-
-                          <div
-                            className={`w-4 h-4 rounded-full border flex items-center justify-center shrink-0 ml-2 transition-all ${
-                              isSelected
-                                ? 'border-amber-600 bg-amber-600 text-white'
-                                : 'border-stone-300 dark:border-stone-600'
-                            }`}
-                          >
-                            {isSelected && <CheckCircle2 className="w-3 h-3 text-white" />}
-                          </div>
-                        </button>
-                      )
-                    })}
-                  </div>
-                ) : (
-                  <div className="p-3 text-center text-xs text-stone-400 border border-dashed rounded-xl">
-                    No shops found in shops page
-                  </div>
-                )}
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Ramesh Tapri Point, Ground Floor Pantry"
+                  value={newGroupShopName}
+                  onChange={e => setNewGroupShopName(e.target.value)}
+                  className="w-full py-2 px-3 rounded-xl border border-stone-300 dark:border-stone-700 bg-stone-50 dark:bg-stone-800 text-xs text-stone-900 dark:text-stone-100 focus:outline-none focus:ring-1 focus:ring-amber-500"
+                />
               </div>
 
-              <div className="flex items-center justify-end gap-2 pt-2">
+              {/* Shop Emoji Picker */}
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-stone-700 dark:text-stone-300">
+                  Shop Icon
+                </label>
+                <div className="flex flex-wrap gap-1.5 pt-0.5">
+                  {['☕', '🍵', '🥟', '🍞', '🥪', '🥤', '🫓', '🍪'].map(emoji => (
+                    <button
+                      key={emoji}
+                      type="button"
+                      onClick={() => setNewGroupShopEmoji(emoji)}
+                      className={`w-8 h-8 rounded-lg text-sm flex items-center justify-center cursor-pointer transition-all ${
+                        newGroupShopEmoji === emoji
+                          ? 'bg-amber-600 text-white scale-110 shadow-xs ring-2 ring-amber-400'
+                          : 'bg-stone-100 dark:bg-stone-800 hover:bg-stone-200 dark:hover:bg-stone-700'
+                      }`}
+                    >
+                      {emoji}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Include Starter Menu Items Checkbox */}
+              <div className="p-2.5 rounded-xl bg-amber-50/60 dark:bg-amber-950/30 border border-amber-200/60 dark:border-amber-900/40 space-y-1">
+                <label className="flex items-start gap-2 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={includeStarterMenu}
+                    onChange={e => setIncludeStarterMenu(e.target.checked)}
+                    className="mt-0.5 rounded text-amber-600 focus:ring-amber-500 cursor-pointer"
+                  />
+                  <div className="text-left">
+                    <span className="text-xs font-semibold text-stone-800 dark:text-stone-200 block">
+                      Include standard tapri items
+                    </span>
+                    <span className="text-[10px] text-stone-500 dark:text-stone-400 block leading-tight">
+                      Pre-populates Chaya (₹12), Coffee (₹12), Samoza (₹12), Omlette (₹20), Porotta (₹12), Puffs (₹20), etc.
+                    </span>
+                  </div>
+                </label>
+              </div>
+
+              <p className="text-[10px] text-stone-400 italic">
+                💡 You can view, add custom items, or modify prices anytime in the Group page.
+              </p>
+
+              <div className="flex items-center justify-end gap-2 pt-1">
                 <button
                   type="button"
                   onClick={() => setShowCreateGroupModal(false)}
@@ -1959,101 +1903,6 @@ export const Dashboard: React.FC<DashboardProps> = () => {
         </div>
       )}
 
-      {/* Modal: Add Shop in Shops */}
-      {showAddShopModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-900/50 backdrop-blur-xs animate-in fade-in">
-          <div className="w-full max-w-sm bg-white dark:bg-stone-900 rounded-2xl shadow-2xl border border-stone-200 dark:border-stone-800 p-5 space-y-4">
-            <div className="flex items-center justify-between">
-              <h3 className="font-heading font-bold text-base text-stone-900 dark:text-stone-100">
-                Add Tea Stall or Shop 🏪
-              </h3>
-              <button
-                onClick={() => setShowAddShopModal(false)}
-                className="text-stone-400 hover:text-stone-600 cursor-pointer"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <form onSubmit={handleAddShop} className="space-y-3 text-left">
-              <div className="space-y-1">
-                <label className="text-xs font-semibold text-stone-700 dark:text-stone-300">
-                  Shop Name
-                </label>
-                <input
-                  type="text"
-                  required
-                  placeholder="e.g. Ramesh Tapri Point"
-                  value={newShopName}
-                  onChange={e => setNewShopName(e.target.value)}
-                  className="w-full py-2 px-3 rounded-xl border border-stone-300 dark:border-stone-700 bg-stone-50 dark:bg-stone-800 text-xs focus:outline-none"
-                />
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-xs font-semibold text-stone-700 dark:text-stone-300">
-                  Location
-                </label>
-                <input
-                  type="text"
-                  placeholder="e.g. Near Parking Lot Gate"
-                  value={newShopLocation}
-                  onChange={e => setNewShopLocation(e.target.value)}
-                  className="w-full py-2 px-3 rounded-xl border border-stone-300 dark:border-stone-700 bg-stone-50 dark:bg-stone-800 text-xs focus:outline-none"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-2">
-                <div className="space-y-1">
-                  <label className="text-xs font-semibold text-stone-700 dark:text-stone-300">
-                    Specialty
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="Cutting Chai"
-                    value={newShopSpecialty}
-                    onChange={e => setNewShopSpecialty(e.target.value)}
-                    className="w-full py-2 px-3 rounded-xl border border-stone-300 dark:border-stone-700 bg-stone-50 dark:bg-stone-800 text-xs focus:outline-none"
-                  />
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-xs font-semibold text-stone-700 dark:text-stone-300">
-                    Emoji
-                  </label>
-                  <select
-                    value={newShopEmoji}
-                    onChange={e => setNewShopEmoji(e.target.value)}
-                    className="w-full py-2 px-3 rounded-xl border border-stone-300 dark:border-stone-700 bg-stone-50 dark:bg-stone-800 text-xs focus:outline-none"
-                  >
-                    <option value="☕">☕ Chai</option>
-                    <option value="🍞">🍞 Bun Maska</option>
-                    <option value="🥟">🥟 Samosa</option>
-                    <option value="🥪">🥪 Sandwich</option>
-                    <option value="🥤">🥤 Cold Drink</option>
-                  </select>
-                </div>
-              </div>
-
-              <div className="flex items-center justify-end gap-2 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setShowAddShopModal(false)}
-                  className="px-3 py-1.5 rounded-lg text-xs font-semibold text-stone-600 hover:bg-stone-100 cursor-pointer"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-amber-600 hover:bg-amber-700 text-white cursor-pointer"
-                >
-                  Save Shop
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
 
       {/* Modal: Add Item to Menu */}
       {showAddItemModal && (

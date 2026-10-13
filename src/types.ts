@@ -45,6 +45,7 @@ export interface TeaSession {
   groupId?: string
   groupName?: string
   createdAt: string
+  rawCreatedAt?: string
   payerId: string
   payerName: string
   payerUpi?: string

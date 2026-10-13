@@ -59,93 +59,93 @@ export const DEFAULT_USERS: User[] = [
 
 export const DEFAULT_MENU: MenuItem[] = [
   {
-    id: 'item-masala-chai',
-    name: 'Kadak Masala Chai',
-    price: 15,
+    id: 'item-chaya',
+    name: 'Chaya',
+    price: 12,
     category: 'tea',
     emoji: '☕',
-    description: 'Fresh brewed ginger & cardamom spiced tea',
+    description: 'Hot naadan chaya',
     shopId: 'shop-chayakkada'
   },
   {
-    id: 'item-ginger-tea',
-    name: 'Adrak Ginger Chai',
-    price: 20,
-    category: 'tea',
-    emoji: '🍵',
-    description: 'Extra strong grated ginger chai',
-    shopId: 'shop-chayakkada'
-  },
-  {
-    id: 'item-elaichi-tea',
-    name: 'Elaichi Special Chai',
-    price: 20,
-    category: 'tea',
-    emoji: '🌿',
-    description: 'Fragrant cardamom infused tea',
-    shopId: 'shop-chayakkada'
-  },
-  {
-    id: 'item-filter-coffee',
-    name: 'Filter Coffee',
-    price: 25,
+    id: 'item-coffee',
+    name: 'Coffee',
+    price: 12,
     category: 'coffee',
     emoji: '☕',
-    description: 'Traditional hot frothy filter kaapi',
+    description: 'Hot filter coffee',
     shopId: 'shop-chayakkada'
   },
   {
-    id: 'item-samosa',
-    name: 'Crispy Samosa & Chutney',
-    price: 20,
+    id: 'item-samoza',
+    name: 'Samoza',
+    price: 12,
     category: 'snacks',
     emoji: '🥟',
-    description: 'Fresh piping hot aloo samosa with mint dip',
+    description: 'Crispy hot samoza',
     shopId: 'shop-chayakkada'
   },
   {
-    id: 'item-bun-maska',
-    name: 'Warm Bun Maska',
-    price: 35,
-    category: 'quick-bites',
-    emoji: '🍞',
-    description: 'Soft Irani bun with generous butter slab',
+    id: 'item-omlette',
+    name: 'Omlette',
+    price: 20,
+    category: 'snacks',
+    emoji: '🍳',
+    description: 'Fresh double egg omlette',
     shopId: 'shop-chayakkada'
   },
   {
-    id: 'item-sandwich',
-    name: 'Veg Grilled Sandwich',
-    price: 60,
-    category: 'quick-bites',
-    emoji: '🥪',
-    description: 'Loaded cheese & veggie toasted sandwich',
+    id: 'item-dosha',
+    name: 'Dosha',
+    price: 12,
+    category: 'snacks',
+    emoji: '🥞',
+    description: 'Hot crisp dosha',
     shopId: 'shop-chayakkada'
   },
   {
-    id: 'item-biscuits',
-    name: 'Chai Biscuits (2 pcs)',
+    id: 'item-porotta',
+    name: 'Porotta',
+    price: 12,
+    category: 'snacks',
+    emoji: '🫓',
+    description: 'Kerala layered porotta',
+    shopId: 'shop-chayakkada'
+  },
+  {
+    id: 'item-puzhungiya-motta',
+    name: 'Puzhungiya Motta',
     price: 10,
     category: 'snacks',
-    emoji: '🍪',
-    description: 'Crisp bakery butter biscuits to dip',
+    emoji: '🥚',
+    description: 'Boiled egg',
     shopId: 'shop-chayakkada'
   },
   {
-    id: 'item-vada',
-    name: 'Batata Vada Pav',
-    price: 25,
+    id: 'item-bulls-eye',
+    name: "Bull's Eye",
+    price: 10,
+    category: 'snacks',
+    emoji: '🍳',
+    description: 'Half-boiled egg bullseye',
+    shopId: 'shop-chayakkada'
+  },
+  {
+    id: 'item-puffs',
+    name: 'Puffs',
+    price: 20,
+    category: 'snacks',
+    emoji: '🥐',
+    description: 'Crispy puff',
+    shopId: 'shop-chayakkada'
+  },
+  {
+    id: 'item-parippvada',
+    name: 'Parippvada',
+    price: 10,
     category: 'snacks',
     emoji: '🧆',
-    description: 'Mumbai style spicy potato vada in pao',
-    shopId: 'shop-chayakkada'
-  },
-  {
-    id: 'item-cold-coffee',
-    name: 'Cold Coffee with Ice Cream',
-    price: 55,
-    category: 'drinks',
-    emoji: '🧋',
-    description: 'Thick creamy blended coffee',
+    description: 'Crunchy parippuvada',
     shopId: 'shop-chayakkada'
   }
 ]

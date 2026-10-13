@@ -14,12 +14,10 @@ interface NavItem {
 }
 
 export const BottomNav: React.FC<BottomNavProps> = ({ activeTab, onChangeTab, historyCount }) => {
-  // Tabs with 'home' changed to 'details' and position of 'shops' interchanged with it:
-  // 1. Shops (🏪), 2. Groups (👥), 3. Details (📋), 4. History (🧾)
+  // Primary 3 tabs: 1. Home (🏠), 2. Tea Break (☕), 3. History (🧾)
   const tabs: NavItem[] = [
-    { id: 'shops', label: 'Shops', emoji: '🏪' },
-    { id: 'groups', label: 'Groups', emoji: '👥' },
-    { id: 'details', label: 'Details', emoji: '📋' },
+    { id: 'home', label: 'Home', emoji: '🏠' },
+    { id: 'details', label: 'Tea Break', emoji: '☕' },
     { id: 'history', label: 'History', emoji: '🧾' }
   ]
 
@@ -32,7 +30,9 @@ export const BottomNav: React.FC<BottomNavProps> = ({ activeTab, onChangeTab, hi
         className="pointer-events-auto w-full max-w-[390px] mx-auto h-[62px] rounded-2xl backdrop-blur-xl bg-white/92 dark:bg-stone-900/92 border border-stone-200/90 dark:border-stone-800/90 shadow-xl shadow-stone-950/10 dark:shadow-black/50 flex items-center justify-around p-1.5 transition-all"
       >
         {tabs.map(tab => {
-          const isActive = activeTab === tab.id || (tab.id === 'details' && activeTab === 'home')
+          const isActive =
+            activeTab === tab.id ||
+            (tab.id === 'home' && (activeTab === 'groups' || activeTab === 'shops'))
 
           return (
             <button

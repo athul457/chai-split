@@ -7,20 +7,24 @@ import {
   Coffee,
   Copy,
   Crown,
+  Edit2,
   Flame,
   LogOut,
+  Plus,
+  Receipt,
   ShieldAlert,
   Trash2,
   UserPlus,
   Users,
   X
 } from 'lucide-react'
-import React, { useState } from 'react'
+import React, { useState, useMemo } from 'react'
 import { useExpense } from '../context/ExpenseContext'
 import { supabase } from '../lib/supabase'
 import { ChaiLoader } from '../components/ChaiLoader'
-import type { Group, User } from '../types'
+import type { Group, User, MenuItem } from '../types'
 import { TeaBreakPage } from './TeaBreakPage'
+import { HistoryPage } from './HistoryPage'
 
 interface GroupDetailsPageProps {
   group: Group
@@ -43,12 +47,18 @@ export const GroupDetailsPage: React.FC<GroupDetailsPageProps> = ({
 }) => {
   const {
     activeSession,
-    addNewSession
+    getActiveSessionForGroup,
+    addNewSession,
+    menuItems,
+    addCustomMenuItem,
+    updateMenuItemPrice,
+    deleteMenuItem
   } = useExpense()
 
   // Navigation states
   const [showMembersPage, setShowMembersPage] = useState(false)
   const [showTeaBreakView, setShowTeaBreakView] = useState(false)
+  const [showGroupHistory, setShowGroupHistory] = useState(false)
 
   // Modals & form states
   const [showAddUserModal, setShowAddUserModal] = useState(false)
@@ -59,6 +69,60 @@ export const GroupDetailsPage: React.FC<GroupDetailsPageProps> = ({
   const [showExitConfirm, setShowExitConfirm] = useState(false)
   const [breakTitleInput, setBreakTitleInput] = useState(`${group.name} Chai Break ☕`)
   const [isStartingBreak, setIsStartingBreak] = useState(false)
+
+  // Shop Menu Items State for this group
+  const effectiveShopId = group.shopId || `shop-${group.id}`
+  const [showAddItemModal, setShowAddItemModal] = useState(false)
+  const [newItemName, setNewItemName] = useState('')
+  const [newItemPrice, setNewItemPrice] = useState('15')
+  const [editingItem, setEditingItem] = useState<MenuItem | null>(null)
+  const [editPriceInput, setEditPriceInput] = useState('')
+  const [itemToDelete, setItemToDelete] = useState<MenuItem | null>(null)
+  const [isDeletingItem, setIsDeletingItem] = useState(false)
+
+  const groupShopItems = useMemo(() => {
+    const targetShopId = group.shopId || `shop-${group.id}`
+    return menuItems.filter(i => i.shopId === targetShopId)
+  }, [group.shopId, group.id, menuItems])
+
+  const handleAddItem = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!newItemName.trim()) return
+    const priceNum = Math.max(0, Math.round(parseFloat(newItemPrice) || 15))
+    await addCustomMenuItem(newItemName.trim(), priceNum, '☕', 'tea', effectiveShopId)
+    setNewItemName('')
+    setNewItemPrice('15')
+    setShowAddItemModal(false)
+    showToast(`Added "${newItemName.trim()}" (₹${priceNum}) to shop menu!`)
+  }
+
+  const handleSaveEditPrice = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!editingItem) return
+    const priceNum = Math.max(0, Math.round(parseFloat(editPriceInput) || 15))
+    await updateMenuItemPrice(editingItem.id, priceNum)
+    setEditingItem(null)
+    showToast(`Updated "${editingItem.name}" price to ₹${priceNum}!`)
+  }
+
+  const handleConfirmDeleteItem = async () => {
+    if (!itemToDelete || isDeletingItem) return
+    setIsDeletingItem(true)
+    const itemName = itemToDelete.name
+    try {
+      const success = await deleteMenuItem(itemToDelete.id)
+      if (success) {
+        showToast(`Removed "${itemName}" from shop menu`)
+      } else {
+        showToast(`Could not remove "${itemName}". Please try again.`)
+      }
+    } catch {
+      showToast(`Error removing "${itemName}"`)
+    } finally {
+      setIsDeletingItem(false)
+      setItemToDelete(null)
+    }
+  }
 
   const cleanInput = memberUniqueIdInput.trim()
   const matchedUser = cleanInput
@@ -85,20 +149,16 @@ export const GroupDetailsPage: React.FC<GroupDetailsPageProps> = ({
   const effectiveAdminId = group.adminId || group.members[0]?.id || currentUser?.id
   const isAdmin = currentUser?.id === effectiveAdminId
 
-  // Determine if there is an active session for this group
-  const isGroupBreakActive = Boolean(
-    activeSession && (
-      activeSession.groupId === group.id ||
-      (!activeSession.groupId && (activeSession.shopName === group.shopName || group.id === 'group-eng-fl3'))
-    )
-  )
+  // Determine if there is an active session specifically for this group
+  const groupActiveSession = (group?.id ? getActiveSessionForGroup(group.id) : null) || (activeSession?.groupId === group.id ? activeSession : null)
+  const isGroupBreakActive = Boolean(groupActiveSession && groupActiveSession.status === 'active')
 
   // Colleagues who are not yet members
   const existingMemberIds = new Set(group.members.map(m => m.id))
   const nonMemberColleagues = allUsers.filter(u => !existingMemberIds.has(u.id))
 
   // Total items in break
-  const totalSessionItemCount = activeSession?.expenses.reduce(
+  const totalSessionItemCount = groupActiveSession?.expenses.reduce(
     (acc, exp) => acc + exp.items.reduce((iSum, i) => iSum + i.quantity, 0),
     0
   ) || 0
@@ -286,20 +346,36 @@ export const GroupDetailsPage: React.FC<GroupDetailsPageProps> = ({
     onExitGroup(group.id)
   }
 
-  // Admin starts break for this group and immediately opens the separate break page
+  // Any member can start a break for this group if there is no ongoing break in this group
   const handleStartBreak = () => {
-    if (!isAdmin || isStartingBreak) return
+    if (isStartingBreak) return
+
+    // Enforce: at a time a single group can only have 1 active break
+    if (isGroupBreakActive) {
+      showToast('A break is already active for this group! Close the ongoing break first.')
+      return
+    }
+
     setIsStartingBreak(true)
     const title = breakTitleInput.trim() || `${group.name} Chai Break ☕`
-    addNewSession(
+    const success = addNewSession(
       title,
       group.shopName || 'Chayakkada',
       group.members,
       group.id,
       group.name,
       currentUser?.id,
-      group.shopId
+      group.shopId,
+      currentUser?.id,
+      currentUser?.name
     )
+
+    if (!success) {
+      showToast('Cannot start break: this group already has an ongoing break! Close it first.')
+      setIsStartingBreak(false)
+      return
+    }
+
     setTimeout(() => {
       setIsStartingBreak(false)
       if (onOpenBreak) {
@@ -320,6 +396,19 @@ export const GroupDetailsPage: React.FC<GroupDetailsPageProps> = ({
         currentUser={currentUser}
         onBack={() => setShowTeaBreakView(false)}
       />
+    )
+  }
+
+  if (showGroupHistory) {
+    return (
+      <div className="space-y-4 animate-in fade-in pb-16">
+        <HistoryPage
+          groups={[group]}
+          currentUser={currentUser}
+          initialGroupId={group.id}
+          onBack={() => setShowGroupHistory(false)}
+        />
+      </div>
     )
   }
 
@@ -549,15 +638,25 @@ export const GroupDetailsPage: React.FC<GroupDetailsPageProps> = ({
                 </span>
               </div>
 
-              {/* BUTTON LIKE "VIEW MEMBERS" AFTER THE MEMBER COUNT IN THE GROUP BANNER */}
-              <button
-                onClick={() => setShowMembersPage(true)}
-                id="view-members-banner-btn"
-                className="px-2.5 py-1 rounded-xl bg-white text-stone-900 hover:bg-amber-50 active:scale-95 text-xs font-bold shadow-xs cursor-pointer flex items-center gap-1.5 transition-all shrink-0"
-              >
-                <Users className="w-3.5 h-3.5 text-amber-600" />
-                <span>View Members</span>
-              </button>
+              {/* BUTTONS: HISTORY AND VIEW MEMBERS */}
+              <div className="flex items-center gap-1.5 shrink-0">
+                <button
+                  onClick={() => setShowGroupHistory(true)}
+                  id="view-group-history-banner-btn"
+                  className="px-2.5 py-1 rounded-xl bg-white/20 hover:bg-white/30 text-white active:scale-95 text-xs font-bold shadow-xs cursor-pointer flex items-center gap-1 transition-all"
+                >
+                  <Receipt className="w-3.5 h-3.5 text-amber-200" />
+                  <span>History</span>
+                </button>
+                <button
+                  onClick={() => setShowMembersPage(true)}
+                  id="view-members-banner-btn"
+                  className="px-2.5 py-1 rounded-xl bg-white text-stone-900 hover:bg-amber-50 active:scale-95 text-xs font-bold shadow-xs cursor-pointer flex items-center gap-1.5 transition-all"
+                >
+                  <Users className="w-3.5 h-3.5 text-amber-600" />
+                  <span>View Members</span>
+                </button>
+              </div>
             </div>
           </div>
 
@@ -576,16 +675,21 @@ export const GroupDetailsPage: React.FC<GroupDetailsPageProps> = ({
                     </span>
                   </div>
                   <h3 className="font-heading font-extrabold text-base text-stone-900 dark:text-stone-100">
-                    {activeSession?.title}
+                    {groupActiveSession?.title}
                   </h3>
                   <p className="text-xs text-stone-500 dark:text-stone-400">
-                    📍 {activeSession?.shopName} • {totalSessionItemCount} items • <strong className="text-stone-800 dark:text-stone-200">₹{activeSession?.totalAmount}</strong>
+                    📍 {groupActiveSession?.shopName} • {totalSessionItemCount} items • <strong className="text-stone-800 dark:text-stone-200">₹{groupActiveSession?.totalAmount}</strong>
                   </p>
                 </div>
 
                 <div className="p-2 rounded-xl bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300">
                   <Coffee className="w-5 h-5" />
                 </div>
+              </div>
+
+              {/* Ongoing break single-break enforcement notice */}
+              <div className="px-3 py-1.5 rounded-xl bg-amber-50 dark:bg-amber-950/50 border border-amber-200/80 dark:border-amber-900/60 text-[11px] text-amber-800 dark:text-amber-300 flex items-center justify-between">
+                <span>Ongoing break in progress. Close or settle this break before creating a new one.</span>
               </div>
 
               <button
@@ -604,50 +708,141 @@ export const GroupDetailsPage: React.FC<GroupDetailsPageProps> = ({
               </button>
             </div>
           ) : (
-            /* IF BREAK IS NOT ACTIVE */
-            isAdmin ? (
-              <div className="p-4 rounded-2xl bg-white dark:bg-stone-900 border border-stone-200/80 dark:border-stone-800 shadow-2xs space-y-3">
-                <div className="space-y-1">
-                  <label className="text-[11px] font-semibold text-stone-700 dark:text-stone-300">
-                    Break Title
-                  </label>
-                  <input
-                    type="text"
-                    value={breakTitleInput}
-                    onChange={e => setBreakTitleInput(e.target.value)}
-                    placeholder="e.g. 4:30 PM Chai Break ☕"
-                    className="w-full py-2 px-3 rounded-xl border border-stone-300 dark:border-stone-700 bg-stone-50 dark:bg-stone-800 text-xs text-stone-900 dark:text-stone-100 focus:outline-none focus:ring-1 focus:ring-amber-500 font-medium"
-                  />
+            /* IF BREAK IS NOT ACTIVE: ANYONE IN THE GROUP CAN CREATE A BREAK */
+            <div className="p-4 rounded-2xl bg-white dark:bg-stone-900 border border-stone-200/80 dark:border-stone-800 shadow-2xs space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-1.5">
+                  <Coffee className="w-4 h-4 text-amber-600" />
+                  <span className="text-xs font-bold text-stone-800 dark:text-stone-200">
+                    Start a New Tea Break
+                  </span>
                 </div>
+                <span className="text-[10px] text-stone-400">
+                  Anyone can start a break
+                </span>
+              </div>
 
+              <div className="space-y-1">
+                <label className="text-[11px] font-semibold text-stone-700 dark:text-stone-300">
+                  Break Title
+                </label>
+                <input
+                  type="text"
+                  value={breakTitleInput}
+                  onChange={e => setBreakTitleInput(e.target.value)}
+                  placeholder="e.g. 4:30 PM Chai Break ☕"
+                  className="w-full py-2 px-3 rounded-xl border border-stone-300 dark:border-stone-700 bg-stone-50 dark:bg-stone-800 text-xs text-stone-900 dark:text-stone-100 focus:outline-none focus:ring-1 focus:ring-amber-500 font-medium"
+                />
+              </div>
+
+              <button
+                onClick={handleStartBreak}
+                disabled={isStartingBreak}
+                id="start-tea-break-btn"
+                className="w-full py-2.5 px-4 rounded-xl font-bold text-xs bg-gradient-to-r from-amber-600 via-orange-600 to-amber-700 hover:from-amber-700 hover:to-orange-700 disabled:opacity-80 disabled:cursor-wait text-white shadow-md active:scale-[0.98] transition-all cursor-pointer flex items-center justify-center gap-2"
+              >
+                {isStartingBreak ? (
+                  <ChaiLoader variant="spinner" size="sm" text="Starting Tea Break..." />
+                ) : (
+                  <>
+                    <Coffee className="w-4 h-4" />
+                    <span>Start Tea Break ☕</span>
+                  </>
+                )}
+              </button>
+            </div>
+          )}
+
+          {/* ========================================================================= */}
+          {/* SHOP & MENU ITEMS SECTION (MANAGE GROUP TAPRI MENU)                      */}
+          {/* ========================================================================= */}
+          <div className="p-4 rounded-2xl bg-white dark:bg-stone-900 border border-stone-200/80 dark:border-stone-800 shadow-2xs space-y-3.5">
+            <div className="flex items-center justify-between gap-2">
+              <div className="min-w-0">
+                <h3 className="font-heading font-extrabold text-base text-stone-900 dark:text-stone-100 flex items-center gap-2 truncate">
+                  <span className="text-xl">{group.shopEmoji || '🏪'}</span>
+                  <span className="truncate">{group.shopName || 'Tapri'} Menu</span>
+                </h3>
+                <p className="text-[11px] text-stone-400">
+                  {groupShopItems.length} {groupShopItems.length === 1 ? 'item' : 'items'} available for chai breaks
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setShowAddItemModal(true)}
+                id="add-shop-item-btn"
+                className="px-3 py-1.5 rounded-xl font-bold text-xs bg-amber-600 hover:bg-amber-700 text-white shadow-xs cursor-pointer flex items-center gap-1.5 active:scale-95 transition-all shrink-0"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Add Item</span>
+              </button>
+            </div>
+
+            {/* Menu Items Simple List */}
+            {groupShopItems.length === 0 ? (
+              <div className="p-6 rounded-xl border border-dashed border-stone-200 dark:border-stone-800 text-center space-y-2 bg-stone-50/50 dark:bg-stone-800/30">
+                <p className="font-bold text-xs text-stone-800 dark:text-stone-200">
+                  No Menu Items Added Yet
+                </p>
+                <p className="text-[11px] text-stone-400 max-w-xs mx-auto">
+                  Add items to {group.shopName || 'this shop'} so members can order easily.
+                </p>
                 <button
-                  onClick={handleStartBreak}
-                  disabled={isStartingBreak}
-                  id="start-tea-break-btn"
-                  className="w-full py-2.5 px-4 rounded-xl font-bold text-xs bg-gradient-to-r from-amber-600 via-orange-600 to-amber-700 hover:from-amber-700 hover:to-orange-700 disabled:opacity-80 disabled:cursor-wait text-white shadow-md active:scale-[0.98] transition-all cursor-pointer flex items-center justify-center gap-2"
+                  type="button"
+                  onClick={() => setShowAddItemModal(true)}
+                  className="px-3 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs cursor-pointer inline-flex items-center gap-1 shadow-xs active:scale-95 transition-all"
                 >
-                  {isStartingBreak ? (
-                    <ChaiLoader variant="spinner" size="sm" text="Starting Tea Break..." />
-                  ) : (
-                    <>
-                      <Coffee className="w-4 h-4" />
-                      <span>Start Tea Break ☕</span>
-                    </>
-                  )}
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Add First Item</span>
                 </button>
               </div>
             ) : (
-              <div className="p-4 rounded-2xl bg-white dark:bg-stone-900 border border-stone-200/80 dark:border-stone-800 shadow-2xs text-center space-y-1.5 py-6">
-                <div className="text-2xl">☕</div>
-                <h4 className="font-heading font-bold text-xs text-stone-900 dark:text-stone-100">
-                  No Active Tea Break
-                </h4>
-                <p className="text-[11px] text-stone-400 max-w-xs mx-auto">
-                  Waiting for group admin to start the next chai break. Once started, you can join and order your tea &amp; snacks!
-                </p>
+              <div className="space-y-2 pt-1">
+                {groupShopItems.map(item => (
+                  <div
+                    key={item.id}
+                    className="p-3 rounded-xl border border-stone-200/90 dark:border-stone-800 bg-stone-50/60 dark:bg-stone-800/40 flex items-center justify-between gap-3 hover:border-amber-400 dark:hover:border-amber-500/50 transition-all"
+                  >
+                    {/* Item Name Only (No images/emojis) */}
+                    <div className="font-semibold text-xs text-stone-900 dark:text-stone-100 truncate min-w-0">
+                      {item.name}
+                    </div>
+
+                    {/* Price, Edit Price, Remove Item */}
+                    <div className="flex items-center gap-2 shrink-0">
+                      <span className="px-2 py-0.5 rounded-md bg-amber-100/90 dark:bg-amber-950/80 text-amber-900 dark:text-amber-200 font-bold text-xs">
+                        ₹{item.price}
+                      </span>
+
+                      {/* Edit Price Button */}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEditingItem(item)
+                          setEditPriceInput(item.price.toString())
+                        }}
+                        className="p-1.5 rounded-lg text-stone-400 hover:text-amber-700 hover:bg-stone-200/60 dark:hover:bg-stone-700 transition-colors cursor-pointer"
+                        title="Edit price"
+                      >
+                        <Edit2 className="w-3.5 h-3.5" />
+                      </button>
+
+                      {/* Remove Item Button */}
+                      <button
+                        type="button"
+                        onClick={() => setItemToDelete(item)}
+                        className="p-1.5 rounded-lg text-stone-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors cursor-pointer"
+                        title="Remove item"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                ))}
               </div>
-            )
-          )}
+            )}
+          </div>
         </div>
       )}
 
@@ -851,6 +1046,173 @@ export const GroupDetailsPage: React.FC<GroupDetailsPageProps> = ({
                 className="px-4 py-2 rounded-xl text-xs font-semibold bg-rose-600 hover:bg-rose-700 text-white shadow-xs cursor-pointer active:scale-95 transition-all"
               >
                 Yes, Exit Group
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Add Item to Shop Menu */}
+      {showAddItemModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-900/50 backdrop-blur-xs animate-in fade-in">
+          <div className="w-full max-w-sm bg-white dark:bg-stone-900 rounded-2xl shadow-2xl border border-stone-200 dark:border-stone-800 p-5 space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="font-heading font-bold text-base text-stone-900 dark:text-stone-100">
+                  Add Item to Menu
+                </h3>
+                <p className="text-[11px] text-stone-400">
+                  Add to {group.shopName || 'Tapri'} for this group
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowAddItemModal(false)}
+                className="text-stone-400 hover:text-stone-600 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleAddItem} className="space-y-3 text-left">
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-stone-700 dark:text-stone-300">
+                  Item Name <span className="text-amber-600">*</span>
+                </label>
+                <input
+                  type="text"
+                  required
+                  autoFocus
+                  placeholder="e.g. Chai, Coffee, Samosa, Biscuit"
+                  value={newItemName}
+                  onChange={e => setNewItemName(e.target.value)}
+                  className="w-full py-2 px-3 rounded-xl border border-stone-300 dark:border-stone-700 bg-stone-50 dark:bg-stone-800 text-xs text-stone-900 dark:text-stone-100 focus:outline-none focus:ring-1 focus:ring-amber-500"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-stone-700 dark:text-stone-300">
+                  Price (₹) <span className="text-amber-600">*</span>
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  required
+                  placeholder="15"
+                  value={newItemPrice}
+                  onChange={e => setNewItemPrice(e.target.value)}
+                  className="w-full py-2 px-3 rounded-xl border border-stone-300 dark:border-stone-700 bg-stone-50 dark:bg-stone-800 text-xs text-stone-900 dark:text-stone-100 focus:outline-none focus:ring-1 focus:ring-amber-500"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowAddItemModal(false)}
+                  className="px-3 py-1.5 rounded-lg text-xs font-semibold text-stone-600 dark:text-stone-400 hover:bg-stone-100 dark:hover:bg-stone-800 cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  id="submit-add-shop-item-btn"
+                  className="px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-amber-600 hover:bg-amber-700 text-white shadow-xs cursor-pointer flex items-center gap-1 active:scale-95 transition-all"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Add to Menu</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Edit Item Price */}
+      {editingItem && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-900/50 backdrop-blur-xs animate-in fade-in">
+          <div className="w-full max-w-xs bg-white dark:bg-stone-900 rounded-2xl shadow-2xl border border-stone-200 dark:border-stone-800 p-5 space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="font-heading font-bold text-sm text-stone-900 dark:text-stone-100">
+                Edit Price: {editingItem.name}
+              </h3>
+              <button
+                type="button"
+                onClick={() => setEditingItem(null)}
+                className="text-stone-400 hover:text-stone-600 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveEditPrice} className="space-y-3">
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-stone-700 dark:text-stone-300">
+                  New Price (₹)
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  required
+                  autoFocus
+                  value={editPriceInput}
+                  onChange={e => setEditPriceInput(e.target.value)}
+                  className="w-full py-2 px-3 rounded-xl border border-stone-300 dark:border-stone-700 bg-stone-50 dark:bg-stone-800 text-sm font-bold text-stone-900 dark:text-stone-100 focus:outline-none focus:ring-1 focus:ring-amber-500"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setEditingItem(null)}
+                  className="px-3 py-1.5 rounded-lg text-xs font-semibold text-stone-600 dark:text-stone-400 hover:bg-stone-100 dark:hover:bg-stone-800 cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-amber-600 hover:bg-amber-700 text-white shadow-xs cursor-pointer active:scale-95 transition-all"
+                >
+                  Save Price
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Confirm Delete Item */}
+      {itemToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-900/50 backdrop-blur-xs animate-in fade-in">
+          <div className="w-full max-w-xs bg-white dark:bg-stone-900 rounded-2xl shadow-2xl border border-stone-200 dark:border-stone-800 p-5 space-y-3.5 text-center">
+            <div className="w-10 h-10 rounded-full bg-rose-100 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400 flex items-center justify-center mx-auto text-lg">
+              <Trash2 className="w-5 h-5" />
+            </div>
+
+            <div className="space-y-1">
+              <h4 className="font-heading font-bold text-sm text-stone-900 dark:text-stone-100">
+                Remove "{itemToDelete.name}"?
+              </h4>
+              <p className="text-[11px] text-stone-400">
+                This item will be removed immediately from {group.shopName || 'this shop'} menu.
+              </p>
+            </div>
+
+            <div className="flex items-center justify-center gap-2 pt-1">
+              <button
+                type="button"
+                disabled={isDeletingItem}
+                onClick={() => setItemToDelete(null)}
+                className="px-3 py-1.5 rounded-xl text-xs font-semibold text-stone-600 dark:text-stone-400 hover:bg-stone-100 dark:hover:bg-stone-800 cursor-pointer disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={isDeletingItem}
+                onClick={handleConfirmDeleteItem}
+                className="px-3.5 py-1.5 rounded-xl text-xs font-semibold bg-rose-600 hover:bg-rose-700 text-white shadow-xs cursor-pointer active:scale-95 transition-all disabled:opacity-50 flex items-center justify-center min-w-24"
+              >
+                {isDeletingItem ? 'Removing...' : 'Remove Item'}
               </button>
             </div>
           </div>
