@@ -9,6 +9,7 @@ import {
   Copy,
   CreditCard,
   Crown,
+  Download,
   Layers,
   Receipt,
   Search,
@@ -37,6 +38,9 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({
   onBack
 }) => {
   const { pastSessions } = useExpense()
+
+  // Feature toggle: Download report/receipt buttons (hidden for now as requested)
+  const SHOW_DOWNLOAD_REPORT = false
 
   // User's own groups: Only groups where the current user is a member or admin
   const userGroups = useMemo(() => {
@@ -315,6 +319,132 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({
     setTimeout(() => setCopiedUpi(false), 2000)
   }
 
+  // Helper to trigger browser file download
+  const triggerDownload = (filename: string, content: string, mimeType = 'text/csv;charset=utf-8;') => {
+    const blob = new Blob([content], { type: mimeType })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.setAttribute('href', url)
+    link.setAttribute('download', filename)
+    link.style.visibility = 'hidden'
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    URL.revokeObjectURL(url)
+  }
+
+  // Export full CSV report of filtered past sessions
+  const handleDownloadReport = () => {
+    if (filteredSessions.length === 0) {
+      alert('No sessions found to download for the current filters.')
+      return
+    }
+
+    const headers = [
+      'Date & Time',
+      'Session Title',
+      'Group Name',
+      'Shop Name',
+      'Paid In Full By',
+      'Payer UPI',
+      'Total Amount (INR)',
+      'Members Count',
+      'Total Items Count',
+      'Member-wise Breakdown & Items'
+    ]
+
+    const rows = filteredSessions.map(sess => {
+      const sDate = getSessionDate(sess)
+      const dateFormatted = !isNaN(sDate.getTime()) && sDate.getTime() !== 0
+        ? sDate.toLocaleString([], { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
+        : sess.createdAt || 'Settled'
+
+      const itemsCount = sess.expenses.reduce((sum, e) => sum + e.items.reduce((s, it) => s + it.quantity, 0), 0)
+
+      const breakdown = sess.expenses.map(e => {
+        const itemsStr = e.items.map(it => `${it.name} x${it.quantity}`).join(', ')
+        return `${e.memberName}: ${itemsStr || 'No items'} (Rs.${e.total})`
+      }).join('; ')
+
+      return [
+        `"${dateFormatted.replace(/"/g, '""')}"`,
+        `"${(sess.title || '').replace(/"/g, '""')}"`,
+        `"${(sess.groupName || 'Direct / Walk-in').replace(/"/g, '""')}"`,
+        `"${(sess.shopName || '').replace(/"/g, '""')}"`,
+        `"${(sess.payerName || '').replace(/"/g, '""')}"`,
+        `"${(sess.payerUpi || '').replace(/"/g, '""')}"`,
+        sess.totalAmount,
+        sess.expenses.length,
+        itemsCount,
+        `"${breakdown.replace(/"/g, '""')}"`
+      ].join(',')
+    })
+
+    const summaryRow = [
+      '"TOTAL SUMMARY"',
+      '""',
+      '""',
+      '""',
+      '""',
+      '""',
+      totalSpent,
+      '""',
+      '""',
+      '""'
+    ].join(',')
+
+    const csvContent = '\uFEFF' + [headers.join(','), ...rows, summaryRow].join('\r\n')
+    const timestamp = new Date().toISOString().slice(0, 10)
+    const groupLabel = selectedGroupId === 'all'
+      ? 'All_Groups'
+      : (userGroups.find(g => g.id === selectedGroupId)?.name.replace(/[^a-zA-Z0-9]/g, '_') || 'Group')
+    const filename = `ChaiSplit_Expense_Report_${groupLabel}_${timeFilter}_${timestamp}.csv`
+
+    triggerDownload(filename, csvContent, 'text/csv;charset=utf-8;')
+  }
+
+  // Export individual session receipt
+  const handleDownloadSessionReceipt = (sess: TeaSession) => {
+    const sDate = getSessionDate(sess)
+    const dateFormatted = !isNaN(sDate.getTime()) && sDate.getTime() !== 0
+      ? sDate.toLocaleString([], { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+      : sess.createdAt || 'Settled'
+
+    const lines = [
+      `========================================`,
+      `           CHAI-SPLIT RECEIPT           `,
+      `========================================`,
+      `Session:     ${sess.title}`,
+      `Group:       ${sess.groupName || 'Direct / Walk-in'}`,
+      `Shop:        ${sess.shopName}`,
+      `Date & Time: ${dateFormatted}`,
+      `Paid By:     ${sess.payerName}${sess.payerUpi ? ` (${sess.payerUpi})` : ''}`,
+      `Status:      Settled`,
+      `----------------------------------------`,
+      `MEMBER-WISE BREAKDOWN:`,
+      `----------------------------------------`
+    ]
+
+    sess.expenses.forEach(e => {
+      lines.push(`• ${e.memberName} — ₹${e.total}`)
+      if (e.items && e.items.length > 0) {
+        e.items.forEach(it => {
+          lines.push(`    - ${it.name} x${it.quantity} @ ₹${it.price} = ₹${it.price * it.quantity}`)
+        })
+      }
+    })
+
+    lines.push(`----------------------------------------`)
+    lines.push(`GRAND TOTAL: ₹${sess.totalAmount}`)
+    lines.push(`========================================`)
+    lines.push(`Generated via Nibru-Tea ChaiSplit`)
+
+    const textContent = lines.join('\n')
+    const cleanTitle = sess.title.replace(/[^a-zA-Z0-9_-]/g, '_')
+    const filename = `Receipt_${cleanTitle}_${sess.id}.txt`
+    triggerDownload(filename, textContent, 'text/plain;charset=utf-8;')
+  }
+
   // Format date helper
   const formatFriendlyDate = (sess: TeaSession) => {
     const d = getSessionDate(sess)
@@ -367,8 +497,20 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({
             </p>
           </div>
 
-          <div className="text-right">
-            <span className="px-3 py-1 rounded-full bg-white/20 backdrop-blur-md text-white font-extrabold text-xs shadow-inner">
+          <div className="flex items-center gap-2 shrink-0">
+            {SHOW_DOWNLOAD_REPORT && (
+              <button
+                type="button"
+                onClick={handleDownloadReport}
+                id="download-history-report-btn"
+                className="px-2.5 py-1 rounded-xl bg-white/20 hover:bg-white/30 backdrop-blur-md text-white font-bold text-xs flex items-center gap-1.5 cursor-pointer shadow-xs active:scale-95 transition-all border border-white/25"
+                title="Download CSV report for current filtered view"
+              >
+                <Download className="w-3.5 h-3.5" />
+                <span>Download Report</span>
+              </button>
+            )}
+            <span className="px-3 py-1 rounded-full bg-white/20 backdrop-blur-md text-white font-extrabold text-xs shadow-inner shrink-0">
               ₹{totalSpent} Total
             </span>
           </div>
@@ -857,11 +999,25 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({
             </div>
 
             {/* Modal Actions */}
-            <div className="pt-2">
+            <div className={`pt-2 ${SHOW_DOWNLOAD_REPORT ? 'flex items-center gap-2' : ''}`}>
+              {SHOW_DOWNLOAD_REPORT && (
+                <button
+                  type="button"
+                  onClick={() => handleDownloadSessionReceipt(selectedSessionForReceipt)}
+                  id="download-receipt-modal-btn"
+                  className="flex-1 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer active:scale-95 shadow-xs"
+                  title="Download text receipt slip"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>Download Receipt</span>
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => setSelectedSessionForReceipt(null)}
-                className="w-full py-2.5 rounded-xl bg-stone-100 hover:bg-stone-200 dark:bg-stone-800 dark:hover:bg-stone-700 text-stone-700 dark:text-stone-200 font-bold text-xs transition-colors cursor-pointer"
+                className={`py-2.5 rounded-xl bg-stone-100 hover:bg-stone-200 dark:bg-stone-800 dark:hover:bg-stone-700 text-stone-700 dark:text-stone-200 font-bold text-xs transition-colors cursor-pointer ${
+                  SHOW_DOWNLOAD_REPORT ? 'px-4' : 'w-full'
+                }`}
               >
                 Close Receipt
               </button>
