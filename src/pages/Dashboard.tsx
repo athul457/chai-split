@@ -45,6 +45,7 @@ export const Dashboard: React.FC<DashboardProps> = () => {
     removeItemFromMember,
     toggleMemberPaid,
     settleActiveSession,
+    confirmMemberOrder,
     addMemberToSession,
     addCustomMenuItem,
     getShopItemSummary,
@@ -74,6 +75,8 @@ export const Dashboard: React.FC<DashboardProps> = () => {
   const [groupToDelete, setGroupToDelete] = useState<Group | null>(null)
   const [deleteConfirmNameInput, setDeleteConfirmNameInput] = useState('')
   const [isDeletingGroup, setIsDeletingGroup] = useState(false)
+  const [showCannotSettleModal, setShowCannotSettleModal] = useState(false)
+  const [showUnconfirmedModal, setShowUnconfirmedModal] = useState(false)
 
 
   // Groups tab state - Strictly isolated per logged-in user
@@ -531,6 +534,36 @@ export const Dashboard: React.FC<DashboardProps> = () => {
   const handleCopyWhatsApp = () => {
     const text = generateWhatsAppSummary()
     handleCopy(text, 'bill summary')
+  }
+
+  // Handle Dashboard Settle Break (strictly only creator can close/settle the break, AND every member with items must confirm)
+  const handleDashboardSettle = () => {
+    if (!activeSession) return
+    const isBreakCreator = Boolean(
+      (activeSession.creatorId && (
+        user?.id === activeSession.creatorId ||
+        (user?.userCode && activeSession.creatorId === user.userCode) ||
+        (user?.email && activeSession.creatorId.toLowerCase() === user.email.toLowerCase())
+      )) ||
+      (!activeSession.creatorId && (
+        user?.id === activeSession.payerId ||
+        (user?.name && activeSession.creatorName && user.name.toLowerCase() === activeSession.creatorName.toLowerCase())
+      ))
+    )
+
+    if (!isBreakCreator) {
+      setShowCannotSettleModal(true)
+      return
+    }
+
+    const membersWithItems = activeSession.expenses.filter(e => e.items && e.items.length > 0)
+    const unconfirmedMembers = membersWithItems.filter(e => !e.isConfirmed)
+    if (unconfirmedMembers.length > 0) {
+      setShowUnconfirmedModal(true)
+      return
+    }
+
+    settleActiveSession(activeSession.id, user?.id)
   }
 
   // Handle add custom item
@@ -1114,7 +1147,7 @@ export const Dashboard: React.FC<DashboardProps> = () => {
                       </button>
 
                       <button
-                        onClick={() => settleActiveSession()}
+                        onClick={handleDashboardSettle}
                         id="settle-bill-btn"
                         className="px-2.5 py-1.5 rounded-xl bg-emerald-500 hover:bg-emerald-600 active:scale-95 text-white font-semibold text-xs shadow-xs flex items-center gap-1 cursor-pointer"
                       >
@@ -2294,6 +2327,122 @@ export const Dashboard: React.FC<DashboardProps> = () => {
                     <span>Delete Group</span>
                   </>
                 )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+ 
+      {/* Modal: Break is running cannot create/close at the moment */}
+      {showCannotSettleModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-900/60 backdrop-blur-xs animate-in fade-in">
+          <div className="w-full max-w-sm bg-white dark:bg-stone-900 rounded-2xl shadow-2xl border border-amber-300 dark:border-amber-800 p-5 space-y-4 text-center">
+            <div className="w-12 h-12 rounded-full bg-amber-100 dark:bg-amber-950/70 text-amber-600 dark:text-amber-400 flex items-center justify-center mx-auto text-xl shadow-inner">
+              <AlertTriangle className="w-6 h-6" />
+            </div>
+
+            <div className="space-y-2">
+              <span className="inline-block px-2.5 py-0.5 rounded-full text-[10px] font-bold tracking-wide uppercase bg-amber-100 dark:bg-amber-950/80 text-amber-800 dark:text-amber-300">
+                Action Restricted
+              </span>
+              <h3 className="font-heading font-black text-base text-stone-900 dark:text-stone-100 leading-snug">
+                Break is running cannot create at the moment
+              </h3>
+              <p className="text-xs text-stone-600 dark:text-stone-400 leading-relaxed">
+                Not everyone can close the break. Who created the break ({activeSession?.creatorName || 'the break creator'}) can only close or settle the break.
+              </p>
+              <div className="p-2.5 rounded-xl bg-amber-50/80 dark:bg-amber-950/40 border border-amber-200/60 dark:border-amber-900/40 text-[11px] text-amber-800 dark:text-amber-300 font-medium text-left space-y-1">
+                <div>• Current Break: <strong>{activeSession?.title || 'Tea Break'}</strong></div>
+                <div>• Created by: <strong>{activeSession?.creatorName || 'Creator'}</strong></div>
+                <div className="text-[10px] text-stone-500 dark:text-stone-400 pt-0.5">
+                  Only one break can be created at a time. Please ask <strong>{activeSession?.creatorName || 'the creator'}</strong> to close or settle this session.
+                </div>
+              </div>
+            </div>
+
+            <div className="pt-1">
+              <button
+                type="button"
+                onClick={() => setShowCannotSettleModal(false)}
+                id="cannot-settle-modal-ok-btn"
+                className="w-full py-2.5 px-4 rounded-xl text-xs font-bold bg-amber-600 hover:bg-amber-700 text-white shadow-xs cursor-pointer active:scale-95 transition-all text-center"
+              >
+                Understood ✓
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: All members must confirm items before settle and close */}
+      {showUnconfirmedModal && activeSession && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-900/60 backdrop-blur-xs animate-in fade-in">
+          <div className="w-full max-w-sm bg-white dark:bg-stone-900 rounded-2xl shadow-2xl border border-amber-300 dark:border-amber-800 p-5 space-y-4 text-center">
+            <div className="w-12 h-12 rounded-full bg-amber-100 dark:bg-amber-950/70 text-amber-600 dark:text-amber-400 flex items-center justify-center mx-auto text-xl shadow-inner">
+              <Clock className="w-6 h-6" />
+            </div>
+
+            <div className="space-y-1.5">
+              <span className="inline-block px-2.5 py-0.5 rounded-full text-[10px] font-bold tracking-wide uppercase bg-amber-100 dark:bg-amber-950/80 text-amber-800 dark:text-amber-300">
+                Confirmation Required
+              </span>
+              <h3 className="font-heading font-black text-base text-stone-900 dark:text-stone-100 leading-snug">
+                Items Need Confirmation Before Settle &amp; Close
+              </h3>
+              <p className="text-xs text-stone-600 dark:text-stone-400 leading-relaxed">
+                Everyone needs to confirm their items. Only after that can you settle and close the break.
+              </p>
+            </div>
+
+            {/* List of members who haven't confirmed */}
+            <div className="space-y-2 max-h-52 overflow-y-auto pr-1 text-left">
+              <div className="text-[11px] font-bold text-stone-700 dark:text-stone-300 flex items-center justify-between">
+                <span>
+                  Pending Members (
+                  {activeSession.expenses.filter(e => e.items && e.items.length > 0 && !e.isConfirmed).length}
+                  ):
+                </span>
+                <span className="text-[10px] text-amber-600 dark:text-amber-400 font-semibold">Not Confirmed</span>
+              </div>
+
+              {activeSession.expenses
+                .filter(e => e.items && e.items.length > 0 && !e.isConfirmed)
+                .map(member => (
+                  <div
+                    key={member.memberId}
+                    className="p-2.5 rounded-xl bg-amber-50/70 dark:bg-amber-950/40 border border-amber-200/60 dark:border-amber-900/40 flex items-center justify-between gap-2"
+                  >
+                    <div className="min-w-0">
+                      <div className="font-bold text-xs text-stone-900 dark:text-stone-100 truncate flex items-center gap-1.5">
+                        <span>{member.memberAvatar || '☕'}</span>
+                        <span className="truncate">{member.memberName}</span>
+                      </div>
+                      <div className="text-[10px] text-stone-500 dark:text-stone-400 truncate">
+                        {member.items.map(i => `${i.name} x${i.quantity}`).join(', ')} • ₹{member.total}
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        await confirmMemberOrder(member.memberId, activeSession?.id)
+                      }}
+                      className="shrink-0 px-2.5 py-1 rounded-lg text-[10px] font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-2xs cursor-pointer active:scale-95 transition-all flex items-center gap-1"
+                    >
+                      <CheckCircle2 className="w-3 h-3" />
+                      <span>Confirm</span>
+                    </button>
+                  </div>
+                ))}
+            </div>
+
+            <div className="pt-2 border-t border-stone-100 dark:border-stone-800 flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setShowUnconfirmedModal(false)}
+                className="w-full py-2.5 px-4 rounded-xl text-xs font-bold bg-stone-100 hover:bg-stone-200 dark:bg-stone-800 dark:hover:bg-stone-700 text-stone-800 dark:text-stone-200 shadow-2xs cursor-pointer active:scale-95 transition-all text-center"
+              >
+                Okay, Remind Members
               </button>
             </div>
           </div>

@@ -70,6 +70,7 @@ export const GroupDetailsPage: React.FC<GroupDetailsPageProps> = ({
   const [toastNotice, setToastNotice] = useState<string | null>(null)
   const [breakTitleInput, setBreakTitleInput] = useState(`${group.name} Chai Break ☕`)
   const [isStartingBreak, setIsStartingBreak] = useState(false)
+  const [showBreakRunningModal, setShowBreakRunningModal] = useState(false)
 
   // Shop Menu Items State for this group
   const effectiveShopId = group.shopId || `shop-${group.id}`
@@ -348,9 +349,9 @@ export const GroupDetailsPage: React.FC<GroupDetailsPageProps> = ({
   const handleStartBreak = () => {
     if (isStartingBreak) return
 
-    // Enforce: at a time a single group can only have 1 active break
+    // Enforce: only one break can create at a time
     if (isGroupBreakActive) {
-      showToast('A break is already active for this group! Close the ongoing break first.')
+      setShowBreakRunningModal(true)
       return
     }
 
@@ -369,7 +370,7 @@ export const GroupDetailsPage: React.FC<GroupDetailsPageProps> = ({
     )
 
     if (!success) {
-      showToast('Cannot start break: this group already has an ongoing break! Close it first.')
+      setShowBreakRunningModal(true)
       setIsStartingBreak(false)
       return
     }
@@ -701,23 +702,35 @@ export const GroupDetailsPage: React.FC<GroupDetailsPageProps> = ({
 
               {/* Ongoing break single-break enforcement notice */}
               <div className="px-3 py-1.5 rounded-xl bg-amber-50 dark:bg-amber-950/50 border border-amber-200/80 dark:border-amber-900/60 text-[11px] text-amber-800 dark:text-amber-300 flex items-center justify-between">
-                <span>Ongoing break in progress. Close or settle this break before creating a new one.</span>
+                <span>Active break running (Created by <strong>{groupActiveSession?.creatorName || 'Member'}</strong>). Only creator can close it.</span>
               </div>
 
-              <button
-                onClick={() => {
-                  if (onOpenBreak) {
-                    onOpenBreak(group.id)
-                  } else {
-                    setShowTeaBreakView(true)
-                  }
-                }}
-                id="enter-tea-break-btn"
-                className="w-full py-2.5 px-4 rounded-xl font-bold text-xs bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white shadow-md active:scale-[0.98] transition-all cursor-pointer flex items-center justify-center gap-2"
-              >
-                <span>Enter Tea Break &amp; Order Items ☕</span>
-                <ArrowRight className="w-4 h-4" />
-              </button>
+              <div className="flex flex-col gap-2">
+                <button
+                  onClick={() => {
+                    if (onOpenBreak) {
+                      onOpenBreak(group.id)
+                    } else {
+                      setShowTeaBreakView(true)
+                    }
+                  }}
+                  id="enter-tea-break-btn"
+                  className="w-full py-2.5 px-4 rounded-xl font-bold text-xs bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white shadow-md active:scale-[0.98] transition-all cursor-pointer flex items-center justify-center gap-2"
+                >
+                  <span>Enter Tea Break &amp; Order Items ☕</span>
+                  <ArrowRight className="w-4 h-4" />
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setShowBreakRunningModal(true)}
+                  id="try-create-break-btn"
+                  className="w-full py-2 px-3 rounded-xl font-semibold text-xs border border-amber-300/80 dark:border-amber-800 bg-amber-50/60 dark:bg-amber-950/30 text-amber-800 dark:text-amber-300 hover:bg-amber-100/60 dark:hover:bg-amber-900/40 transition-all cursor-pointer flex items-center justify-center gap-1.5"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Start Another Break</span>
+                </button>
+              </div>
             </div>
           ) : (
             /* IF BREAK IS NOT ACTIVE: ANYONE IN THE GROUP CAN CREATE A BREAK */
@@ -1187,6 +1200,60 @@ export const GroupDetailsPage: React.FC<GroupDetailsPageProps> = ({
                 className="px-3.5 py-1.5 rounded-xl text-xs font-semibold bg-rose-600 hover:bg-rose-700 text-white shadow-xs cursor-pointer active:scale-95 transition-all disabled:opacity-50 flex items-center justify-center min-w-24"
               >
                 {isDeletingItem ? 'Removing...' : 'Remove Item'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Break is running cannot create at the moment */}
+      {showBreakRunningModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-900/60 backdrop-blur-xs animate-in fade-in">
+          <div className="w-full max-w-sm bg-white dark:bg-stone-900 rounded-2xl shadow-2xl border border-amber-300 dark:border-amber-800 p-5 space-y-4 text-center">
+            <div className="w-12 h-12 rounded-full bg-amber-100 dark:bg-amber-950/70 text-amber-600 dark:text-amber-400 flex items-center justify-center mx-auto text-xl shadow-inner">
+              <Coffee className="w-6 h-6" />
+            </div>
+
+            <div className="space-y-2">
+              <span className="inline-block px-2.5 py-0.5 rounded-full text-[10px] font-bold tracking-wide uppercase bg-amber-100 dark:bg-amber-950/80 text-amber-800 dark:text-amber-300">
+                Single Break Limit
+              </span>
+              <h3 className="font-heading font-black text-base text-stone-900 dark:text-stone-100 leading-snug">
+                Break is running cannot create at the moment
+              </h3>
+              <p className="text-xs text-stone-600 dark:text-stone-400 leading-relaxed">
+                Only one break can create at a time. A tea break is currently running for <strong>{group.name}</strong>.
+              </p>
+              <div className="p-2.5 rounded-xl bg-amber-50/80 dark:bg-amber-950/40 border border-amber-200/60 dark:border-amber-900/40 text-[11px] text-amber-800 dark:text-amber-300 text-left space-y-1">
+                <div>• Active Break: <strong>{groupActiveSession?.title || 'Chai Break'}</strong></div>
+                <div>• Created by: <strong>{groupActiveSession?.creatorName || 'Group Member'}</strong></div>
+                <div className="text-[10px] text-stone-500 dark:text-stone-400 pt-0.5">
+                  Not everyone can close the break. Who created the break can only close or settle the break.
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => setShowBreakRunningModal(false)}
+                className="flex-1 py-2 rounded-xl text-xs font-semibold text-stone-600 dark:text-stone-400 hover:bg-stone-100 dark:hover:bg-stone-800 cursor-pointer"
+              >
+                Close
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowBreakRunningModal(false)
+                  if (onOpenBreak) {
+                    onOpenBreak(group.id)
+                  } else {
+                    setShowTeaBreakView(true)
+                  }
+                }}
+                className="flex-1 py-2 px-3 rounded-xl text-xs font-bold bg-amber-600 hover:bg-amber-700 text-white shadow-xs cursor-pointer active:scale-95 transition-all flex items-center justify-center gap-1"
+              >
+                <span>Enter Break ☕</span>
               </button>
             </div>
           </div>
