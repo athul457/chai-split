@@ -14,7 +14,9 @@ import {
   Store,
   Trash2,
   KeyRound,
-  Search
+  Search,
+  AlertTriangle,
+  LogOut
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { useExpense } from '../context/ExpenseContext'
@@ -67,6 +69,11 @@ export const Dashboard: React.FC<DashboardProps> = () => {
   const [newGroupShopName, setNewGroupShopName] = useState('')
   const [newGroupShopEmoji, setNewGroupShopEmoji] = useState('☕')
   const [includeStarterMenu, setIncludeStarterMenu] = useState(true)
+
+  // Delete Group Confirmation Modal states (Strictly Admin only with typed confirmation)
+  const [groupToDelete, setGroupToDelete] = useState<Group | null>(null)
+  const [deleteConfirmNameInput, setDeleteConfirmNameInput] = useState('')
+  const [isDeletingGroup, setIsDeletingGroup] = useState(false)
 
 
   // Groups tab state - Strictly isolated per logged-in user
@@ -829,25 +836,101 @@ export const Dashboard: React.FC<DashboardProps> = () => {
     setJoinGroupError(`No group found with Code "${cleanId}". Please check the code with your group admin.`)
   }
 
-  // Handle delete group (Strictly Admin only)
-  const handleDeleteGroup = (groupId: string, e: React.MouseEvent) => {
-    e.stopPropagation()
+  // Handle initiate delete group (Strictly Admin only - triggers name confirmation modal)
+  const handleRequestDeleteGroup = (groupId: string, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation()
     const targetGroup = groups.find(g => g.id === groupId)
-    if (targetGroup && targetGroup.adminId && user && targetGroup.adminId !== user.id) {
+    if (!targetGroup) return
+
+    const isGroupAdmin = user && (targetGroup.adminId === user.id || (!targetGroup.adminId && targetGroup.members[0]?.id === user.id))
+    if (!isGroupAdmin) {
       setCopyNotice('Only the group admin can delete this group.')
       setTimeout(() => setCopyNotice(null), 3000)
       return
     }
 
-    if (supabase && user) {
-      const client = supabase
-      client
-        .from('groups')
-        .delete()
-        .eq('id', groupId)
-        .eq('admin_id', user.id)
-        .then(() => {}, (e: any) => console.warn(e))
+    setGroupToDelete(targetGroup)
+    setDeleteConfirmNameInput('')
+  }
+
+  // Handle confirm delete group after typing exact group name
+  const handleConfirmDeleteGroup = async () => {
+    if (!groupToDelete || !user || isDeletingGroup) return
+
+    const isGroupAdmin = groupToDelete.adminId === user.id || (!groupToDelete.adminId && groupToDelete.members[0]?.id === user.id)
+    if (!isGroupAdmin) {
+      setCopyNotice('Only the group admin can delete this group.')
+      setTimeout(() => setCopyNotice(null), 3000)
+      setGroupToDelete(null)
+      return
     }
+
+    // Name confirmation validation (trimmed, case-insensitive)
+    if (deleteConfirmNameInput.trim().toLowerCase() !== groupToDelete.name.trim().toLowerCase()) {
+      return
+    }
+
+    setIsDeletingGroup(true)
+    const targetId = groupToDelete.id
+    const targetName = groupToDelete.name
+
+    if (supabase && user) {
+      try {
+        await supabase
+          .from('groups')
+          .delete()
+          .eq('id', targetId)
+          .eq('admin_id', user.id)
+      } catch (err) {
+        console.warn('Error deleting group from Supabase:', err)
+      }
+
+      try {
+        await supabase.channel('realtime_shops_and_groups').send({
+          type: 'broadcast',
+          event: 'GROUP_DELETED',
+          payload: { groupId: targetId }
+        })
+      } catch {}
+    }
+
+    setGroups(prev => {
+      const updated = prev.filter(g => g.id !== targetId)
+      if (activeGroupId === targetId) {
+        setActiveGroupId(updated.length > 0 ? updated[0].id : null)
+      }
+      return updated
+    })
+
+    if (viewingGroupId === targetId) {
+      setViewingGroupId(null)
+    }
+    if (viewingBreakGroupId === targetId) {
+      setViewingBreakGroupId(null)
+    }
+
+    setIsDeletingGroup(false)
+    setGroupToDelete(null)
+    setDeleteConfirmNameInput('')
+    setCopyNotice(`Group "${targetName}" deleted successfully`)
+    setTimeout(() => setCopyNotice(null), 3000)
+  }
+
+  // Handle direct exit from group (user can exit group directly)
+  const handleDirectExitGroup = (groupId: string, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation()
+    const targetGroup = groups.find(g => g.id === groupId)
+    const targetName = targetGroup?.name || 'the group'
+
+    if (supabase && user) {
+      supabase
+        .from('group_members')
+        .delete()
+        .eq('group_id', groupId)
+        .eq('user_id', user.id)
+        .then(() => {}, (err: any) => console.warn(err))
+    }
+
     setGroups(prev => {
       const updated = prev.filter(g => g.id !== groupId)
       if (activeGroupId === groupId) {
@@ -855,7 +938,15 @@ export const Dashboard: React.FC<DashboardProps> = () => {
       }
       return updated
     })
-    setCopyNotice('Group deleted')
+
+    if (viewingGroupId === groupId) {
+      setViewingGroupId(null)
+    }
+    if (viewingBreakGroupId === groupId) {
+      setViewingBreakGroupId(null)
+    }
+
+    setCopyNotice(`You exited ${targetName}`)
     setTimeout(() => setCopyNotice(null), 3000)
   }
 
@@ -1399,24 +1490,10 @@ export const Dashboard: React.FC<DashboardProps> = () => {
                 }
               }}
               onExitGroup={(groupId) => {
-                if (supabase && user) {
-                  supabase
-                    .from('group_members')
-                    .delete()
-                    .eq('group_id', groupId)
-                    .eq('user_id', user.id)
-                    .then(() => {}, (err: any) => console.warn(err))
-                }
-                setGroups(prev => {
-                  const updated = prev.filter(g => g.id !== groupId)
-                  if (activeGroupId === groupId) {
-                    setActiveGroupId(updated.length > 0 ? updated[0].id : null)
-                  }
-                  return updated
-                })
-                setViewingGroupId(null)
-                setCopyNotice(`You exited the group`)
-                setTimeout(() => setCopyNotice(null), 3000)
+                handleDirectExitGroup(groupId)
+              }}
+              onDeleteGroup={(groupId) => {
+                handleRequestDeleteGroup(groupId)
               }}
             />
           ) : (
@@ -1669,15 +1746,26 @@ export const Dashboard: React.FC<DashboardProps> = () => {
                           </p>
                         </div>
 
-                        {group.adminId === user?.id && (
+                        {group.adminId === user?.id ? (
                           <div className="flex items-center gap-1.5">
                             <button
                               type="button"
-                              onClick={(e) => handleDeleteGroup(group.id, e)}
+                              onClick={(e) => handleRequestDeleteGroup(group.id, e)}
                               className="p-1.5 rounded-lg text-stone-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors cursor-pointer"
                               title="Delete group (Admin only)"
                             >
                               <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={(e) => handleDirectExitGroup(group.id, e)}
+                              className="p-1.5 rounded-lg text-stone-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors cursor-pointer"
+                              title="Exit group directly"
+                            >
+                              <LogOut className="w-4 h-4" />
                             </button>
                           </div>
                         )}
@@ -2105,6 +2193,109 @@ export const Dashboard: React.FC<DashboardProps> = () => {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Delete Group Confirmation (Admin Only - Requires Entering Group Name) */}
+      {groupToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-900/60 backdrop-blur-xs animate-in fade-in">
+          <div className="w-full max-w-sm sm:max-w-md bg-white dark:bg-stone-900 rounded-3xl shadow-2xl border border-rose-200/80 dark:border-rose-900/50 p-5 sm:p-6 space-y-4 text-center">
+            {/* Header Icon */}
+            <div className="w-12 h-12 rounded-2xl bg-rose-100 dark:bg-rose-950/70 border border-rose-200 dark:border-rose-800 text-rose-600 dark:text-rose-400 flex items-center justify-center mx-auto shadow-2xs">
+              <AlertTriangle className="w-6 h-6" />
+            </div>
+
+            {/* Title & Warning */}
+            <div className="space-y-1.5">
+              <h3 className="font-heading font-extrabold text-base sm:text-lg text-stone-900 dark:text-stone-100">
+                Delete "{groupToDelete.name}"?
+              </h3>
+              <p className="text-xs text-stone-500 dark:text-stone-400 leading-relaxed">
+                This action is <span className="font-semibold text-rose-600 dark:text-rose-400">irreversible</span>. All active sessions, past history, and member connections in this group will be permanently removed.
+              </p>
+            </div>
+
+            {/* Name confirmation instructions & input */}
+            <div className="space-y-2 text-left pt-1">
+              <label className="text-xs font-semibold text-stone-700 dark:text-stone-300">
+                Type <strong className="font-mono text-rose-600 dark:text-rose-400 font-bold select-all bg-rose-50 dark:bg-rose-950/60 px-1.5 py-0.5 rounded border border-rose-200/60 dark:border-rose-800/40">{groupToDelete.name}</strong> to confirm:
+              </label>
+              <div className="relative">
+                <input
+                  type="text"
+                  id="delete-group-confirm-input"
+                  autoFocus
+                  placeholder={`Enter "${groupToDelete.name}"`}
+                  value={deleteConfirmNameInput}
+                  onChange={(e) => setDeleteConfirmNameInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (
+                      e.key === 'Enter' &&
+                      deleteConfirmNameInput.trim().toLowerCase() === groupToDelete.name.trim().toLowerCase() &&
+                      !isDeletingGroup
+                    ) {
+                      e.preventDefault()
+                      handleConfirmDeleteGroup()
+                    }
+                  }}
+                  className="w-full py-2.5 px-3.5 pr-10 rounded-xl border border-stone-300 dark:border-stone-700 bg-stone-50 dark:bg-stone-800 text-xs text-stone-900 dark:text-stone-100 font-medium placeholder:text-stone-400 focus:outline-none focus:ring-2 focus:ring-rose-500 focus:border-rose-500 transition-all"
+                />
+                {deleteConfirmNameInput.trim().toLowerCase() === groupToDelete.name.trim().toLowerCase() && (
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-emerald-500">
+                    <CheckCircle2 className="w-4 h-4" />
+                  </span>
+                )}
+              </div>
+              {deleteConfirmNameInput &&
+                deleteConfirmNameInput.trim().toLowerCase() !== groupToDelete.name.trim().toLowerCase() && (
+                  <p className="text-[11px] text-rose-500 font-medium">
+                    Group name does not match
+                  </p>
+                )}
+            </div>
+
+            {/* Action Buttons */}
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <button
+                type="button"
+                disabled={isDeletingGroup}
+                onClick={() => {
+                  setGroupToDelete(null)
+                  setDeleteConfirmNameInput('')
+                }}
+                className="px-4 py-2.5 rounded-xl text-xs font-semibold text-stone-600 dark:text-stone-300 hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors cursor-pointer disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                id="confirm-delete-group-btn"
+                disabled={
+                  deleteConfirmNameInput.trim().toLowerCase() !== groupToDelete.name.trim().toLowerCase() ||
+                  isDeletingGroup
+                }
+                onClick={handleConfirmDeleteGroup}
+                className={`px-5 py-2.5 rounded-xl text-xs font-bold shadow-xs flex items-center justify-center gap-1.5 transition-all ${
+                  deleteConfirmNameInput.trim().toLowerCase() === groupToDelete.name.trim().toLowerCase() &&
+                  !isDeletingGroup
+                    ? 'bg-rose-600 hover:bg-rose-700 text-white cursor-pointer active:scale-95 shadow-rose-600/20'
+                    : 'bg-stone-200 dark:bg-stone-800 text-stone-400 dark:text-stone-600 cursor-not-allowed opacity-60'
+                }`}
+              >
+                {isDeletingGroup ? (
+                  <>
+                    <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin inline-block" />
+                    <span>Deleting...</span>
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Delete Group</span>
+                  </>
+                )}
+              </button>
+            </div>
           </div>
         </div>
       )}

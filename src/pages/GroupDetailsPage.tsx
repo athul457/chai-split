@@ -34,6 +34,7 @@ interface GroupDetailsPageProps {
   onOpenBreak?: (groupId: string) => void
   onUpdateGroup: (updatedGroup: Group) => void
   onExitGroup: (groupId: string) => void
+  onDeleteGroup?: (groupId: string) => void
 }
 
 export const GroupDetailsPage: React.FC<GroupDetailsPageProps> = ({
@@ -43,7 +44,8 @@ export const GroupDetailsPage: React.FC<GroupDetailsPageProps> = ({
   onBack,
   onOpenBreak,
   onUpdateGroup,
-  onExitGroup
+  onExitGroup,
+  onDeleteGroup
 }) => {
   const {
     activeSession,
@@ -66,7 +68,6 @@ export const GroupDetailsPage: React.FC<GroupDetailsPageProps> = ({
   const [addMemberError, setAddMemberError] = useState<string | null>(null)
   const [isSubmittingMember, setIsSubmittingMember] = useState(false)
   const [toastNotice, setToastNotice] = useState<string | null>(null)
-  const [showExitConfirm, setShowExitConfirm] = useState(false)
   const [breakTitleInput, setBreakTitleInput] = useState(`${group.name} Chai Break ☕`)
   const [isStartingBreak, setIsStartingBreak] = useState(false)
 
@@ -145,9 +146,9 @@ export const GroupDetailsPage: React.FC<GroupDetailsPageProps> = ({
     setTimeout(() => setToastNotice(null), 3000)
   }
 
-  // Determine group admin
-  const effectiveAdminId = group.adminId || group.members[0]?.id || currentUser?.id
-  const isAdmin = currentUser?.id === effectiveAdminId
+  // Determine group admin (strictly group admin or initial group creator)
+  const effectiveAdminId = group.adminId || group.members[0]?.id
+  const isAdmin = Boolean(currentUser && currentUser.id === effectiveAdminId)
 
   // Determine if there is an active session specifically for this group
   const groupActiveSession = (group?.id ? getActiveSessionForGroup(group.id) : null) || (activeSession?.groupId === group.id ? activeSession : null)
@@ -171,7 +172,10 @@ export const GroupDetailsPage: React.FC<GroupDetailsPageProps> = ({
 
   // Remove a member (strictly admin only, from members page)
   const handleRemoveMember = async (memberId: string, memberName: string) => {
-    if (!isAdmin) return
+    if (!isAdmin) {
+      showToast('Only the group admin can remove members from the group.')
+      return
+    }
     const updatedMembers = group.members.filter(m => m.id !== memberId)
     const updatedGroup: Group = {
       ...group,
@@ -338,12 +342,6 @@ export const GroupDetailsPage: React.FC<GroupDetailsPageProps> = ({
     } finally {
       setIsSubmittingMember(false)
     }
-  }
-
-  // Handle Exit Group
-  const handleConfirmExit = () => {
-    setShowExitConfirm(false)
-    onExitGroup(group.id)
   }
 
   // Any member can start a break for this group if there is no ongoing break in this group
@@ -541,7 +539,7 @@ export const GroupDetailsPage: React.FC<GroupDetailsPageProps> = ({
             </div>
           </div>
 
-          {/* EXIT FROM GROUP SECTION - Strictly located on this page */}
+          {/* EXIT / DELETE GROUP SECTION - Strictly located on this page */}
           <div className="p-3.5 rounded-2xl bg-white dark:bg-stone-900 border border-stone-200/80 dark:border-stone-800 shadow-2xs flex items-center justify-between">
             <div className="flex items-center gap-2">
               <div className="p-1.5 rounded-xl bg-rose-50 dark:bg-rose-950/50 text-rose-600">
@@ -549,22 +547,36 @@ export const GroupDetailsPage: React.FC<GroupDetailsPageProps> = ({
               </div>
               <div>
                 <div className="text-xs font-bold text-stone-900 dark:text-stone-100">
-                  Leave {group.name}
+                  {isAdmin ? `Delete ${group.name}` : `Leave ${group.name}`}
                 </div>
                 <div className="text-[10px] text-stone-400">
-                  Exit from this tea group
+                  {isAdmin ? 'Permanently delete this group (Admin only)' : 'Exit from this tea group'}
                 </div>
               </div>
             </div>
 
-            <button
-              onClick={() => setShowExitConfirm(true)}
-              id="exit-group-members-page-btn"
-              className="px-3 py-1.5 rounded-xl text-xs font-semibold text-rose-600 hover:text-rose-700 hover:bg-rose-50 dark:hover:bg-rose-950/50 border border-rose-200 dark:border-rose-900/60 flex items-center gap-1.5 cursor-pointer transition-colors active:scale-95"
-            >
-              <LogOut className="w-3.5 h-3.5" />
-              <span>Exit from Group</span>
-            </button>
+            {isAdmin && onDeleteGroup ? (
+              <button
+                type="button"
+                onClick={() => onDeleteGroup(group.id)}
+                id="delete-group-members-page-btn"
+                className="px-3.5 py-1.5 rounded-xl text-xs font-semibold text-rose-600 hover:text-white hover:bg-rose-600 dark:hover:bg-rose-600 border border-rose-200 dark:border-rose-900/60 flex items-center gap-1.5 cursor-pointer transition-all active:scale-95 shadow-2xs"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Delete Group</span>
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => onExitGroup(group.id)}
+                id="exit-group-members-page-btn"
+                className="px-3.5 py-1.5 rounded-xl text-xs font-semibold text-rose-600 hover:text-white hover:bg-rose-600 dark:hover:bg-rose-600 border border-rose-200 dark:border-rose-900/60 flex items-center gap-1.5 cursor-pointer transition-all active:scale-95 shadow-2xs"
+                title="Exit group directly"
+              >
+                <LogOut className="w-3.5 h-3.5" />
+                <span>Exit from Group</span>
+              </button>
+            )}
           </div>
         </div>
       ) : (
@@ -1010,44 +1022,6 @@ export const GroupDetailsPage: React.FC<GroupDetailsPageProps> = ({
                 </div>
               </div>
             )}
-          </div>
-        </div>
-      )}
-
-      {/* Modal: Exit Group Confirmation */}
-      {showExitConfirm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-900/50 backdrop-blur-xs animate-in fade-in">
-          <div className="w-full max-w-sm bg-white dark:bg-stone-900 rounded-2xl shadow-2xl border border-stone-200 dark:border-stone-800 p-5 space-y-4 text-center">
-            <div className="w-12 h-12 rounded-full bg-rose-100 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400 flex items-center justify-center mx-auto text-xl">
-              <LogOut className="w-6 h-6" />
-            </div>
-
-            <div className="space-y-1">
-              <h3 className="font-heading font-bold text-base text-stone-900 dark:text-stone-100">
-                Exit {group.name}?
-              </h3>
-              <p className="text-xs text-stone-500 dark:text-stone-400">
-                Are you sure you want to exit this group? You won't be able to view active sessions unless someone re-invites you or you join with the group ID.
-              </p>
-            </div>
-
-            <div className="flex items-center justify-center gap-2 pt-2">
-              <button
-                type="button"
-                onClick={() => setShowExitConfirm(false)}
-                className="px-4 py-2 rounded-xl text-xs font-semibold text-stone-600 dark:text-stone-400 hover:bg-stone-100 dark:hover:bg-stone-800 cursor-pointer"
-              >
-                Stay in Group
-              </button>
-              <button
-                type="button"
-                onClick={handleConfirmExit}
-                id="confirm-exit-group-btn"
-                className="px-4 py-2 rounded-xl text-xs font-semibold bg-rose-600 hover:bg-rose-700 text-white shadow-xs cursor-pointer active:scale-95 transition-all"
-              >
-                Yes, Exit Group
-              </button>
-            </div>
           </div>
         </div>
       )}
