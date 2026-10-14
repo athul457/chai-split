@@ -4,8 +4,11 @@ import {
   ArrowRight,
   Check,
   CheckCircle2,
+  ChevronDown,
+  ChevronUp,
   Coffee,
   Copy,
+  CreditCard,
   Crown,
   Edit2,
   Flame,
@@ -13,12 +16,13 @@ import {
   Plus,
   Receipt,
   ShieldAlert,
+  Store,
   Trash2,
   UserPlus,
   Users,
   X
 } from 'lucide-react'
-import React, { useState, useMemo } from 'react'
+import React, { useState, useMemo, useEffect } from 'react'
 import { useExpense } from '../context/ExpenseContext'
 import { supabase } from '../lib/supabase'
 import { ChaiLoader } from '../components/ChaiLoader'
@@ -68,13 +72,22 @@ export const GroupDetailsPage: React.FC<GroupDetailsPageProps> = ({
   const [addMemberError, setAddMemberError] = useState<string | null>(null)
   const [isSubmittingMember, setIsSubmittingMember] = useState(false)
   const [toastNotice, setToastNotice] = useState<string | null>(null)
-  const [breakTitleInput, setBreakTitleInput] = useState(`${group.name} Chai Break ☕`)
+  const [breakTitleInput, setBreakTitleInput] = useState(`${group.name} Tea Break`)
   const [isStartingBreak, setIsStartingBreak] = useState(false)
   const [showBreakRunningModal, setShowBreakRunningModal] = useState(false)
+
+  // Ensure break title has no stray emojis
+  useEffect(() => {
+    setBreakTitleInput(`${group.name} Tea Break`)
+  }, [group.name, group.id])
+
+  const sanitizeText = (txt: string) =>
+    txt.replace(/[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}\u{1F1E6}-\u{1F1FF}\u{1F600}-\u{1F64F}\u{1F680}-\u{1F6FF}]/gu, '').replace(/\s+/g, ' ').trim()
 
   // Shop Menu Items State for this group
   const effectiveShopId = group.shopId || `shop-${group.id}`
   const [showAddItemModal, setShowAddItemModal] = useState(false)
+  const [showMenuItems, setShowMenuItems] = useState(false)
   const [newItemName, setNewItemName] = useState('')
   const [newItemPrice, setNewItemPrice] = useState('15')
   const [editingItem, setEditingItem] = useState<MenuItem | null>(null)
@@ -91,10 +104,11 @@ export const GroupDetailsPage: React.FC<GroupDetailsPageProps> = ({
     e.preventDefault()
     if (!newItemName.trim()) return
     const priceNum = Math.max(0, Math.round(parseFloat(newItemPrice) || 15))
-    await addCustomMenuItem(newItemName.trim(), priceNum, '☕', 'tea', effectiveShopId)
+    await addCustomMenuItem(newItemName.trim(), priceNum, '', 'tea', effectiveShopId)
     setNewItemName('')
     setNewItemPrice('15')
     setShowAddItemModal(false)
+    setShowMenuItems(true)
     showToast(`Added "${newItemName.trim()}" (₹${priceNum}) to shop menu!`)
   }
 
@@ -197,6 +211,43 @@ export const GroupDetailsPage: React.FC<GroupDetailsPageProps> = ({
     showToast(`Removed ${memberName} from group`)
   }
 
+  // Admin sets the single member who is going to pay the bill (can be any member including admin himself)
+  const handleSetPayer = async (member: User) => {
+    if (!isAdmin) {
+      showToast('Only the group admin can assign the bill payer.')
+      return
+    }
+
+    const isAlreadyPayer = group.payerId === member.id
+    const newPayerId = isAlreadyPayer ? undefined : member.id
+    const newPayerName = isAlreadyPayer ? undefined : member.name
+
+    const updatedGroup: Group = {
+      ...group,
+      payerId: newPayerId,
+      payerName: newPayerName
+    }
+
+    onUpdateGroup(updatedGroup)
+
+    if (supabase) {
+      try {
+        await supabase
+          .from('groups')
+          .update({ payer_id: newPayerId, payer_name: newPayerName })
+          .eq('id', group.id)
+      } catch (err) {
+        console.warn('Failed to update payer in Supabase:', err)
+      }
+    }
+
+    showToast(
+      newPayerId
+        ? `${member.name} is set to pay the bill!`
+        : 'Bill payer removed.'
+    )
+  }
+
   // Add existing colleague
   const handleAddExistingUser = async (colleague: User) => {
     const updatedMembers = [...group.members, colleague]
@@ -212,7 +263,7 @@ export const GroupDetailsPage: React.FC<GroupDetailsPageProps> = ({
           id: colleague.id,
           name: colleague.name,
           email: colleague.email || `${colleague.id}@team.chaisplit.internal`,
-          avatar: colleague.avatar || '👤',
+          avatar: colleague.avatar || colleague.name.slice(0, 2).toUpperCase() || 'U',
           team_name: colleague.teamName || group.name,
           user_code: colleague.userCode
         }, { onConflict: 'id' })
@@ -281,7 +332,7 @@ export const GroupDetailsPage: React.FC<GroupDetailsPageProps> = ({
               id: data.id,
               name: data.name,
               email: data.email,
-              avatar: data.avatar || '👤',
+              avatar: data.avatar || cleanId.slice(0, 2).toUpperCase() || 'U',
               teamName: data.team_name || group.name,
               userCode: data.user_code || cleanId.toUpperCase()
             }
@@ -318,7 +369,7 @@ export const GroupDetailsPage: React.FC<GroupDetailsPageProps> = ({
               id: memberToAdd.id,
               name: memberToAdd.name,
               email: memberToAdd.email,
-              avatar: memberToAdd.avatar || '👤',
+              avatar: memberToAdd.avatar || memberToAdd.name.slice(0, 2).toUpperCase() || 'U',
               team_name: memberToAdd.teamName || group.name,
               user_code: memberToAdd.userCode
             },
@@ -337,7 +388,7 @@ export const GroupDetailsPage: React.FC<GroupDetailsPageProps> = ({
 
       setMemberUniqueIdInput('')
       setShowAddUserModal(false)
-      showToast(`Added ${memberToAdd.name} (${memberToAdd.userCode || memberToAdd.id}) to group! 🎉`)
+      showToast(`Added ${memberToAdd.name} (${memberToAdd.userCode || memberToAdd.id}) to group!`)
     } catch (err: any) {
       setAddMemberError(err?.message || 'Failed to add member by Unique ID')
     } finally {
@@ -356,14 +407,14 @@ export const GroupDetailsPage: React.FC<GroupDetailsPageProps> = ({
     }
 
     setIsStartingBreak(true)
-    const title = breakTitleInput.trim() || `${group.name} Chai Break ☕`
+    const title = sanitizeText(breakTitleInput) || `${group.name} Tea Break`
     const success = addNewSession(
       title,
       group.shopName || 'Chayakkada',
       group.members,
       group.id,
       group.name,
-      currentUser?.id,
+      group.payerId || currentUser?.id,
       group.shopId,
       currentUser?.id,
       currentUser?.name
@@ -458,7 +509,7 @@ export const GroupDetailsPage: React.FC<GroupDetailsPageProps> = ({
                 </h2>
                 <p className="text-[11px] text-stone-400">
                   {isAdmin
-                    ? '👑 You are Admin • You can add or remove members'
+                    ? 'You are Admin • You can add or remove members'
                     : `Colleagues in ${group.name}`}
                 </p>
               </div>
@@ -477,8 +528,16 @@ export const GroupDetailsPage: React.FC<GroupDetailsPageProps> = ({
             {/* List of Members */}
             <div className="divide-y divide-stone-100 dark:divide-stone-800 pt-1">
               {group.members.map(member => {
-                const isCurrentUser = member.id === currentUser?.id
+                const isCurrentUser =
+                  member.id === currentUser?.id ||
+                  (currentUser?.userCode && (member.userCode === currentUser.userCode || member.id === currentUser.userCode)) ||
+                  Boolean(member.email && currentUser?.email && member.email.toLowerCase() === currentUser.email.toLowerCase())
                 const isMemberAdmin = member.id === effectiveAdminId
+                const isMemberPayer = Boolean(group.payerId && (
+                  member.id === group.payerId ||
+                  (member.userCode && group.payerId === member.userCode) ||
+                  (member.email && group.payerId.toLowerCase() === member.email.toLowerCase())
+                ))
 
                 return (
                   <div key={member.id} className="py-2.5 flex items-center justify-between gap-2">
@@ -505,22 +564,45 @@ export const GroupDetailsPage: React.FC<GroupDetailsPageProps> = ({
                               <span>Admin</span>
                             </span>
                           )}
-                        </div>
 
-                        <div className="flex items-center gap-1.5 text-[10px] text-stone-400">
-                          <span className="font-mono font-bold text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/60 px-1.5 py-0.5 rounded border border-amber-200/50 dark:border-amber-900/40">
-                            ID: {member.userCode || member.id}
-                          </span>
-                          {member.email && (
-                            <span className="truncate text-stone-400 hidden sm:inline">
-                              • {member.email}
+                          {isMemberPayer && (
+                            <span className="px-1.5 py-0.2 rounded text-[9px] bg-amber-100 text-amber-900 dark:bg-amber-950/80 dark:text-amber-200 font-bold flex items-center gap-1 border border-amber-300 dark:border-amber-700">
+                              <CreditCard className="w-2.5 h-2.5 text-amber-700 dark:text-amber-400" />
+                              <span>Bill Payer</span>
                             </span>
                           )}
                         </div>
+
+                        {/* ONLY show current user's own ID so they know their ID - DO NOT show others' ID or email */}
+                        {isCurrentUser && (
+                          <div className="flex items-center gap-1.5 text-[10px] text-stone-400 mt-0.5">
+                            <span className="font-mono font-bold text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/60 px-1.5 py-0.5 rounded border border-amber-200/50 dark:border-amber-900/40">
+                              Your ID: {member.userCode || member.id}
+                            </span>
+                          </div>
+                        )}
                       </div>
                     </div>
 
                     <div className="flex items-center gap-1.5 shrink-0">
+                      {/* Admin option to designate this member as the single bill payer */}
+                      {isAdmin && (
+                        <button
+                          type="button"
+                          onClick={() => handleSetPayer(member)}
+                          id={`set-payer-${member.id}`}
+                          className={`px-2 py-1 rounded-lg text-[11px] font-bold flex items-center gap-1 cursor-pointer transition-all active:scale-95 ${
+                            isMemberPayer
+                              ? 'bg-amber-500 hover:bg-amber-600 text-white shadow-2xs'
+                              : 'text-stone-600 dark:text-stone-300 hover:text-amber-700 dark:hover:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-950/40 border border-stone-200 dark:border-stone-700'
+                          }`}
+                          title={isMemberPayer ? 'Click to unassign bill payer' : `Set ${member.name} as the person to pay`}
+                        >
+                          <CreditCard className={`w-3 h-3 ${isMemberPayer ? 'text-white' : 'text-amber-600'}`} />
+                          <span>{isMemberPayer ? 'Payer ✓' : 'Set as Payer'}</span>
+                        </button>
+                      )}
+
                       {/* ONLY THE ADMIN CAN SEE REMOVE USER - Strictly on this page */}
                       {isAdmin && !isCurrentUser && (
                         <button
@@ -641,7 +723,7 @@ export const GroupDetailsPage: React.FC<GroupDetailsPageProps> = ({
               <div className="flex items-center gap-2 flex-wrap">
                 {group.shopName && (
                   <span className="inline-flex items-center gap-1 bg-white/15 px-2 py-0.5 rounded-md text-[11px]">
-                    <span>{group.shopEmoji || '🏪'}</span>
+                    <Store className="w-3.5 h-3.5 text-amber-200" />
                     <span>Shop: {group.shopName}</span>
                   </span>
                 )}
@@ -691,7 +773,7 @@ export const GroupDetailsPage: React.FC<GroupDetailsPageProps> = ({
                     {groupActiveSession?.title}
                   </h3>
                   <p className="text-xs text-stone-500 dark:text-stone-400">
-                    📍 {groupActiveSession?.shopName} • {totalSessionItemCount} items • <strong className="text-stone-800 dark:text-stone-200">₹{groupActiveSession?.totalAmount}</strong>
+                    {groupActiveSession?.shopName} • {totalSessionItemCount} items • <strong className="text-stone-800 dark:text-stone-200">₹{groupActiveSession?.totalAmount}</strong>
                   </p>
                 </div>
 
@@ -717,7 +799,7 @@ export const GroupDetailsPage: React.FC<GroupDetailsPageProps> = ({
                   id="enter-tea-break-btn"
                   className="w-full py-2.5 px-4 rounded-xl font-bold text-xs bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white shadow-md active:scale-[0.98] transition-all cursor-pointer flex items-center justify-center gap-2"
                 >
-                  <span>Enter Tea Break &amp; Order Items ☕</span>
+                  <span>Enter Tea Break &amp; Order Items</span>
                   <ArrowRight className="w-4 h-4" />
                 </button>
 
@@ -753,9 +835,9 @@ export const GroupDetailsPage: React.FC<GroupDetailsPageProps> = ({
                 </label>
                 <input
                   type="text"
-                  value={breakTitleInput}
-                  onChange={e => setBreakTitleInput(e.target.value)}
-                  placeholder="e.g. 4:30 PM Chai Break ☕"
+                  value={sanitizeText(breakTitleInput)}
+                  onChange={e => setBreakTitleInput(sanitizeText(e.target.value))}
+                  placeholder="e.g. 4:30 PM Tea Break"
                   className="w-full py-2 px-3 rounded-xl border border-stone-300 dark:border-stone-700 bg-stone-50 dark:bg-stone-800 text-xs text-stone-900 dark:text-stone-100 focus:outline-none focus:ring-1 focus:ring-amber-500 font-medium"
                 />
               </div>
@@ -771,7 +853,7 @@ export const GroupDetailsPage: React.FC<GroupDetailsPageProps> = ({
                 ) : (
                   <>
                     <Coffee className="w-4 h-4" />
-                    <span>Start Tea Break ☕</span>
+                    <span>Start Tea Break</span>
                   </>
                 )}
               </button>
@@ -783,9 +865,13 @@ export const GroupDetailsPage: React.FC<GroupDetailsPageProps> = ({
           {/* ========================================================================= */}
           <div className="p-4 rounded-2xl bg-white dark:bg-stone-900 border border-stone-200/80 dark:border-stone-800 shadow-2xs space-y-3.5">
             <div className="flex items-center justify-between gap-2">
-              <div className="min-w-0">
+              <div
+                className="min-w-0 cursor-pointer select-none"
+                onClick={() => setShowMenuItems(prev => !prev)}
+                title={showMenuItems ? 'Click to hide menu items' : 'Click to view menu items'}
+              >
                 <h3 className="font-heading font-extrabold text-base text-stone-900 dark:text-stone-100 flex items-center gap-2 truncate">
-                  <span className="text-xl">{group.shopEmoji || '🏪'}</span>
+                  <Store className="w-4 h-4 text-amber-600" />
                   <span className="truncate">{group.shopName || 'Tapri'} Menu</span>
                 </h3>
                 <p className="text-[11px] text-stone-400">
@@ -793,78 +879,109 @@ export const GroupDetailsPage: React.FC<GroupDetailsPageProps> = ({
                 </p>
               </div>
 
-              <button
-                type="button"
-                onClick={() => setShowAddItemModal(true)}
-                id="add-shop-item-btn"
-                className="px-3 py-1.5 rounded-xl font-bold text-xs bg-amber-600 hover:bg-amber-700 text-white shadow-xs cursor-pointer flex items-center gap-1.5 active:scale-95 transition-all shrink-0"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                <span>Add Item</span>
-              </button>
-            </div>
+              <div className="flex items-center gap-2 shrink-0">
+                {/* Toggle Button for viewing menu items */}
+                <button
+                  type="button"
+                  onClick={() => setShowMenuItems(prev => !prev)}
+                  id="toggle-menu-items-btn"
+                  className={`px-3 py-1.5 rounded-xl font-bold text-xs flex items-center gap-1.5 cursor-pointer active:scale-95 transition-all shadow-2xs ${
+                    showMenuItems
+                      ? 'bg-stone-100 dark:bg-stone-800 text-stone-700 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700 border border-stone-200 dark:border-stone-700'
+                      : 'bg-amber-50 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-900/40 border border-amber-200/80 dark:border-amber-900/60'
+                  }`}
+                  title={showMenuItems ? 'Hide menu items' : 'View menu items'}
+                >
+                  {showMenuItems ? (
+                    <>
+                      <ChevronUp className="w-3.5 h-3.5 text-stone-500" />
+                      <span>Hide Items</span>
+                    </>
+                  ) : (
+                    <>
+                      <ChevronDown className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
+                      <span>View Items</span>
+                    </>
+                  )}
+                </button>
 
-            {/* Menu Items Simple List */}
-            {groupShopItems.length === 0 ? (
-              <div className="p-6 rounded-xl border border-dashed border-stone-200 dark:border-stone-800 text-center space-y-2 bg-stone-50/50 dark:bg-stone-800/30">
-                <p className="font-bold text-xs text-stone-800 dark:text-stone-200">
-                  No Menu Items Added Yet
-                </p>
-                <p className="text-[11px] text-stone-400 max-w-xs mx-auto">
-                  Add items to {group.shopName || 'this shop'} so members can order easily.
-                </p>
                 <button
                   type="button"
                   onClick={() => setShowAddItemModal(true)}
-                  className="px-3 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs cursor-pointer inline-flex items-center gap-1 shadow-xs active:scale-95 transition-all"
+                  id="add-shop-item-btn"
+                  className="px-3 py-1.5 rounded-xl font-bold text-xs bg-amber-600 hover:bg-amber-700 text-white shadow-xs cursor-pointer flex items-center gap-1.5 active:scale-95 transition-all shrink-0"
                 >
                   <Plus className="w-3.5 h-3.5" />
-                  <span>Add First Item</span>
+                  <span>Add Item</span>
                 </button>
               </div>
-            ) : (
-              <div className="space-y-2 pt-1">
-                {groupShopItems.map(item => (
-                  <div
-                    key={item.id}
-                    className="p-3 rounded-xl border border-stone-200/90 dark:border-stone-800 bg-stone-50/60 dark:bg-stone-800/40 flex items-center justify-between gap-3 hover:border-amber-400 dark:hover:border-amber-500/50 transition-all"
-                  >
-                    {/* Item Name Only (No images/emojis) */}
-                    <div className="font-semibold text-xs text-stone-900 dark:text-stone-100 truncate min-w-0">
-                      {item.name}
-                    </div>
+            </div>
 
-                    {/* Price, Edit Price, Remove Item */}
-                    <div className="flex items-center gap-2 shrink-0">
-                      <span className="px-2 py-0.5 rounded-md bg-amber-100/90 dark:bg-amber-950/80 text-amber-900 dark:text-amber-200 font-bold text-xs">
-                        ₹{item.price}
-                      </span>
-
-                      {/* Edit Price Button */}
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setEditingItem(item)
-                          setEditPriceInput(item.price.toString())
-                        }}
-                        className="p-1.5 rounded-lg text-stone-400 hover:text-amber-700 hover:bg-stone-200/60 dark:hover:bg-stone-700 transition-colors cursor-pointer"
-                        title="Edit price"
-                      >
-                        <Edit2 className="w-3.5 h-3.5" />
-                      </button>
-
-                      {/* Remove Item Button */}
-                      <button
-                        type="button"
-                        onClick={() => setItemToDelete(item)}
-                        className="p-1.5 rounded-lg text-stone-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors cursor-pointer"
-                        title="Remove item"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
+            {/* Menu Items Simple List - ONLY SHOWN WHEN TOGGLE BUTTON IS CLICKED */}
+            {showMenuItems && (
+              <div className="pt-2 border-t border-stone-100 dark:border-stone-800 animate-in fade-in duration-150">
+                {groupShopItems.length === 0 ? (
+                  <div className="p-6 rounded-xl border border-dashed border-stone-200 dark:border-stone-800 text-center space-y-2 bg-stone-50/50 dark:bg-stone-800/30">
+                    <p className="font-bold text-xs text-stone-800 dark:text-stone-200">
+                      No Menu Items Added Yet
+                    </p>
+                    <p className="text-[11px] text-stone-400 max-w-xs mx-auto">
+                      Add items to {group.shopName || 'this shop'} so members can order easily.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => setShowAddItemModal(true)}
+                      className="px-3 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs cursor-pointer inline-flex items-center gap-1 shadow-xs active:scale-95 transition-all"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>Add First Item</span>
+                    </button>
                   </div>
-                ))}
+                ) : (
+                  <div className="space-y-2">
+                    {groupShopItems.map(item => (
+                      <div
+                        key={item.id}
+                        className="p-3 rounded-xl border border-stone-200/90 dark:border-stone-800 bg-stone-50/60 dark:bg-stone-800/40 flex items-center justify-between gap-3 hover:border-amber-400 dark:hover:border-amber-500/50 transition-all"
+                      >
+                        {/* Item Name Only (No images/emojis) */}
+                        <div className="font-semibold text-xs text-stone-900 dark:text-stone-100 truncate min-w-0">
+                          {item.name}
+                        </div>
+
+                        {/* Price, Edit Price, Remove Item */}
+                        <div className="flex items-center gap-2 shrink-0">
+                          <span className="px-2 py-0.5 rounded-md bg-amber-100/90 dark:bg-amber-950/80 text-amber-900 dark:text-amber-200 font-bold text-xs">
+                            ₹{item.price}
+                          </span>
+
+                          {/* Edit Price Button */}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEditingItem(item)
+                              setEditPriceInput(item.price.toString())
+                            }}
+                            className="p-1.5 rounded-lg text-stone-400 hover:text-amber-700 hover:bg-stone-200/60 dark:hover:bg-stone-700 transition-colors cursor-pointer"
+                            title="Edit price"
+                          >
+                            <Edit2 className="w-3.5 h-3.5" />
+                          </button>
+
+                          {/* Remove Item Button */}
+                          <button
+                            type="button"
+                            onClick={() => setItemToDelete(item)}
+                            className="p-1.5 rounded-lg text-stone-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors cursor-pointer"
+                            title="Remove item"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -1253,7 +1370,7 @@ export const GroupDetailsPage: React.FC<GroupDetailsPageProps> = ({
                 }}
                 className="flex-1 py-2 px-3 rounded-xl text-xs font-bold bg-amber-600 hover:bg-amber-700 text-white shadow-xs cursor-pointer active:scale-95 transition-all flex items-center justify-center gap-1"
               >
-                <span>Enter Break ☕</span>
+                <span>Enter Break</span>
               </button>
             </div>
           </div>

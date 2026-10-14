@@ -2,12 +2,8 @@ import React, { useState, useEffect, useMemo } from 'react'
 import {
   Coffee,
   Plus,
-  Minus,
   CheckCircle2,
   Clock,
-  Share2,
-  Receipt,
-  Wallet,
   Copy,
   X,
   Users,
@@ -15,8 +11,7 @@ import {
   Trash2,
   KeyRound,
   Search,
-  AlertTriangle,
-  LogOut
+  AlertTriangle
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { useExpense } from '../context/ExpenseContext'
@@ -37,19 +32,10 @@ export const Dashboard: React.FC<DashboardProps> = () => {
   const { user, allUsers } = useAuth()
   const {
     activeSession,
-    activeSessions,
     getActiveSessionForGroup,
     pastSessions,
-    menuItems,
-    addItemToMember,
-    removeItemFromMember,
-    toggleMemberPaid,
-    settleActiveSession,
     confirmMemberOrder,
-    addMemberToSession,
-    addCustomMenuItem,
-    getShopItemSummary,
-    generateWhatsAppSummary
+    addCustomMenuItem
   } = useExpense()
 
   // Navigation tab state (Home is the default home tab)
@@ -62,13 +48,10 @@ export const Dashboard: React.FC<DashboardProps> = () => {
   const [showAddItemModal, setShowAddItemModal] = useState(false)
   const [customItemName, setCustomItemName] = useState('')
   const [customItemPrice, setCustomItemPrice] = useState('20')
-  const [customItemEmoji, setCustomItemEmoji] = useState('☕')
-  const [selectedMemberForQuickAdd, setSelectedMemberForQuickAdd] = useState<string>('')
   const [copyNotice, setCopyNotice] = useState<string | null>(null)
 
-  // Create Group form states (Group Name + Shop Name + Emoji)
+  // Create Group form states (Group Name + Shop Name)
   const [newGroupShopName, setNewGroupShopName] = useState('')
-  const [newGroupShopEmoji, setNewGroupShopEmoji] = useState('☕')
   const [includeStarterMenu, setIncludeStarterMenu] = useState(true)
 
   // Delete Group Confirmation Modal states (Strictly Admin only with typed confirmation)
@@ -239,6 +222,8 @@ export const Dashboard: React.FC<DashboardProps> = () => {
               code: g.code || g.id || `TEA-${Math.floor(1000 + Math.random() * 9000)}`,
               department: g.department || 'Office',
               adminId: g.admin_id,
+              payerId: g.payer_id || g.payerId,
+              payerName: g.payer_name || g.payerName,
               shopId: g.shop_id,
               shopName: g.shop_name,
               shopEmoji: g.shop_emoji || '☕',
@@ -530,41 +515,7 @@ export const Dashboard: React.FC<DashboardProps> = () => {
     setTimeout(() => setCopyNotice(null), 3000)
   }
 
-  // Copy WhatsApp summary
-  const handleCopyWhatsApp = () => {
-    const text = generateWhatsAppSummary()
-    handleCopy(text, 'bill summary')
-  }
 
-  // Handle Dashboard Settle Break (strictly only creator can close/settle the break, AND every member with items must confirm)
-  const handleDashboardSettle = () => {
-    if (!activeSession) return
-    const isBreakCreator = Boolean(
-      (activeSession.creatorId && (
-        user?.id === activeSession.creatorId ||
-        (user?.userCode && activeSession.creatorId === user.userCode) ||
-        (user?.email && activeSession.creatorId.toLowerCase() === user.email.toLowerCase())
-      )) ||
-      (!activeSession.creatorId && (
-        user?.id === activeSession.payerId ||
-        (user?.name && activeSession.creatorName && user.name.toLowerCase() === activeSession.creatorName.toLowerCase())
-      ))
-    )
-
-    if (!isBreakCreator) {
-      setShowCannotSettleModal(true)
-      return
-    }
-
-    const membersWithItems = activeSession.expenses.filter(e => e.items && e.items.length > 0)
-    const unconfirmedMembers = membersWithItems.filter(e => !e.isConfirmed)
-    if (unconfirmedMembers.length > 0) {
-      setShowUnconfirmedModal(true)
-      return
-    }
-
-    settleActiveSession(activeSession.id, user?.id)
-  }
 
   // Handle add custom item
   const handleCreateCustomItem = (e: React.FormEvent) => {
@@ -573,7 +524,7 @@ export const Dashboard: React.FC<DashboardProps> = () => {
     const priceNum = Math.max(0, Math.round(parseFloat(customItemPrice) || 15))
     const targetShopId = activeSession?.shopId || 'shop-chayakkada'
     const targetShopName = activeSession?.shopName || 'shop'
-    addCustomMenuItem(customItemName.trim(), priceNum, customItemEmoji, customItemCategory, targetShopId)
+    addCustomMenuItem(customItemName.trim(), priceNum, '', customItemCategory, targetShopId)
     setShowAddItemModal(false)
     setCopyNotice(`Added "${customItemName.trim()}" (₹${priceNum}) to ${targetShopName}!`)
     setTimeout(() => setCopyNotice(null), 3000)
@@ -588,7 +539,6 @@ export const Dashboard: React.FC<DashboardProps> = () => {
 
     const generatedGroupId = `GRP-${Math.floor(1000 + Math.random() * 9000)}`
     const shopName = newGroupShopName.trim() || `${newGroupName.trim()} Tapri`
-    const shopEmoji = newGroupShopEmoji || '☕'
     const newShopId = `shop-${Date.now()}`
 
     const newShop: Shop = {
@@ -597,21 +547,21 @@ export const Dashboard: React.FC<DashboardProps> = () => {
       location: 'Local Tapri',
       specialty: 'Chai & Snacks',
       rating: 4.8,
-      emoji: shopEmoji
+      emoji: ''
     }
 
     const starterItems: MenuItem[] = includeStarterMenu
       ? [
-          { id: `${newShopId}-1`, name: 'Chaya', price: 12, category: 'tea', emoji: '☕', shopId: newShopId, description: 'Hot naadan chaya' },
-          { id: `${newShopId}-2`, name: 'Coffee', price: 12, category: 'coffee', emoji: '☕', shopId: newShopId, description: 'Hot filter coffee' },
-          { id: `${newShopId}-3`, name: 'Samoza', price: 12, category: 'snacks', emoji: '🥟', shopId: newShopId, description: 'Crispy hot samoza' },
-          { id: `${newShopId}-4`, name: 'Omlette', price: 20, category: 'snacks', emoji: '🍳', shopId: newShopId, description: 'Fresh double egg omlette' },
-          { id: `${newShopId}-5`, name: 'Dosha', price: 12, category: 'snacks', emoji: '🥞', shopId: newShopId, description: 'Hot crisp dosha' },
-          { id: `${newShopId}-6`, name: 'Porotta', price: 12, category: 'snacks', emoji: '🫓', shopId: newShopId, description: 'Kerala layered porotta' },
-          { id: `${newShopId}-7`, name: 'Puzhungiya Motta', price: 10, category: 'snacks', emoji: '🥚', shopId: newShopId, description: 'Boiled egg' },
-          { id: `${newShopId}-8`, name: "Bull's Eye", price: 10, category: 'snacks', emoji: '🍳', shopId: newShopId, description: 'Half-boiled egg bullseye' },
-          { id: `${newShopId}-9`, name: 'Puffs', price: 20, category: 'snacks', emoji: '🥐', shopId: newShopId, description: 'Crispy puff' },
-          { id: `${newShopId}-10`, name: 'Parippvada', price: 10, category: 'snacks', emoji: '🧆', shopId: newShopId, description: 'Crunchy parippuvada' }
+          { id: `${newShopId}-1`, name: 'Chaya', price: 12, category: 'tea', emoji: '', shopId: newShopId, description: 'Hot naadan chaya' },
+          { id: `${newShopId}-2`, name: 'Coffee', price: 12, category: 'coffee', emoji: '', shopId: newShopId, description: 'Hot filter coffee' },
+          { id: `${newShopId}-3`, name: 'Samoza', price: 12, category: 'snacks', emoji: '', shopId: newShopId, description: 'Crispy hot samoza' },
+          { id: `${newShopId}-4`, name: 'Omlette', price: 20, category: 'snacks', emoji: '', shopId: newShopId, description: 'Fresh double egg omlette' },
+          { id: `${newShopId}-5`, name: 'Dosha', price: 12, category: 'snacks', emoji: '', shopId: newShopId, description: 'Hot crisp dosha' },
+          { id: `${newShopId}-6`, name: 'Porotta', price: 12, category: 'snacks', emoji: '', shopId: newShopId, description: 'Kerala layered porotta' },
+          { id: `${newShopId}-7`, name: 'Puzhungiya Motta', price: 10, category: 'snacks', emoji: '', shopId: newShopId, description: 'Boiled egg' },
+          { id: `${newShopId}-8`, name: "Bull's Eye", price: 10, category: 'snacks', emoji: '', shopId: newShopId, description: 'Half-boiled egg bullseye' },
+          { id: `${newShopId}-9`, name: 'Puffs', price: 20, category: 'snacks', emoji: '', shopId: newShopId, description: 'Crispy puff' },
+          { id: `${newShopId}-10`, name: 'Parippvada', price: 10, category: 'snacks', emoji: '', shopId: newShopId, description: 'Crunchy parippuvada' }
         ]
       : []
 
@@ -623,7 +573,7 @@ export const Dashboard: React.FC<DashboardProps> = () => {
       adminId: user.id,
       shopId: newShopId,
       shopName: shopName,
-      shopEmoji: shopEmoji,
+      shopEmoji: '',
       members: [user],
       createdDate: new Date().toISOString().split('T')[0]
     }
@@ -636,7 +586,6 @@ export const Dashboard: React.FC<DashboardProps> = () => {
     setShowCreateGroupModal(false)
     setNewGroupName('')
     setNewGroupShopName('')
-    setNewGroupShopEmoji('☕')
 
     // Also populate starter items into expense context immediately
     starterItems.forEach(item => {
@@ -670,7 +619,7 @@ export const Dashboard: React.FC<DashboardProps> = () => {
           id: user.id,
           name: user.name,
           email: user.email,
-          avatar: user.avatar || '☕',
+          avatar: user.avatar || user.name.slice(0, 2).toUpperCase() || 'U',
           team_name: user.teamName || 'Team',
           user_code: user.userCode,
           upi_id: user.upiId
@@ -984,42 +933,8 @@ export const Dashboard: React.FC<DashboardProps> = () => {
   }
 
 
-  // Session menu items for this break
-  const filteredMenuItems = useMemo(() => {
-    if (activeSession?.shopId) {
-      const shopItems = menuItems.filter(item => item.shopId === activeSession.shopId)
-      if (shopItems.length > 0) return shopItems
-    }
-    return menuItems
-  }, [activeSession?.shopId, menuItems])
 
-  // Shop breakdown
-  const shopItems = getShopItemSummary()
-  const bhaiyaShoutLine = shopItems.map(i => `${i.count} ${i.name}`).join(', ')
 
-  // Total collected & pending
-  const totalAmount = activeSession?.totalAmount || 0
-  const unpaidMembers = activeSession?.expenses.filter(e => !e.isPaid && e.memberId !== activeSession.payerId && e.total > 0) || []
-  const paidMembers = activeSession?.expenses.filter(e => e.isPaid && e.memberId !== activeSession.payerId && e.total > 0) || []
-
-  // Target live break to feature on Dashboard top banner (for user's groups)
-  const featuredActiveBreak = useMemo(() => {
-    if (activeGroup?.id) {
-      const gBreak = getActiveSessionForGroup(activeGroup.id)
-      if (gBreak && gBreak.status === 'active') return gBreak
-    }
-    const foundInAny = activeSessions.find(s => s.status === 'active' && groups.some(g => g.id === s.groupId))
-    if (foundInAny) return foundInAny
-    if (activeSession && activeSession.status === 'active' && groups.some(g => g.id === activeSession.groupId)) {
-      return activeSession
-    }
-    return null
-  }, [activeGroup?.id, getActiveSessionForGroup, activeSessions, groups, activeSession])
-
-  // Security check: Only display active session if user is actually in that group
-  const isUserInActiveSessionGroup = Boolean(
-    activeSession && groups.some(g => g.id === activeSession.groupId)
-  )
 
   // Count past sessions belonging to the user's groups for navigation badge
   const userPastSessionsCount = useMemo(() => {
@@ -1056,436 +971,99 @@ export const Dashboard: React.FC<DashboardProps> = () => {
           </div>
         )}
 
-        {/* -------------------- 1. DETAILS TAB (Live Break & Expense Tracking) -------------------- */}
-        {activeTab === 'details' && (
-          <div className="space-y-4">
-            {/* Top Bar with Break Status */}
-            <div className="p-3.5 rounded-2xl bg-white dark:bg-stone-900 border border-stone-200/80 dark:border-stone-800 shadow-2xs flex items-center justify-between">
-              <div>
-                <div className="flex items-center gap-1.5">
-                  <span className="px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300 text-[10px] font-semibold">
-                    {activeGroup?.name || user?.teamName || 'Floor 3 Tea Club'}
-                  </span>
-                </div>
-                <div className="text-xs text-stone-500 dark:text-stone-400 mt-0.5">
-                  Logged in as <strong className="text-stone-800 dark:text-stone-200">{user?.name}</strong>
-                </div>
-              </div>
+        {/* -------------------- 1. MY ORDERS & OTHERS' ORDERS TABS -------------------- */}
+        {(activeTab === 'my-orders' || activeTab === 'others-orders' || activeTab === 'details') && (
+          (() => {
+            const currentBreakGroup =
+              (viewingBreakGroupId ? groups.find(g => g.id === viewingBreakGroupId) : null) ||
+              (activeSession?.groupId ? groups.find(g => g.id === activeSession.groupId) : null) ||
+              groups.find(g => {
+                const s = getActiveSessionForGroup(g.id)
+                return s && s.status === 'active'
+              }) ||
+              activeGroup
 
-              {activeSession && isUserInActiveSessionGroup ? (
-                <button
-                  onClick={() => {
-                    const targetGroup = groups.find(g => g.id === activeSession?.groupId) || activeGroup
-                    if (targetGroup) {
-                      setViewingGroupId(null)
-                      setViewingBreakGroupId(targetGroup.id)
-                    }
-                    setActiveTab('groups')
+            const sessionForGroup = currentBreakGroup?.id ? getActiveSessionForGroup(currentBreakGroup.id) : undefined
+            const isBreakLive = Boolean(
+              (sessionForGroup && sessionForGroup.status === 'active') ||
+              (activeSession && activeSession.status === 'active')
+            )
+
+            if (currentBreakGroup && isBreakLive) {
+              return (
+                <TeaBreakPage
+                  group={currentBreakGroup}
+                  currentUser={user}
+                  initialSubView={activeTab === 'others-orders' ? 'others-orders' : 'my-orders'}
+                  onSubViewChange={(sub) => setActiveTab(sub)}
+                  onBack={() => {
+                    setViewingBreakGroupId(null)
+                    setActiveTab('home')
                   }}
-                  id="view-group-orders-btn"
-                  className="px-3 py-1.5 rounded-xl font-semibold text-xs bg-amber-600 hover:bg-amber-700 active:scale-95 text-white shadow-xs transition-all cursor-pointer flex items-center gap-1"
-                >
-                  <Coffee className="w-3.5 h-3.5" />
-                  <span>Tea Break Orders ☕</span>
-                </button>
-              ) : (
-                <button
-                  onClick={() => {
-                    if (activeGroup) {
-                      setViewingGroupId(activeGroup.id)
-                    }
-                    setActiveTab('groups')
-                  }}
-                  id="header-groups-btn"
-                  className="px-3 py-1.5 rounded-xl font-semibold text-xs bg-stone-100 hover:bg-stone-200 dark:bg-stone-800 dark:hover:bg-stone-700 text-stone-700 dark:text-stone-300 shadow-2xs transition-all cursor-pointer flex items-center gap-1"
-                >
-                  <Users className="w-3.5 h-3.5 text-amber-600" />
-                  <span>Groups</span>
-                </button>
-              )}
-            </div>
+                />
+              )
+            }
 
-            {/* Active Session Content */}
-            {activeSession && isUserInActiveSessionGroup ? (
-              <div className="space-y-4">
-                {/* Active Session Highlight Card */}
-                <div className="p-4 rounded-2xl bg-gradient-to-br from-amber-600 via-orange-600 to-amber-700 text-white shadow-md relative overflow-hidden space-y-3">
-                  <div className="flex items-center justify-between">
-                    <span className="px-2 py-0.5 rounded-full bg-white/20 text-white text-[10px] font-bold tracking-wide uppercase backdrop-blur-sm">
-                      Live Session
-                    </span>
-                    <span className="text-amber-100 text-[11px] flex items-center gap-1">
-                      <Clock className="w-3 h-3" />
-                      {activeSession.createdAt}
-                    </span>
-                  </div>
-
-                  <div>
-                    <h2 className="font-heading text-xl font-extrabold tracking-tight">
-                      {activeSession.title}
-                    </h2>
-                    <p className="text-amber-100 text-xs font-medium">
-                      📍 {activeSession.shopName} • {shopItems.reduce((acc, i) => acc + i.count, 0)} items total
-                    </p>
-                  </div>
-
-                  <div className="flex items-center justify-between gap-2 pt-1 border-t border-white/20">
-                    <div className="flex items-baseline gap-1">
-                      <span className="text-[11px] text-amber-200">Total:</span>
-                      <span className="font-heading text-2xl font-black">₹{totalAmount}</span>
-                    </div>
-
-                    <div className="flex items-center gap-1.5">
-                      <button
-                        onClick={handleCopyWhatsApp}
-                        id="copy-whatsapp-btn"
-                        title="Share on WhatsApp"
-                        className="px-2.5 py-1.5 rounded-xl bg-white text-stone-900 hover:bg-amber-50 text-xs font-semibold shadow-xs flex items-center gap-1 cursor-pointer"
-                      >
-                        <Share2 className="w-3.5 h-3.5 text-emerald-600" />
-                        <span className="text-[11px]">WhatsApp</span>
-                      </button>
-
-                      <button
-                        onClick={handleDashboardSettle}
-                        id="settle-bill-btn"
-                        className="px-2.5 py-1.5 rounded-xl bg-emerald-500 hover:bg-emerald-600 active:scale-95 text-white font-semibold text-xs shadow-xs flex items-center gap-1 cursor-pointer"
-                      >
-                        <CheckCircle2 className="w-3.5 h-3.5" />
-                        <span className="text-[11px]">Settle 🎉</span>
-                      </button>
-                    </div>
-                  </div>
+            // Empty state when no live break is active
+            const isOthersTab = activeTab === 'others-orders'
+            return (
+              <div className="p-8 text-center bg-white dark:bg-stone-900 rounded-2xl border border-stone-200 dark:border-stone-800 space-y-4 my-2">
+                <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-amber-500/10 to-orange-500/10 text-amber-700 dark:text-amber-300 flex items-center justify-center mx-auto text-2xl shadow-xs border border-amber-500/20">
+                  {isOthersTab ? <Users className="w-7 h-7 text-amber-600" /> : <Coffee className="w-7 h-7 text-amber-600" />}
+                </div>
+                <div className="space-y-1.5">
+                  <h3 className="font-heading font-extrabold text-base text-stone-900 dark:text-stone-100">
+                    {isOthersTab ? "No Live Group Orders" : "No Active Orders"}
+                  </h3>
+                  <p className="text-xs text-stone-500 dark:text-stone-400 max-w-xs mx-auto leading-relaxed">
+                    {isOthersTab
+                      ? "Colleagues' orders and the group bill breakdown will appear here during an active tea break."
+                      : "You can add and manage your cup once a tea break is started in one of your groups."}
+                  </p>
                 </div>
 
-                {/* Card 1: ☕ Track Orders (Who Had What?) */}
-                <div className="p-4 rounded-2xl bg-white dark:bg-stone-900 border border-stone-200 dark:border-stone-800 shadow-2xs space-y-3">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <div className="p-1 rounded-lg bg-amber-100 dark:bg-amber-950 text-amber-700 dark:text-amber-300">
-                        <Coffee className="w-4 h-4" />
-                      </div>
-                      <div>
-                        <h3 className="font-heading font-bold text-stone-900 dark:text-stone-100 text-sm">
-                          ☕ Who Had What?
-                        </h3>
-                        <p className="text-[10px] text-stone-400">
-                          Tap items below to add to cup
-                        </p>
-                      </div>
+                {groups.length > 0 ? (
+                  <div className="pt-2 space-y-2 max-w-sm mx-auto">
+                    <div className="text-[11px] font-bold text-stone-400 uppercase tracking-wider">
+                      Select a group to start a break:
                     </div>
-
-                    {/* Add colleague dropdown */}
-                    <select
-                      id="add-colleague-select"
-                      onChange={e => {
-                        const target = allUsers.find(u => u.id === e.target.value)
-                        if (target) {
-                          addMemberToSession(target)
-                          e.target.value = ''
-                        }
-                      }}
-                      className="text-xs py-1 px-2 rounded-lg border border-stone-200 dark:border-stone-700 bg-stone-50 dark:bg-stone-800 text-stone-700 dark:text-stone-300 cursor-pointer focus:outline-none"
-                    >
-                      <option value="">+ Add Person</option>
-                      {allUsers
-                        .filter(u => !activeSession.expenses.some(e => e.memberId === u.id))
-                        .map(u => (
-                          <option key={u.id} value={u.id}>
-                            {u.name}
-                          </option>
-                        ))}
-                    </select>
-                  </div>
-
-                  {/* Members list */}
-                  <div className="space-y-2.5">
-                    {activeSession.expenses.map(expense => {
-                      const isPayer = expense.memberId === activeSession.payerId
-                      const isCurrentUser = expense.memberId === user?.id
-
-                      return (
-                        <div
-                          key={expense.memberId}
-                          className={`p-3 rounded-xl border transition-all ${
-                            selectedMemberForQuickAdd === expense.memberId
-                              ? 'border-amber-500 bg-amber-50/40 dark:bg-amber-950/20 ring-1 ring-amber-500/20'
-                              : 'border-stone-200/80 dark:border-stone-800 bg-stone-50/50 dark:bg-stone-800/40'
-                          }`}
-                        >
-                          <div className="flex items-center justify-between gap-1.5">
-                            <div className="flex items-center gap-2">
-                              <div className="w-7 h-7 rounded-full bg-gradient-to-tr from-stone-700 to-stone-900 text-white font-bold text-[10px] flex items-center justify-center shrink-0">
-                                {expense.memberAvatar}
-                              </div>
-                              <div className="truncate">
-                                <div className="flex items-center gap-1 truncate">
-                                  <span className="font-semibold text-stone-900 dark:text-stone-100 text-xs truncate">
-                                    {expense.memberName}
-                                  </span>
-                                  {isCurrentUser && (
-                                    <span className="px-1 py-0.2 rounded text-[9px] bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 font-semibold">
-                                      You
-                                    </span>
-                                  )}
-                                  {isPayer && (
-                                    <span className="px-1 py-0.2 rounded text-[9px] bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 font-semibold">
-                                      👑 Payer
-                                    </span>
-                                  )}
-                                </div>
-                                <span className="text-[10px] text-stone-400 font-medium">
-                                  Total: <strong className="text-stone-800 dark:text-stone-200">₹{expense.total}</strong>
-                                </span>
-                              </div>
-                            </div>
-
-                            <div className="flex items-center gap-1.5">
-                              {!isPayer && expense.total > 0 && (
-                                <button
-                                  onClick={() => toggleMemberPaid(expense.memberId)}
-                                  className={`px-2 py-0.5 rounded-lg text-[11px] font-semibold transition-all cursor-pointer flex items-center gap-1 ${
-                                    expense.isPaid
-                                      ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
-                                      : 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300'
-                                  }`}
-                                >
-                                  {expense.isPaid ? 'Paid' : `Owes ₹${expense.total}`}
-                                </button>
-                              )}
-
-                              <button
-                                onClick={() =>
-                                  setSelectedMemberForQuickAdd(
-                                    selectedMemberForQuickAdd === expense.memberId ? '' : expense.memberId
-                                  )
-                                }
-                                className={`px-2 py-0.5 rounded-lg text-[11px] font-semibold border transition-all cursor-pointer ${
-                                  selectedMemberForQuickAdd === expense.memberId
-                                    ? 'bg-amber-600 text-white border-amber-600'
-                                    : 'bg-white dark:bg-stone-800 border-stone-200 dark:border-stone-700 text-stone-700 dark:text-stone-300'
-                                }`}
-                              >
-                                {selectedMemberForQuickAdd === expense.memberId ? 'Adding' : '+ Item'}
-                              </button>
-                            </div>
-                          </div>
-
-                          {/* List of items */}
-                          {expense.items.length > 0 ? (
-                            <div className="mt-2.5 pt-2 border-t border-stone-100 dark:border-stone-800 flex flex-wrap gap-1">
-                              {expense.items.map(item => (
-                                <div
-                                  key={item.id}
-                                  className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-lg bg-white dark:bg-stone-800 border border-stone-200 dark:border-stone-700 text-[11px] text-stone-800 dark:text-stone-200"
-                                >
-                                  <span>{item.emoji}</span>
-                                  <span className="font-medium truncate max-w-[100px]">{item.name}</span>
-                                  <span className="text-stone-400">×{item.quantity}</span>
-                                  <span className="font-semibold text-amber-700 dark:text-amber-400">
-                                    ₹{item.price * item.quantity}
-                                  </span>
-                                  <button
-                                    onClick={() => removeItemFromMember(expense.memberId, item.id || item.menuItemId || item.name, activeSession.id)}
-                                    className="w-3.5 h-3.5 rounded hover:bg-stone-100 dark:hover:bg-stone-700 flex items-center justify-center text-stone-400 hover:text-rose-600 ml-0.5 cursor-pointer"
-                                  >
-                                    <Minus className="w-2.5 h-2.5" />
-                                  </button>
-                                </div>
-                              ))}
-                            </div>
-                          ) : null}
-                        </div>
-                      )
-                    })}
-                  </div>
-                </div>
-
-                {/* Card 2: Tapri Menu Grid */}
-                <div className="p-4 rounded-2xl bg-white dark:bg-stone-900 border border-stone-200 dark:border-stone-800 shadow-2xs space-y-3">
-                  <div className="flex items-center justify-between">
-                    <h3 className="font-heading font-bold text-stone-900 dark:text-stone-100 text-xs">
-                      Menu Quick Add{' '}
-                      {selectedMemberForQuickAdd && (
-                        <span className="text-amber-600 font-semibold">
-                          (to {activeSession.expenses.find(e => e.memberId === selectedMemberForQuickAdd)?.memberName})
-                        </span>
-                      )}
-                    </h3>
-
-                    <button
-                      onClick={() => setShowAddItemModal(true)}
-                      className="text-[11px] text-amber-700 dark:text-amber-400 font-semibold flex items-center gap-0.5 cursor-pointer"
-                    >
-                      <Plus className="w-3 h-3" />
-                      <span>Custom</span>
-                    </button>
-                  </div>
-
-                  {/* Menu Grid */}
-                  <div className="grid grid-cols-2 gap-2">
-                    {filteredMenuItems.slice(0, 6).map(item => (
-                      <button
-                        key={item.id}
-                        onClick={() => {
-                          const targetId = selectedMemberForQuickAdd || user?.id || activeSession.expenses[0]?.memberId
-                          if (targetId) {
-                            addItemToMember(targetId, item)
-                          }
-                        }}
-                        className="p-2 rounded-xl border border-stone-200 dark:border-stone-800 bg-stone-50/50 dark:bg-stone-800/50 hover:bg-amber-50 hover:border-amber-300 dark:hover:bg-amber-950/40 text-left transition-all cursor-pointer"
-                      >
-                        <div className="flex items-center justify-between">
-                          <span className="text-base">{item.emoji}</span>
-                          <span className="font-bold text-amber-700 dark:text-amber-400 text-xs">
-                            ₹{item.price}
-                          </span>
-                        </div>
-                        <div className="font-semibold text-stone-900 dark:text-stone-100 text-xs truncate mt-1">
-                          {item.name}
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Card 3: 🧾 Easy Billing for the Stall Owner */}
-                <div className="p-4 rounded-2xl bg-white dark:bg-stone-900 border border-stone-200 dark:border-stone-800 shadow-2xs space-y-2.5">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-1.5">
-                      <Receipt className="w-4 h-4 text-emerald-600" />
-                      <h3 className="font-heading font-bold text-xs text-stone-900 dark:text-stone-100">
-                        Shop Order &amp; Total
-                      </h3>
-                    </div>
-                    <span className="font-bold text-xs text-emerald-700 dark:text-emerald-400">
-                      ₹{totalAmount}
-                    </span>
-                  </div>
-
-                  {shopItems.length > 0 && (
-                    <div className="p-2.5 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200/80 dark:border-amber-800 text-[11px] space-y-1">
-                      <div className="font-semibold text-amber-900 dark:text-amber-200 flex items-center justify-between">
-                        <span>📢 Call to Vendor:</span>
+                    <div className="space-y-1.5 text-left">
+                      {groups.slice(0, 3).map(g => (
                         <button
-                          onClick={() => handleCopy(bhaiyaShoutLine, 'order line')}
-                          className="text-[10px] text-amber-700 hover:underline flex items-center gap-0.5 cursor-pointer"
+                          key={g.id}
+                          type="button"
+                          onClick={() => {
+                            setActiveGroupId(g.id)
+                            setViewingGroupId(g.id)
+                            setActiveTab('home')
+                          }}
+                          className="w-full p-2.5 rounded-xl border border-stone-200 dark:border-stone-800 hover:border-amber-500 bg-stone-50/50 dark:bg-stone-800/40 hover:bg-amber-50/40 dark:hover:bg-amber-950/20 flex items-center justify-between transition-all cursor-pointer text-xs"
                         >
-                          <Copy className="w-3 h-3" /> Copy
+                          <div className="truncate font-semibold text-stone-800 dark:text-stone-200">
+                            {g.name}
+                          </div>
+                          <span className="text-amber-600 text-[11px] font-bold shrink-0">
+                            Open Group →
+                          </span>
                         </button>
-                      </div>
-                      <p className="text-stone-700 dark:text-stone-300 italic font-mono text-[11px]">
-                        &ldquo;{bhaiyaShoutLine}&rdquo;
-                      </p>
+                      ))}
                     </div>
-                  )}
-
-                  <div className="divide-y divide-stone-100 dark:divide-stone-800 text-[11px]">
-                    {shopItems.map((item, idx) => (
-                      <div key={idx} className="py-1.5 flex items-center justify-between">
-                        <div className="flex items-center gap-1.5">
-                          <span>{item.emoji}</span>
-                          <span className="font-medium text-stone-800 dark:text-stone-200">{item.name}</span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <span className="font-bold px-1.5 py-0.2 rounded bg-stone-100 dark:bg-stone-800">
-                            × {item.count}
-                          </span>
-                          <span className="font-semibold text-stone-900 dark:text-stone-100">
-                            ₹{item.totalCost}
-                          </span>
-                        </div>
-                      </div>
-                    ))}
                   </div>
-                </div>
-
-                {/* Card 4: 💰 Settle & Who Owes What */}
-                <div className="p-4 rounded-2xl bg-white dark:bg-stone-900 border border-stone-200 dark:border-stone-800 shadow-2xs space-y-3">
-                  <div className="flex items-center gap-1.5">
-                    <Wallet className="w-4 h-4 text-indigo-600" />
-                    <h3 className="font-heading font-bold text-xs text-stone-900 dark:text-stone-100">
-                      Settlements &amp; Repayments
-                    </h3>
-                  </div>
-
-                  {/* Unpaid shares */}
-                  <div className="space-y-1.5">
-                    {unpaidMembers.length === 0 ? (
-                      <div className="p-2.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-200 text-xs flex items-center gap-1.5">
-                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                        <span>All members have cleared their shares! 🎉</span>
-                      </div>
-                    ) : (
-                      unpaidMembers.map(m => (
-                        <div
-                          key={m.memberId}
-                          className="p-2.5 rounded-xl border border-amber-200/60 dark:border-amber-900/40 bg-amber-50/30 dark:bg-amber-950/20 flex items-center justify-between text-xs"
-                        >
-                          <div className="flex items-center gap-2">
-                            <span className="w-6 h-6 rounded-full bg-amber-500 text-white font-bold text-[10px] flex items-center justify-center">
-                              {m.memberAvatar}
-                            </span>
-                            <span className="font-semibold text-stone-800 dark:text-stone-200">
-                              {m.memberName}
-                            </span>
-                          </div>
-
-                          <div className="flex items-center gap-2">
-                            <span className="font-bold text-amber-800 dark:text-amber-300">
-                              owes ₹{m.total}
-                            </span>
-                            <button
-                              onClick={() => toggleMemberPaid(m.memberId)}
-                              className="px-2.5 py-1 rounded-lg bg-stone-100 hover:bg-emerald-600 dark:bg-stone-800 dark:hover:bg-emerald-600 hover:text-white text-[11px] font-semibold cursor-pointer active:scale-95 transition-all shadow-2xs"
-                            >
-                              Mark Paid
-                            </button>
-                          </div>
-                        </div>
-                      ))
-                    )}
-                  </div>
-
-                  {paidMembers.length > 0 && (
-                    <div className="pt-1.5 border-t border-stone-100 dark:border-stone-800 text-[10px] text-stone-400">
-                      <span>Cleared: </span>
-                      <span className="font-medium text-stone-600 dark:text-stone-300">
-                        {paidMembers.map(m => m.memberName).join(', ')}
-                      </span>
-                    </div>
-                  )}
-                </div>
-
+                ) : (
+                  <button
+                    onClick={() => {
+                      setActiveTab('home')
+                      setShowCreateGroupModal(true)
+                    }}
+                    className="px-4 py-2.5 rounded-xl font-bold text-xs bg-amber-600 hover:bg-amber-700 text-white shadow-xs cursor-pointer inline-flex items-center gap-1.5 active:scale-95 transition-all"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Create a Group</span>
+                  </button>
+                )}
               </div>
-            ) : (
-              /* Empty state */
-              <div className="p-8 text-center bg-white dark:bg-stone-900 rounded-2xl border border-stone-200 dark:border-stone-800 space-y-3">
-                <div className="w-12 h-12 rounded-2xl bg-amber-100 dark:bg-amber-950 text-amber-700 dark:text-amber-300 flex items-center justify-center mx-auto text-xl shadow-xs">
-                  ☕
-                </div>
-                <h3 className="font-heading font-bold text-base text-stone-900 dark:text-stone-100">
-                  No Active Tea Break
-                </h3>
-                <p className="text-xs text-stone-500 max-w-xs mx-auto">
-                  Tea breaks can be started from your group page by any member. Visit your group to start a break and add items!
-                </p>
-                <button
-                  onClick={() => {
-                    if (activeGroup) {
-                      setViewingGroupId(activeGroup.id)
-                    }
-                    setActiveTab('groups')
-                  }}
-                  id="go-to-groups-empty-btn"
-                  className="px-4 py-2 rounded-xl font-bold text-xs bg-amber-600 hover:bg-amber-700 text-white shadow-xs cursor-pointer inline-flex items-center gap-1.5 active:scale-95 transition-all"
-                >
-                  <Users className="w-3.5 h-3.5" />
-                  <span>Go to Groups 👥</span>
-                </button>
-              </div>
-            )}
-          </div>
+            )
+          })()
         )}
 
         {/* -------------------- 2. HOME / GROUPS TAB -------------------- */}
@@ -1510,9 +1088,16 @@ export const Dashboard: React.FC<DashboardProps> = () => {
               onOpenBreak={(groupId) => {
                 setViewingGroupId(groupId)
                 setViewingBreakGroupId(groupId)
+                setActiveTab('my-orders')
               }}
               onUpdateGroup={(updatedGroup) => {
-                setGroups(prev => prev.map(g => g.id === updatedGroup.id ? updatedGroup : g))
+                setGroups(prev => {
+                  const updated = prev.map(g => g.id === updatedGroup.id ? updatedGroup : g)
+                  try {
+                    if (user?.id) localStorage.setItem(`chaisplit_groups_user_${user.id}`, JSON.stringify(updated))
+                  } catch {}
+                  return updated
+                })
                 if (supabase) {
                   const client = supabase
                   client.channel('realtime_shops_and_groups').send({
@@ -1535,14 +1120,14 @@ export const Dashboard: React.FC<DashboardProps> = () => {
             <div className="p-4 rounded-2xl bg-gradient-to-r from-amber-600 via-orange-600 to-amber-700 text-white shadow-md flex items-center justify-between gap-3">
               <div className="flex items-center gap-3 min-w-0">
                 <div className="w-10 h-10 rounded-2xl bg-white/20 backdrop-blur-xs text-white font-extrabold text-base flex items-center justify-center shrink-0 border border-white/30 shadow-2xs">
-                  {user?.avatar || user?.name?.slice(0, 2).toUpperCase() || '☕'}
+                  {user?.avatar || user?.name?.slice(0, 2).toUpperCase() || 'U'}
                 </div>
                 <div className="min-w-0">
                   <div className="text-[10px] uppercase font-bold tracking-wider text-amber-200">
                     ChaiBreak Hub
                   </div>
                   <h2 className="font-heading font-extrabold text-base text-white truncate">
-                    Welcome, {user?.name || 'Friend'}! ☕
+                    Welcome, {user?.name || 'Friend'}!
                   </h2>
                 </div>
               </div>
@@ -1560,40 +1145,6 @@ export const Dashboard: React.FC<DashboardProps> = () => {
               )}
             </div>
 
-            {/* Live Break Quick Access Banner (if any) */}
-            {featuredActiveBreak && (
-              <div className="p-3.5 rounded-2xl bg-gradient-to-r from-emerald-500/15 via-teal-500/10 to-amber-500/10 border border-emerald-500/40 shadow-xs flex items-center justify-between gap-3">
-                <div className="min-w-0">
-                  <div className="flex items-center gap-1.5">
-                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping inline-block" />
-                    <span className="text-[10px] uppercase font-bold tracking-wider text-emerald-700 dark:text-emerald-400">
-                      Live Tea Break in Progress
-                    </span>
-                  </div>
-                  <div className="font-bold text-xs text-stone-900 dark:text-stone-100 truncate mt-0.5">
-                    {featuredActiveBreak.title}
-                  </div>
-                  <div className="text-[10px] text-stone-500 dark:text-stone-400 truncate">
-                    📍 {featuredActiveBreak.shopName} • Total ₹{featuredActiveBreak.totalAmount}
-                  </div>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    const targetGroup = groups.find(g => g.id === featuredActiveBreak.groupId) || activeGroup
-                    if (targetGroup) {
-                      setViewingGroupId(null)
-                      setViewingBreakGroupId(targetGroup.id)
-                    }
-                  }}
-                  className="px-3 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-bold text-xs shadow-sm cursor-pointer active:scale-95 transition-all flex items-center gap-1 shrink-0"
-                >
-                  <Coffee className="w-3.5 h-3.5" />
-                  <span>Enter Break ☕</span>
-                </button>
-              </div>
-            )}
 
             {/* Search Bar & Action Buttons */}
             <div className="space-y-2">
@@ -1735,6 +1286,7 @@ export const Dashboard: React.FC<DashboardProps> = () => {
                         setActiveGroupId(group.id)
                         if (isGroupBreakActive) {
                           setViewingBreakGroupId(group.id)
+                          setActiveTab('my-orders')
                         } else {
                           setViewingGroupId(group.id)
                         }
@@ -1756,7 +1308,7 @@ export const Dashboard: React.FC<DashboardProps> = () => {
                             {isGroupBreakActive && (
                               <span className="px-2 py-0.5 rounded-full text-[9px] font-bold bg-emerald-600 text-white animate-pulse flex items-center gap-1">
                                 <span className="w-1.5 h-1.5 rounded-full bg-white animate-ping" />
-                                <span>Live Break ☕</span>
+                                <span>Live Break</span>
                               </span>
                             )}
                             {isActive && !isGroupBreakActive && (
@@ -1768,7 +1320,7 @@ export const Dashboard: React.FC<DashboardProps> = () => {
                           <p className="text-xs text-stone-500 dark:text-stone-400 flex items-center gap-1.5 flex-wrap">
                             {group.shopName && (
                               <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-amber-100/90 dark:bg-amber-950/70 text-amber-900 dark:text-amber-300 font-semibold text-[10px]">
-                                <span>{group.shopEmoji || '🏪'}</span>
+                                <Store className="w-3 h-3 text-amber-800 dark:text-amber-300" />
                                 <span>{group.shopName}</span>
                               </span>
                             )}
@@ -1778,30 +1330,6 @@ export const Dashboard: React.FC<DashboardProps> = () => {
                             </span>
                           </p>
                         </div>
-
-                        {group.adminId === user?.id ? (
-                          <div className="flex items-center gap-1.5">
-                            <button
-                              type="button"
-                              onClick={(e) => handleRequestDeleteGroup(group.id, e)}
-                              className="p-1.5 rounded-lg text-stone-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors cursor-pointer"
-                              title="Delete group (Admin only)"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          </div>
-                        ) : (
-                          <div className="flex items-center gap-1.5">
-                            <button
-                              type="button"
-                              onClick={(e) => handleDirectExitGroup(group.id, e)}
-                              className="p-1.5 rounded-lg text-stone-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors cursor-pointer"
-                              title="Exit group directly"
-                            >
-                              <LogOut className="w-4 h-4" />
-                            </button>
-                          </div>
-                        )}
                       </div>
 
                       {/* Direct button to separate Tea Break page when active */}
@@ -1818,7 +1346,7 @@ export const Dashboard: React.FC<DashboardProps> = () => {
                             className="w-full py-2 px-3 rounded-xl font-bold text-xs bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white shadow-xs cursor-pointer flex items-center justify-center gap-1.5 active:scale-98 transition-all"
                           >
                             <Coffee className="w-3.5 h-3.5" />
-                            <span>Enter Tea Break ☕ →</span>
+                            <span>Enter Tea Break →</span>
                           </button>
                         </div>
                       )}
@@ -1901,8 +1429,21 @@ export const Dashboard: React.FC<DashboardProps> = () => {
       <BottomNav
         activeTab={activeTab}
         onChangeTab={(tab) => {
-          setViewingGroupId(null)
-          setViewingBreakGroupId(null)
+          if (tab === 'home') {
+            setViewingGroupId(null)
+            setViewingBreakGroupId(null)
+          } else if (tab === 'my-orders' || tab === 'others-orders') {
+            const target =
+              (activeSession?.groupId ? groups.find(g => g.id === activeSession.groupId) : null) ||
+              groups.find(g => {
+                const s = getActiveSessionForGroup(g.id)
+                return s && s.status === 'active'
+              }) ||
+              activeGroup
+            if (target) {
+              setViewingBreakGroupId(target.id)
+            }
+          }
           setActiveTab(tab)
         }}
         historyCount={userPastSessionsCount}
@@ -1920,11 +1461,7 @@ export const Dashboard: React.FC<DashboardProps> = () => {
               <div>
                 <h3 className="font-heading font-bold text-base text-stone-900 dark:text-stone-100 flex items-center gap-1.5">
                   <span>Create New Group</span>
-                  <span>👥</span>
                 </h3>
-                <p className="text-[11px] text-stone-400">
-                  Form a tea club to track and split expenses
-                </p>
               </div>
               <button
                 onClick={() => setShowCreateGroupModal(false)}
@@ -1943,54 +1480,24 @@ export const Dashboard: React.FC<DashboardProps> = () => {
                 <input
                   type="text"
                   required
-                  placeholder="e.g. Chai Pe Charcha, Floor 4 Tech Club"
                   value={newGroupName}
                   onChange={e => setNewGroupName(e.target.value)}
                   className="w-full py-2 px-3 rounded-xl border border-stone-300 dark:border-stone-700 bg-stone-50 dark:bg-stone-800 text-xs text-stone-900 dark:text-stone-100 focus:outline-none focus:ring-1 focus:ring-amber-500"
                 />
               </div>
 
-              {/* Shop / Tapri Name */}
+              {/* Shop Name */}
               <div className="space-y-1">
-                <div className="flex items-center justify-between">
-                  <label className="text-xs font-semibold text-stone-700 dark:text-stone-300">
-                    Shop / Tapri Name <span className="text-amber-600">*</span>
-                  </label>
-                  <span className="text-[10px] text-stone-400 font-medium">
-                    (Linked directly to this group)
-                  </span>
-                </div>
+                <label className="text-xs font-semibold text-stone-700 dark:text-stone-300">
+                  Shop Name <span className="text-amber-600">*</span>
+                </label>
                 <input
                   type="text"
                   required
-                  placeholder="e.g. Ramesh Tapri Point, Ground Floor Pantry"
                   value={newGroupShopName}
                   onChange={e => setNewGroupShopName(e.target.value)}
                   className="w-full py-2 px-3 rounded-xl border border-stone-300 dark:border-stone-700 bg-stone-50 dark:bg-stone-800 text-xs text-stone-900 dark:text-stone-100 focus:outline-none focus:ring-1 focus:ring-amber-500"
                 />
-              </div>
-
-              {/* Shop Emoji Picker */}
-              <div className="space-y-1">
-                <label className="text-xs font-semibold text-stone-700 dark:text-stone-300">
-                  Shop Icon
-                </label>
-                <div className="flex flex-wrap gap-1.5 pt-0.5">
-                  {['☕', '🍵', '🥟', '🍞', '🥪', '🥤', '🫓', '🍪'].map(emoji => (
-                    <button
-                      key={emoji}
-                      type="button"
-                      onClick={() => setNewGroupShopEmoji(emoji)}
-                      className={`w-8 h-8 rounded-lg text-sm flex items-center justify-center cursor-pointer transition-all ${
-                        newGroupShopEmoji === emoji
-                          ? 'bg-amber-600 text-white scale-110 shadow-xs ring-2 ring-amber-400'
-                          : 'bg-stone-100 dark:bg-stone-800 hover:bg-stone-200 dark:hover:bg-stone-700'
-                      }`}
-                    >
-                      {emoji}
-                    </button>
-                  ))}
-                </div>
               </div>
 
               {/* Include Starter Menu Items Checkbox */}
@@ -2012,10 +1519,6 @@ export const Dashboard: React.FC<DashboardProps> = () => {
                   </div>
                 </label>
               </div>
-
-              <p className="text-[10px] text-stone-400 italic">
-                💡 You can view, add custom items, or modify prices anytime in the Group page.
-              </p>
 
               <div className="flex items-center justify-end gap-2 pt-1">
                 <button
@@ -2046,7 +1549,6 @@ export const Dashboard: React.FC<DashboardProps> = () => {
               <div>
                 <h3 className="font-heading font-bold text-base text-stone-900 dark:text-stone-100 flex items-center gap-1.5">
                   <span>Join a Group</span>
-                  <span>🔑</span>
                 </h3>
                 <p className="text-[11px] text-stone-400">
                   Enter the Group ID to join your colleagues
@@ -2123,7 +1625,7 @@ export const Dashboard: React.FC<DashboardProps> = () => {
             <div className="flex items-center justify-between">
               <div>
                 <h3 className="font-heading font-bold text-base text-stone-900 dark:text-stone-100">
-                  Add Item to Menu ☕
+                  Add Item to Menu
                 </h3>
                 <p className="text-[11px] text-stone-400">
                   Add a new tea, snack or bite to Chayakkada
@@ -2183,28 +1685,6 @@ export const Dashboard: React.FC<DashboardProps> = () => {
                     <option value="quick-bites">Quick Bites</option>
                     <option value="drinks">Drinks</option>
                   </select>
-                </div>
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-xs font-semibold text-stone-700 dark:text-stone-300">
-                  Icon Emoji
-                </label>
-                <div className="flex flex-wrap gap-1.5 pt-1">
-                  {['☕', '🍵', '🥟', '🍞', '🥪', '🍪', '🧆', '🥤', '🫓', '🍛'].map(emoji => (
-                    <button
-                      key={emoji}
-                      type="button"
-                      onClick={() => setCustomItemEmoji(emoji)}
-                      className={`w-8 h-8 rounded-lg text-sm flex items-center justify-center cursor-pointer transition-all ${
-                        customItemEmoji === emoji
-                          ? 'bg-amber-600 text-white scale-110 shadow-xs ring-2 ring-amber-400'
-                          : 'bg-stone-100 dark:bg-stone-800 hover:bg-stone-200'
-                      }`}
-                    >
-                      {emoji}
-                    </button>
-                  ))}
                 </div>
               </div>
 
