@@ -59,6 +59,8 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
 
   const [toastNotice, setToastNotice] = useState<string | null>(null)
   const [showCancelConfirm, setShowCancelConfirm] = useState(false)
+  const [showCannotCloseModal, setShowCannotCloseModal] = useState(false)
+  const [showUnconfirmedModal, setShowUnconfirmedModal] = useState(false)
   const [showAssignModal, setShowAssignModal] = useState(false)
   const [isSettling, setIsSettling] = useState(false)
   const [isDeletingBreak, setIsDeletingBreak] = useState(false)
@@ -91,23 +93,23 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
   const effectiveAdminId = group.adminId || group.members[0]?.id || effectiveUser?.id
   const isAdmin = effectiveUser?.id === effectiveAdminId
 
-  // Break Creator / Owner detection
-  const isBreakOwner = Boolean(
+  // Break Creator detection: strictly ONLY the user who created the break can close or settle it
+  const isBreakCreator = Boolean(
     activeSession && (
-      effectiveUser?.id === activeSession.creatorId ||
-      (!activeSession.creatorId && (effectiveUser?.id === activeSession.payerId || isAdmin))
+      (activeSession.creatorId && (
+        effectiveUser?.id === activeSession.creatorId ||
+        (effectiveUser?.userCode && activeSession.creatorId === effectiveUser.userCode) ||
+        (effectiveUser?.email && activeSession.creatorId.toLowerCase() === effectiveUser.email.toLowerCase())
+      )) ||
+      (!activeSession.creatorId && (
+        (effectiveUser?.id && activeSession.payerId === effectiveUser.id) ||
+        (effectiveUser?.name && activeSession.creatorName && activeSession.creatorName.toLowerCase() === effectiveUser.name.toLowerCase())
+      ))
     )
   )
 
-  // Anyone in the group can close or settle the ongoing break so a new break can be started
-  const canCloseBreak = Boolean(
-    activeSession && (
-      isBreakOwner ||
-      isAdmin ||
-      group.members.some(m => m.id === effectiveUser?.id) ||
-      effectiveUser?.id === group.adminId
-    )
-  )
+  // Strictly only the person who created the break can close or settle it
+  const canCloseBreak = Boolean(activeSession && isBreakCreator)
 
   // Selected colleague for admin assigning items
   const [selectedAssigneeId, setSelectedAssigneeId] = useState<string>(() => {
@@ -133,6 +135,18 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
   const myTotal = currentUserExpense?.total || 0
   const myItemCount = currentUserExpense?.items.reduce((acc, i) => acc + i.quantity, 0) || 0
   const isMyOrderConfirmed = Boolean(currentUserExpense?.isConfirmed)
+
+  // Members who ordered items and unconfirmed status
+  const membersWithItems = useMemo(() => {
+    if (!activeSession) return []
+    return activeSession.expenses.filter(e => e.items && e.items.length > 0)
+  }, [activeSession])
+
+  const unconfirmedMembers = useMemo(() => {
+    return membersWithItems.filter(e => !e.isConfirmed)
+  }, [membersWithItems])
+
+  const allMembersConfirmed = membersWithItems.length > 0 && unconfirmedMembers.length === 0
 
   // User confirms their own order/items
   const handleConfirmMyOrder = async () => {
@@ -228,31 +242,41 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
     showToast(`Assigned ${item.name} to ${selectedAssignee?.name || 'teammate'}! 🥟`)
   }
 
-  // Settle break (any group member or admin to close ongoing break and settle bill)
+  // Settle break (strictly only creator can close/settle the break, AND every member with items must confirm)
   const handleSettleBreak = () => {
-    if (!canCloseBreak || isSettling) {
-      if (!canCloseBreak) {
-        showToast('You must be a member of this group to settle this break.')
-      }
+    if (!canCloseBreak) {
+      setShowCannotCloseModal(true)
       return
     }
+
+    if (membersWithItems.length === 0) {
+      showToast('No items have been ordered in this break yet.')
+      return
+    }
+
+    if (!allMembersConfirmed) {
+      setShowUnconfirmedModal(true)
+      return
+    }
+
+    if (isSettling) return
     setIsSettling(true)
     setTimeout(() => {
-      settleActiveSession(activeSession?.id)
+      settleActiveSession(activeSession?.id, currentUser?.id)
       showToast(`Tea break bill settled successfully! 🎉`)
       setIsSettling(false)
       onBack()
     }, 400)
   }
 
-  // Delete / End break (allows closing ongoing break so a new break can be started)
+  // Delete / End break (strictly only creator can close the break)
   const handleCancelBreak = () => {
-    if (!canCloseBreak || isDeletingBreak) {
-      if (!canCloseBreak) {
-        showToast('You must be a member of this group to end this break.')
-      }
+    if (!canCloseBreak) {
+      setShowCancelConfirm(false)
+      setShowCannotCloseModal(true)
       return
     }
+    if (isDeletingBreak) return
     setIsDeletingBreak(true)
     setTimeout(() => {
       const res = cancelActiveSession(currentUser?.id, activeSession?.id)
@@ -262,7 +286,7 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
         showToast(`Tea break closed. Anyone can now start a new break!`)
         onBack()
       } else {
-        showToast(`Could not close tea break. Please try again.`)
+        setShowCannotCloseModal(true)
       }
     }, 350)
   }
@@ -887,6 +911,12 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
                             <span>Confirmed</span>
                           </span>
                         )}
+                        {!isConfirmed && expense.items.length > 0 && (
+                          <span className="px-1.5 py-0.2 rounded text-[9px] bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300 font-bold flex items-center gap-0.5 border border-rose-300 dark:border-rose-800">
+                            <Clock className="w-2.5 h-2.5 text-rose-600" />
+                            <span>Unconfirmed</span>
+                          </span>
+                        )}
                         {expense.adminEdits && expense.adminEdits.length > 0 && (
                           <span className="px-1.5 py-0.2 rounded text-[9px] bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 font-bold flex items-center gap-0.5 border border-amber-300 dark:border-amber-800">
                             <AlertTriangle className="w-2.5 h-2.5 text-amber-600" />
@@ -934,7 +964,8 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
                       )}
 
                       {expense.items.length > 0 ? (
-                        <div className="flex flex-wrap gap-1.5 pl-8">
+                        <>
+                          <div className="flex flex-wrap gap-1.5 pl-8">
                           {expense.items.map(item => (
                             <div
                               key={item.id}
@@ -987,6 +1018,41 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
                             </div>
                           ))}
                         </div>
+
+                        {/* Confirmation status & quick confirm for this member */}
+                        <div className="flex items-center justify-between pl-8 pt-1">
+                          <span className={`text-[10px] font-semibold flex items-center gap-1 ${
+                            isConfirmed ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'
+                          }`}>
+                            {isConfirmed ? (
+                              <>
+                                <CheckCircle2 className="w-3 h-3 text-emerald-600 shrink-0" />
+                                <span>Items Confirmed ({expense.confirmedAt || 'Verified'})</span>
+                              </>
+                            ) : (
+                              <>
+                                <Clock className="w-3 h-3 text-rose-600 shrink-0" />
+                                <span>Items Pending Confirmation</span>
+                              </>
+                            )}
+                          </span>
+
+                          {!isConfirmed && (isUser || isBreakCreator || isAdmin) && (
+                            <button
+                              type="button"
+                              onClick={async (e) => {
+                                e.stopPropagation()
+                                await confirmMemberOrder(expense.memberId, activeSession?.id)
+                                showToast(`Confirmed items for ${expense.memberName} ✓`)
+                              }}
+                              className="text-[10px] font-bold text-emerald-700 dark:text-emerald-300 hover:text-emerald-800 bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-300 dark:border-emerald-800 px-2 py-0.5 rounded-lg cursor-pointer hover:bg-emerald-100 dark:hover:bg-emerald-900 transition-colors flex items-center gap-1"
+                            >
+                              <CheckCircle2 className="w-2.5 h-2.5 text-emerald-600" />
+                              <span>Confirm Items ✓</span>
+                            </button>
+                          )}
+                        </div>
+                        </>
                       ) : (
                         <div className="flex items-center justify-between pl-8 text-[10px] text-stone-400">
                           <span className="italic">No items added yet</span>
@@ -1038,16 +1104,30 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
             </div>
           </div>
 
-          {/* Option for Close / Settle Break - Allows closing ongoing break to start a new break */}
-          {canCloseBreak ? (
-            <div className="flex items-center gap-2 pt-1">
+          {/* Option for Close / Settle Break - Strictly creator can close or settle */}
+          <div className="space-y-2 pt-1">
+            <div className="flex items-center gap-2">
               <button
                 type="button"
-                onClick={() => setShowCancelConfirm(true)}
+                onClick={() => {
+                  if (!canCloseBreak) {
+                    setShowCannotCloseModal(true)
+                  } else {
+                    setShowCancelConfirm(true)
+                  }
+                }}
                 id="end-task-btn"
-                className="flex-1 py-2.5 px-3 rounded-xl border border-rose-300 dark:border-rose-800 hover:border-rose-500 bg-rose-50/80 dark:bg-rose-950/40 text-rose-600 dark:text-rose-300 hover:bg-rose-100 dark:hover:bg-rose-950/60 font-bold text-xs flex items-center justify-center gap-1.5 active:scale-95 transition-all cursor-pointer shadow-2xs"
+                className={`flex-1 py-2.5 px-3 rounded-xl border ${
+                  canCloseBreak
+                    ? 'border-rose-300 dark:border-rose-800 hover:border-rose-500 bg-rose-50/80 dark:bg-rose-950/40 text-rose-600 dark:text-rose-300 hover:bg-rose-100 dark:hover:bg-rose-950/60'
+                    : 'border-stone-300 dark:border-stone-700 bg-stone-100/80 dark:bg-stone-800/60 text-stone-500 dark:text-stone-400'
+                } font-bold text-xs flex items-center justify-center gap-1.5 active:scale-95 transition-all cursor-pointer shadow-2xs`}
               >
-                <Trash2 className="w-3.5 h-3.5 text-rose-500" />
+                {!canCloseBreak ? (
+                  <Lock className="w-3.5 h-3.5 text-stone-400" />
+                ) : (
+                  <Trash2 className="w-3.5 h-3.5 text-rose-500" />
+                )}
                 <span>Close / End Break</span>
               </button>
 
@@ -1056,26 +1136,71 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
                 onClick={handleSettleBreak}
                 disabled={isSettling}
                 id="settle-and-end-task-btn"
-                className="flex-1 py-2.5 px-3 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 disabled:opacity-80 text-white font-bold text-xs shadow-md active:scale-95 flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+                className={`flex-1 py-2.5 px-3 rounded-xl ${
+                  canCloseBreak && allMembersConfirmed
+                    ? 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white shadow-md'
+                    : canCloseBreak
+                    ? 'bg-amber-100 dark:bg-amber-950/70 border border-amber-300 dark:border-amber-800 text-amber-800 dark:text-amber-200'
+                    : 'bg-stone-200 dark:bg-stone-800 text-stone-500 dark:text-stone-400 border border-stone-300 dark:border-stone-700'
+                } font-bold text-xs active:scale-95 flex items-center justify-center gap-1.5 transition-all cursor-pointer`}
               >
                 {isSettling ? (
                   <ChaiLoader variant="spinner" size="sm" text="Settling..." />
                 ) : (
                   <>
-                    <Sparkles className="w-3.5 h-3.5" />
+                    {!canCloseBreak ? (
+                      <Lock className="w-3.5 h-3.5 text-stone-400" />
+                    ) : !allMembersConfirmed ? (
+                      <Clock className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
+                    ) : (
+                      <Sparkles className="w-3.5 h-3.5 text-white" />
+                    )}
                     <span>Settle &amp; Close 🎉</span>
+                    {unconfirmedMembers.length > 0 && (
+                      <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-amber-200 dark:bg-amber-900 text-amber-900 dark:text-amber-100 font-bold">
+                        {unconfirmedMembers.length} pending
+                      </span>
+                    )}
                   </>
                 )}
               </button>
             </div>
-          ) : (
-            <div className="p-2.5 rounded-xl bg-stone-50 dark:bg-stone-800/50 border border-stone-200 dark:border-stone-800 text-center text-[11px] text-stone-500 dark:text-stone-400 flex items-center justify-center gap-2">
-              <Lock className="w-3.5 h-3.5 text-amber-600 shrink-0" />
-              <span>
-                Join this group to participate in or close this tea break.
+
+            {/* Status notice for confirmation before settle */}
+            {membersWithItems.length > 0 && unconfirmedMembers.length > 0 && (
+              <div className="p-2 rounded-xl bg-amber-50 dark:bg-amber-950/50 border border-amber-200 dark:border-amber-900/60 text-[11px] text-amber-800 dark:text-amber-300 flex items-center justify-between">
+                <div className="flex items-center gap-1.5 min-w-0 truncate">
+                  <Clock className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                  <span className="truncate">
+                    Waiting for <strong>{unconfirmedMembers.map(m => m.memberName).join(', ')}</strong> to confirm items.
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowUnconfirmedModal(true)}
+                  className="text-[10px] font-bold text-amber-700 dark:text-amber-400 underline cursor-pointer shrink-0 ml-1"
+                >
+                  View ({unconfirmedMembers.length})
+                </button>
+              </div>
+            )}
+
+            {membersWithItems.length > 0 && unconfirmedMembers.length === 0 && (
+              <div className="p-2 rounded-xl bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200 dark:border-emerald-900/60 text-[11px] text-emerald-800 dark:text-emerald-300 flex items-center gap-1.5">
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                <span>All {membersWithItems.length} members confirmed their items! Ready to settle &amp; close.</span>
+              </div>
+            )}
+
+            <div className="flex items-center justify-between text-[11px] px-1 text-stone-500 dark:text-stone-400">
+              <span className="truncate">
+                Created by: <strong className="text-stone-700 dark:text-stone-300">{activeSession?.creatorName || 'Member'}</strong>
+              </span>
+              <span className={`text-[10px] font-semibold ${canCloseBreak ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}`}>
+                {canCloseBreak ? (allMembersConfirmed ? '✓ Ready to settle' : '⏳ Awaiting confirmations') : '🔒 Only creator can close'}
               </span>
             </div>
-          )}
+          </div>
         </div>
       </div>
 
@@ -1119,6 +1244,119 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
                     <span>Yes, Close Break</span>
                   </>
                 )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Break is running cannot create at the moment */}
+      {showCannotCloseModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-900/60 backdrop-blur-xs animate-in fade-in">
+          <div className="w-full max-w-sm bg-white dark:bg-stone-900 rounded-2xl shadow-2xl border border-amber-300 dark:border-amber-800 p-5 space-y-4 text-center">
+            <div className="w-12 h-12 rounded-full bg-amber-100 dark:bg-amber-950/70 text-amber-600 dark:text-amber-400 flex items-center justify-center mx-auto text-xl shadow-inner">
+              <AlertTriangle className="w-6 h-6" />
+            </div>
+
+            <div className="space-y-2">
+              <span className="inline-block px-2.5 py-0.5 rounded-full text-[10px] font-bold tracking-wide uppercase bg-amber-100 dark:bg-amber-950/80 text-amber-800 dark:text-amber-300">
+                Action Restricted
+              </span>
+              <h3 className="font-heading font-black text-base text-stone-900 dark:text-stone-100 leading-snug">
+                Break is running cannot create at the moment
+              </h3>
+              <p className="text-xs text-stone-600 dark:text-stone-400 leading-relaxed">
+                Not everyone can close the break. Who created the break ({activeSession?.creatorName || 'the break creator'}) can only close or settle the break.
+              </p>
+              <div className="p-2.5 rounded-xl bg-amber-50/80 dark:bg-amber-950/40 border border-amber-200/60 dark:border-amber-900/40 text-[11px] text-amber-800 dark:text-amber-300 font-medium text-left space-y-1">
+                <div>• Current Break: <strong>{activeSession?.title || 'Tea Break'}</strong></div>
+                <div>• Created by: <strong>{activeSession?.creatorName || 'Creator'}</strong></div>
+                <div className="text-[10px] text-stone-500 dark:text-stone-400 pt-0.5">
+                  Only one break can be created at a time. Please ask <strong>{activeSession?.creatorName || 'the creator'}</strong> to close or settle this session.
+                </div>
+              </div>
+            </div>
+
+            <div className="pt-1">
+              <button
+                type="button"
+                onClick={() => setShowCannotCloseModal(false)}
+                id="cannot-close-modal-ok-btn"
+                className="w-full py-2.5 px-4 rounded-xl text-xs font-bold bg-amber-600 hover:bg-amber-700 text-white shadow-xs cursor-pointer active:scale-95 transition-all text-center"
+              >
+                Understood ✓
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: All members must confirm items before settle and close */}
+      {showUnconfirmedModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-900/60 backdrop-blur-xs animate-in fade-in">
+          <div className="w-full max-w-sm bg-white dark:bg-stone-900 rounded-2xl shadow-2xl border border-amber-300 dark:border-amber-800 p-5 space-y-4 text-center">
+            <div className="w-12 h-12 rounded-full bg-amber-100 dark:bg-amber-950/70 text-amber-600 dark:text-amber-400 flex items-center justify-center mx-auto text-xl shadow-inner">
+              <Clock className="w-6 h-6" />
+            </div>
+
+            <div className="space-y-1.5">
+              <span className="inline-block px-2.5 py-0.5 rounded-full text-[10px] font-bold tracking-wide uppercase bg-amber-100 dark:bg-amber-950/80 text-amber-800 dark:text-amber-300">
+                Confirmation Required
+              </span>
+              <h3 className="font-heading font-black text-base text-stone-900 dark:text-stone-100 leading-snug">
+                Items Need Confirmation Before Settle &amp; Close
+              </h3>
+              <p className="text-xs text-stone-600 dark:text-stone-400 leading-relaxed">
+                Everyone needs to confirm their items. Only after that can you settle and close the break.
+              </p>
+            </div>
+
+            {/* List of members who haven't confirmed */}
+            <div className="space-y-2 max-h-52 overflow-y-auto pr-1 text-left">
+              <div className="text-[11px] font-bold text-stone-700 dark:text-stone-300 flex items-center justify-between">
+                <span>Pending Members ({unconfirmedMembers.length}):</span>
+                <span className="text-[10px] text-amber-600 dark:text-amber-400 font-semibold">Not Confirmed</span>
+              </div>
+
+              {unconfirmedMembers.map(member => (
+                <div
+                  key={member.memberId}
+                  className="p-2.5 rounded-xl bg-amber-50/70 dark:bg-amber-950/40 border border-amber-200/60 dark:border-amber-900/40 flex items-center justify-between gap-2"
+                >
+                  <div className="min-w-0">
+                    <div className="font-bold text-xs text-stone-900 dark:text-stone-100 truncate flex items-center gap-1.5">
+                      <span>{member.memberAvatar || '☕'}</span>
+                      <span className="truncate">{member.memberName}</span>
+                    </div>
+                    <div className="text-[10px] text-stone-500 dark:text-stone-400 truncate">
+                      {member.items.map(i => `${i.name} x${i.quantity}`).join(', ')} • ₹{member.total}
+                    </div>
+                  </div>
+
+                  {(isBreakCreator || isAdmin || effectiveUser?.id === member.memberId) && (
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        await confirmMemberOrder(member.memberId, activeSession?.id)
+                        showToast(`Confirmed items for ${member.memberName} ✓`)
+                      }}
+                      className="shrink-0 px-2.5 py-1 rounded-lg text-[10px] font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-2xs cursor-pointer active:scale-95 transition-all flex items-center gap-1"
+                    >
+                      <CheckCircle2 className="w-3 h-3" />
+                      <span>Confirm</span>
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            <div className="pt-2 border-t border-stone-100 dark:border-stone-800 flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setShowUnconfirmedModal(false)}
+                className="w-full py-2.5 px-4 rounded-xl text-xs font-bold bg-stone-100 hover:bg-stone-200 dark:bg-stone-800 dark:hover:bg-stone-700 text-stone-800 dark:text-stone-200 shadow-2xs cursor-pointer active:scale-95 transition-all text-center"
+              >
+                Okay, Remind Members
               </button>
             </div>
           </div>

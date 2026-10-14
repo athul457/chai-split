@@ -48,7 +48,7 @@ interface ExpenseContextType {
   ) => boolean
   cancelActiveSession: (userId?: string, sessionId?: string) => boolean
   deleteActiveSession: (userId?: string, sessionId?: string) => { success: boolean; message: string }
-  settleActiveSession: (sessionId?: string) => void
+  settleActiveSession: (sessionId?: string, userId?: string) => void
   addMemberToSession: (user: User) => void
   getMenuItemsForShop: (shopId?: string) => MenuItem[]
   addCustomMenuItem: (
@@ -1274,10 +1274,30 @@ export const ExpenseProvider: React.FC<{ children: React.ReactNode }> = ({ child
     broadcastSessionUpdated(updatedSession)
   }
 
-  const deleteActiveSession = (_userId?: string, sessionId?: string): { success: boolean; message: string } => {
+  const deleteActiveSession = (userId?: string, sessionId?: string): { success: boolean; message: string } => {
     const targetSession = (sessionId ? activeSessions.find(s => s.id === sessionId) : null) || activeSession
     if (!targetSession) {
       return { success: false, message: 'No active tea break found.' }
+    }
+
+    // Only the creator who created the break can delete / close the break
+    if (userId) {
+      const isCreator =
+        (targetSession.creatorId && (
+          targetSession.creatorId === userId ||
+          targetSession.creatorId.toLowerCase() === userId.toLowerCase()
+        )) ||
+        (!targetSession.creatorId && (
+          targetSession.payerId === userId ||
+          targetSession.creatorName?.toLowerCase() === userId.toLowerCase()
+        ))
+
+      if (!isCreator) {
+        return {
+          success: false,
+          message: `Break is running cannot create at the moment. Only ${targetSession.creatorName || 'the creator'} who created the break can close it.`
+        }
+      }
     }
 
     const targetId = targetSession.id
@@ -1435,9 +1455,32 @@ export const ExpenseProvider: React.FC<{ children: React.ReactNode }> = ({ child
     return true
   }
 
-  const settleActiveSession = (sessionId?: string) => {
+  const settleActiveSession = (sessionId?: string, userId?: string) => {
     const targetSession = (sessionId ? activeSessions.find(s => s.id === sessionId) : null) || activeSession
     if (!targetSession) return
+
+    if (userId) {
+      const isCreator =
+        (targetSession.creatorId && (
+          targetSession.creatorId === userId ||
+          targetSession.creatorId.toLowerCase() === userId.toLowerCase()
+        )) ||
+        (!targetSession.creatorId && (
+          targetSession.payerId === userId ||
+          targetSession.creatorName?.toLowerCase() === userId.toLowerCase()
+        ))
+      if (!isCreator) {
+        console.warn('Break is running cannot create at the moment. Only the creator who created the break can settle it.')
+        return
+      }
+    }
+
+    const membersWithItems = targetSession.expenses.filter(e => e.items && e.items.length > 0)
+    const hasUnconfirmed = membersWithItems.some(e => !e.isConfirmed)
+    if (hasUnconfirmed) {
+      console.warn('[ExpenseContext] Cannot settle: Every one needs to confirm their items before settle and close.')
+      return
+    }
 
     try {
       confetti({
