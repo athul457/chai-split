@@ -75,6 +75,8 @@ export interface Group {
   code: string
   department: string
   adminId?: string
+  payerId?: string
+  payerName?: string
   shopId?: string
   shopName?: string
   shopEmoji?: string
@@ -91,6 +93,6 @@ export interface Shop {
   emoji: string
 }
 
-export type BottomTab = 'shops' | 'groups' | 'details' | 'history' | 'home'
+export type BottomTab = 'shops' | 'groups' | 'details' | 'history' | 'home' | 'my-orders' | 'others-orders'
 
 export type PageRoute = 'landing' | 'login' | 'register' | 'dashboard'

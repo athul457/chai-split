@@ -14,10 +14,11 @@ interface NavItem {
 }
 
 export const BottomNav: React.FC<BottomNavProps> = ({ activeTab, onChangeTab, historyCount }) => {
-  // Primary 3 tabs: 1. Home (🏠), 2. Tea Break (☕), 3. History (🧾)
+  // Primary 4 tabs: 1. Home (🏠), 2. My Orders (☕), 3. Others' Orders (👥), 4. History (🧾)
   const tabs: NavItem[] = [
     { id: 'home', label: 'Home', emoji: '🏠' },
-    { id: 'details', label: 'Tea Break', emoji: '☕' },
+    { id: 'my-orders', label: 'My Orders', emoji: '☕' },
+    { id: 'others-orders', label: "Others' Orders", emoji: '👥' },
     { id: 'history', label: 'History', emoji: '🧾' }
   ]
 
@@ -27,12 +28,13 @@ export const BottomNav: React.FC<BottomNavProps> = ({ activeTab, onChangeTab, hi
       <nav
         id="floating-bottom-navigation"
         aria-label="Floating Bottom Navigation"
-        className="pointer-events-auto w-full max-w-[390px] mx-auto h-[62px] rounded-2xl backdrop-blur-xl bg-white/92 dark:bg-stone-900/92 border border-stone-200/90 dark:border-stone-800/90 shadow-xl shadow-stone-950/10 dark:shadow-black/50 flex items-center justify-around p-1.5 transition-all"
+        className="pointer-events-auto w-full max-w-[430px] mx-auto h-[62px] rounded-2xl backdrop-blur-xl bg-white/92 dark:bg-stone-900/92 border border-stone-200/90 dark:border-stone-800/90 shadow-xl shadow-stone-950/10 dark:shadow-black/50 flex items-center justify-around p-1.5 transition-all"
       >
         {tabs.map(tab => {
           const isActive =
             activeTab === tab.id ||
-            (tab.id === 'home' && (activeTab === 'groups' || activeTab === 'shops'))
+            (tab.id === 'home' && (activeTab === 'groups' || activeTab === 'shops')) ||
+            (tab.id === 'my-orders' && activeTab === 'details')
 
           return (
             <button

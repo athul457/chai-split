@@ -1,5 +1,6 @@
 import {
     ArrowLeft,
+    ArrowRight,
     AlertTriangle,
     CheckCircle2,
     ChevronDown,
@@ -7,6 +8,7 @@ import {
     Clock,
     Coffee,
     Crown,
+    CreditCard,
     Flame,
     Minus,
     Plus,
@@ -20,7 +22,7 @@ import {
     Lock,
     Trash2
 } from 'lucide-react'
-import React, { useMemo, useState } from 'react'
+import React, { useMemo, useState, useEffect } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { useExpense } from '../context/ExpenseContext'
 import { ChaiLoader } from '../components/ChaiLoader'
@@ -30,15 +32,32 @@ interface TeaBreakPageProps {
   group: Group
   currentUser: User | null
   onBack: () => void
+  initialSubView?: 'my-orders' | 'others-orders'
+  onSubViewChange?: (view: 'my-orders' | 'others-orders') => void
 }
 
 export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
   group,
   currentUser,
-  onBack
+  onBack,
+  initialSubView = 'my-orders',
+  onSubViewChange
 }) => {
   const { user: authUser } = useAuth()
   const effectiveUser = currentUser || authUser
+
+  const [activeSubView, setActiveSubView] = useState<'my-orders' | 'others-orders'>(initialSubView)
+
+  useEffect(() => {
+    if (initialSubView) {
+      setActiveSubView(initialSubView)
+    }
+  }, [initialSubView])
+
+  const handleSubViewChange = (view: 'my-orders' | 'others-orders') => {
+    setActiveSubView(view)
+    onSubViewChange?.(view)
+  }
 
   const {
     activeSession: globalActiveSession,
@@ -65,6 +84,7 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
   const [isSettling, setIsSettling] = useState(false)
   const [isDeletingBreak, setIsDeletingBreak] = useState(false)
   const [isConfirming, setIsConfirming] = useState(false)
+  const [showAllMembersList, setShowAllMembersList] = useState(false)
 
   // Accordion state: other users' items only appear when clicked
   const [expandedMemberIds, setExpandedMemberIds] = useState<Set<string>>(() => {
@@ -92,6 +112,23 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
   // Admin detection
   const effectiveAdminId = group.adminId || group.members[0]?.id || effectiveUser?.id
   const isAdmin = effectiveUser?.id === effectiveAdminId
+
+  // Designated Bill Payer detection: set in group or session
+  const designatedPayerId = group.payerId || activeSession?.payerId
+  const isDesignatedPayer = Boolean(
+    effectiveUser?.id && (
+      effectiveUser.id === designatedPayerId ||
+      (effectiveUser.userCode && designatedPayerId === effectiveUser.userCode) ||
+      (effectiveUser.email && designatedPayerId?.toLowerCase() === effectiveUser.email.toLowerCase()) ||
+      (effectiveUser.name && (
+        (group.payerName && group.payerName.toLowerCase() === effectiveUser.name.toLowerCase()) ||
+        (activeSession?.payerName && activeSession.payerName.toLowerCase() === effectiveUser.name.toLowerCase())
+      ))
+    )
+  )
+
+  // Both Admin and the designated Bill Payer can edit confirmed items and assign items for others
+  const canEditConfirmed = Boolean(isAdmin || isDesignatedPayer)
 
   // Break Creator detection: strictly ONLY the user who created the break can close or settle it
   const isBreakCreator = Boolean(
@@ -168,7 +205,7 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
     setIsConfirming(true)
     try {
       await confirmMemberOrder(targetUserId, activeSession?.id)
-      showToast('Order confirmed! Your items are now locked. ✓')
+      showToast('Order confirmed! Your items are now locked.')
     } catch {
       showToast('Could not confirm order. Please try again.')
     } finally {
@@ -178,7 +215,7 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
 
   // User adds item for themselves (Collaborative: all group/session members can order)
   const handleSelfAddItem = (item: MenuItem) => {
-    if (isMyOrderConfirmed && !isAdmin) {
+    if (isMyOrderConfirmed && !canEditConfirmed) {
       showToast('Your order is confirmed and locked. Cannot add items.')
       return
     }
@@ -209,14 +246,14 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
       showToast('Please join the group or select your profile first.')
       return
     }
-    const adminEditorName = isAdmin ? (effectiveUser?.name || 'Admin') : undefined
+    const adminEditorName = canEditConfirmed ? (effectiveUser?.name || (isAdmin ? 'Admin' : 'Payer')) : undefined
     addItemToMember(targetUserId, item, activeSession?.id, adminEditorName)
-    showToast(`Added ${item.name} to your cup! ☕`)
+    showToast(`Added ${item.name} to your cup!`)
   }
 
   // User removes item for themselves
   const handleSelfRemoveItem = async (menuItemId: string) => {
-    if (isMyOrderConfirmed && !isAdmin) {
+    if (isMyOrderConfirmed && !canEditConfirmed) {
       showToast('Your order is confirmed and locked. Cannot edit items.')
       return
     }
@@ -230,16 +267,16 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
       showToast('Profile not detected.')
       return
     }
-    const adminEditorName = isAdmin ? (effectiveUser?.name || 'Admin') : undefined
+    const adminEditorName = canEditConfirmed ? (effectiveUser?.name || (isAdmin ? 'Admin' : 'Payer')) : undefined
     await removeItemFromMember(targetUserId, menuItemId, activeSession?.id, adminEditorName)
   }
 
-  // Admin assigns item to selected colleague
+  // Admin & Payer assigns item to selected colleague
   const handleAdminAssignItem = (item: MenuItem) => {
-    if (!isAdmin || !selectedAssigneeId) return
-    const adminName = effectiveUser?.name || 'Admin'
+    if (!canEditConfirmed || !selectedAssigneeId) return
+    const adminName = effectiveUser?.name || (isAdmin ? 'Admin' : 'Payer')
     addItemToMember(selectedAssigneeId, item, activeSession?.id, adminName)
-    showToast(`Assigned ${item.name} to ${selectedAssignee?.name || 'teammate'}! 🥟`)
+    showToast(`Assigned ${item.name} to ${selectedAssignee?.name || 'teammate'}!`)
   }
 
   // Settle break (strictly only creator can close/settle the break, AND every member with items must confirm)
@@ -263,7 +300,7 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
     setIsSettling(true)
     setTimeout(() => {
       settleActiveSession(activeSession?.id, currentUser?.id)
-      showToast(`Tea break bill settled successfully! 🎉`)
+      showToast(`Tea break bill settled successfully!`)
       setIsSettling(false)
       onBack()
     }, 400)
@@ -417,7 +454,9 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
           )}
         </div>
         <div className="p-8 text-center bg-white dark:bg-stone-900 rounded-2xl border border-stone-200 dark:border-stone-800 space-y-3">
-          <div className="text-3xl">☕</div>
+          <div className="p-3 rounded-2xl bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 w-12 h-12 flex items-center justify-center mx-auto">
+            <Coffee className="w-6 h-6" />
+          </div>
           <h3 className="font-heading font-bold text-base text-stone-900 dark:text-stone-100">
             No Active Tea Break
           </h3>
@@ -446,7 +485,7 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
   }
 
   return (
-    <div className="space-y-4 animate-in fade-in pb-16">
+    <div className="space-y-4 animate-in fade-in pb-28">
       {/* Toast Notice */}
       {toastNotice && (
         <div className="p-2.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/80 border border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-200 text-xs flex items-center justify-between shadow-xs">
@@ -503,7 +542,7 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
             {activeSession.title}
           </h2>
           <p className="text-amber-100 text-xs font-medium mt-0.5">
-            📍 {activeSession.shopName} • {totalSessionItemCount} items ordered
+            {activeSession.shopName}
           </p>
         </div>
 
@@ -525,228 +564,315 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
         </div>
       </div>
 
-      {/* ---------------- FEATURE 1: USER ADDS ITEMS BY THEIR OWN ---------------- */}
-      <div className="p-4 rounded-2xl bg-white dark:bg-stone-900 border border-stone-200/80 dark:border-stone-800 shadow-2xs space-y-3.5">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="p-1.5 rounded-xl bg-amber-100 dark:bg-amber-950 text-amber-700 dark:text-amber-300">
-              <ShoppingBag className="w-4 h-4" />
-            </div>
-            <div>
-              <h3 className="font-heading font-bold text-sm text-stone-900 dark:text-stone-100 flex items-center gap-1.5">
-                <span>My Cup</span>
-                <span className="text-xs text-amber-600 font-normal">
-                  {isMyOrderConfirmed ? '(Order Confirmed)' : '(Add items for yourself)'}
-                </span>
-              </h3>
-              <p className="text-[10px] text-stone-400">
-                Logged in as <strong>{effectiveUser?.name || currentUserExpense?.memberName || 'You'}</strong>
-                {isMyOrderConfirmed ? ' • Items are locked' : ' • Tap items below to add'}
-              </p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2">
-            {isMyOrderConfirmed ? (
-              <span className="px-2.5 py-1 rounded-xl bg-emerald-100 dark:bg-emerald-950/80 text-emerald-800 dark:text-emerald-300 font-bold text-xs flex items-center gap-1 border border-emerald-300 dark:border-emerald-800 shadow-2xs">
-                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-                <span>Confirmed ✓</span>
-              </span>
-            ) : (
-              <button
-                type="button"
-                onClick={handleConfirmMyOrder}
-                disabled={isConfirming || !currentUserExpense || currentUserExpense.items.length === 0}
-                className="px-2.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold text-xs shadow-xs cursor-pointer transition-all active:scale-95 flex items-center gap-1.5"
-                title="Confirm and lock your items"
-              >
-                <CheckCircle2 className="w-3.5 h-3.5" />
-                <span>{isConfirming ? 'Confirming...' : 'Confirm Items'}</span>
-              </button>
-            )}
-
-            <span className="px-2.5 py-1 rounded-full bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300 font-bold text-xs">
-              ₹{myTotal}
+      {/* ---------------- VIEW TOGGLE: MY ORDERS vs OTHERS' ORDERS ---------------- */}
+      <div className="flex rounded-xl bg-stone-100 dark:bg-stone-800/80 p-1 border border-stone-200 dark:border-stone-700/80 shadow-2xs">
+        <button
+          type="button"
+          onClick={() => handleSubViewChange('my-orders')}
+          id="tea-break-tab-my-orders"
+          className={`flex-1 py-2 px-3 rounded-lg font-bold text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+            activeSubView === 'my-orders'
+              ? 'bg-white dark:bg-stone-900 text-amber-700 dark:text-amber-400 shadow-2xs'
+              : 'text-stone-500 hover:text-stone-800 dark:hover:text-stone-200'
+          }`}
+        >
+          <Coffee className="w-3.5 h-3.5" />
+          <span>My Orders</span>
+          {myItemCount > 0 && (
+            <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300 font-bold">
+              {myItemCount}
             </span>
-          </div>
-        </div>
-
-        {/* Confirmation status notice */}
-        {isMyOrderConfirmed && (
-          <div className="p-2.5 rounded-xl bg-emerald-50/90 dark:bg-emerald-950/40 border border-emerald-200/90 dark:border-emerald-800/80 text-emerald-900 dark:text-emerald-200 text-xs flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Lock className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
-              <div>
-                <span className="font-bold">Your order is confirmed and locked.</span>
-                <span className="text-[11px] text-emerald-700 dark:text-emerald-300 ml-1">
-                  ({currentUserExpense?.confirmedAt || 'Earlier'})
-                </span>
-                <p className="text-[10px] text-stone-500 dark:text-stone-400">
-                  {isAdmin
-                    ? 'As Admin, you can still adjust quantities if needed.'
-                    : 'You cannot edit your items anymore. Any changes will need to be made by the admin.'}
-                </p>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* ADMIN EDIT AUDIT NOTIFICATION BANNER */}
-        {currentUserExpense?.adminEdits && currentUserExpense.adminEdits.length > 0 && (
-          <div className="p-3 rounded-xl bg-amber-50 dark:bg-amber-950/50 border border-amber-300 dark:border-amber-700/80 text-amber-950 dark:text-amber-100 space-y-2 shadow-xs animate-in fade-in">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-1.5 font-bold text-xs text-amber-900 dark:text-amber-300">
-                <span className="p-1 rounded-md bg-amber-200 dark:bg-amber-900/80 text-amber-900 dark:text-amber-200">
-                  <AlertTriangle className="w-3.5 h-3.5" />
-                </span>
-                <span>Admin modified your confirmed order:</span>
-              </div>
-              <span className="text-[10px] font-bold text-amber-800 dark:text-amber-300 bg-amber-200/80 dark:bg-amber-900/60 px-2 py-0.5 rounded-full border border-amber-300 dark:border-amber-800">
-                {currentUserExpense.adminEdits.length} {currentUserExpense.adminEdits.length === 1 ? 'change' : 'changes'}
-              </span>
-            </div>
-            <div className="space-y-1.5 pt-0.5 divide-y divide-amber-200/60 dark:divide-amber-800/60">
-              {currentUserExpense.adminEdits.map((edit, idx) => (
-                <div key={idx} className="pt-1.5 first:pt-0 text-xs flex items-start justify-between gap-2">
-                  <div className="space-y-0.5">
-                    <div className="text-stone-800 dark:text-stone-200">
-                      👑 Admin <strong className="text-amber-700 dark:text-amber-400">{edit.adminName}</strong>{' '}
-                      {edit.action === 'added' ? 'added' : edit.action === 'removed' ? 'removed' : 'adjusted'}{' '}
-                      <strong className="font-bold underline decoration-amber-500">{edit.itemName}</strong>
-                    </div>
-                    <div className="text-[11px] text-stone-600 dark:text-stone-400 font-mono">
-                      Quantity: <span className="line-through text-stone-400">{edit.oldQuantity ?? 0}</span> ➔ <strong className="text-amber-700 dark:text-amber-300 font-bold">{edit.newQuantity ?? 0}</strong>
-                    </div>
-                  </div>
-                  <span className="text-[10px] text-stone-400 shrink-0 font-medium pt-0.5">{edit.editedAt}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Current user's items in their cup */}
-        {currentUserExpense && currentUserExpense.items.length > 0 ? (
-          <div className="space-y-1.5 p-2.5 rounded-xl bg-stone-50 dark:bg-stone-800/50 border border-stone-200/60 dark:border-stone-700/60">
-            <div className="text-[10px] font-bold text-stone-500 uppercase tracking-wider mb-1">
-              In Your Cup ({myItemCount} items):
-            </div>
-            {currentUserExpense.items.map(item => (
-              <div
-                key={item.id}
-                className="flex items-center justify-between text-xs py-1 px-1.5 rounded-lg bg-white dark:bg-stone-800 shadow-2xs"
-              >
-                <div className="flex items-center gap-1.5 truncate">
-                  <span>{item.emoji}</span>
-                  <span className="font-medium text-stone-900 dark:text-stone-100 truncate">
-                    {item.name}
-                  </span>
-                  <span className="text-[10px] text-stone-400">
-                    (₹{item.price} each)
-                  </span>
-                </div>
-
-                <div className="flex items-center gap-2 shrink-0">
-                  <span className="font-bold text-stone-800 dark:text-stone-200 text-xs">
-                    ₹{item.price * item.quantity}
-                  </span>
-                  <div className="flex items-center gap-1 bg-stone-100 dark:bg-stone-700 p-0.5 rounded-md">
-                    {(!isMyOrderConfirmed || isAdmin) ? (
-                      <>
-                        <button
-                          onClick={() => handleSelfRemoveItem(item.id || item.menuItemId || item.name)}
-                          className="w-5 h-5 rounded flex items-center justify-center hover:bg-stone-200 dark:hover:bg-stone-600 text-stone-600 dark:text-stone-300 cursor-pointer"
-                        >
-                          <Minus className="w-3 h-3" />
-                        </button>
-                        <span className="font-bold text-[11px] px-1">{item.quantity}</span>
-                        <button
-                          onClick={() => {
-                            const mi =
-                              shopMenuItems.find(m => m.id === item.menuItemId) ||
-                              menuItems.find(m => m.id === item.menuItemId) || {
-                                id: item.menuItemId || item.id,
-                                name: item.name,
-                                price: item.price,
-                                category: 'snacks',
-                                emoji: item.emoji || '☕'
-                              }
-                            handleSelfAddItem(mi)
-                          }}
-                          className="w-5 h-5 rounded flex items-center justify-center hover:bg-stone-200 dark:hover:bg-stone-600 text-stone-600 dark:text-stone-300 cursor-pointer"
-                        >
-                          <Plus className="w-3 h-3" />
-                        </button>
-                      </>
-                    ) : (
-                      <div className="flex items-center gap-1 px-1.5 py-0.5 text-[11px] font-bold text-stone-600 dark:text-stone-300">
-                        <Lock className="w-3 h-3 text-stone-400" />
-                        <span>Qty: {item.quantity}</span>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div className="p-3 text-center text-xs text-stone-400 bg-stone-50 dark:bg-stone-800/40 rounded-xl border border-dashed border-stone-200 dark:border-stone-800">
-            Your cup is empty! Tap any item below to add to your order.
-          </div>
-        )}
-
-        {/* Menu items 1-tap grid */}
-        <div className="space-y-2 pt-1">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-stone-800 dark:text-stone-200">
-              Select Tea &amp; Snacks to Add:
-            </span>
-            <span className="text-[10px] text-stone-400">
-              {shopMenuItems.length} choices
-            </span>
-          </div>
-
-          {isMyOrderConfirmed && !isAdmin ? (
-            <div className="p-3 text-center text-xs text-stone-500 bg-stone-50 dark:bg-stone-800/40 rounded-xl border border-stone-200 dark:border-stone-800 flex items-center justify-center gap-1.5">
-              <Lock className="w-3.5 h-3.5 text-amber-600" />
-              <span>Ordering locked. You have confirmed your items for this tea break.</span>
-            </div>
-          ) : shopMenuItems.length === 0 ? (
-            <div className="p-4 text-center text-xs text-stone-400 bg-stone-50 dark:bg-stone-800/40 rounded-xl border border-dashed border-stone-200 dark:border-stone-800">
-              No items available in {activeSession.shopName} menu yet.
-            </div>
-          ) : (
-            <div className="grid grid-cols-2 gap-2 max-h-56 overflow-y-auto pr-0.5">
-              {sortedMenuItems.map(item => (
-                <button
-                  key={item.id}
-                  onClick={() => handleSelfAddItem(item)}
-                  className="p-2 rounded-xl border border-stone-200/80 dark:border-stone-800 bg-stone-50/60 dark:bg-stone-800/40 hover:border-amber-500 hover:bg-amber-50/50 dark:hover:bg-amber-950/20 text-left transition-all cursor-pointer active:scale-95 group flex items-center justify-between"
-                >
-                  <div className="truncate pr-1">
-                    <div className="flex items-center gap-1.5 truncate">
-                      <span className="text-sm shrink-0">{item.emoji}</span>
-                      <span className="font-semibold text-xs text-stone-900 dark:text-stone-100 truncate group-hover:text-amber-700 dark:group-hover:text-amber-300">
-                        {item.name}
-                      </span>
-                    </div>
-                    <div className="text-[11px] font-bold text-amber-700 dark:text-amber-400 pl-5">
-                      ₹{item.price}
-                    </div>
-                  </div>
-
-                  <div className="w-5 h-5 rounded-full bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300 flex items-center justify-center shrink-0 group-hover:bg-amber-600 group-hover:text-white transition-colors">
-                    <Plus className="w-3 h-3" />
-                  </div>
-                </button>
-              ))}
-            </div>
           )}
-        </div>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => handleSubViewChange('others-orders')}
+          id="tea-break-tab-others-orders"
+          className={`flex-1 py-2 px-3 rounded-lg font-bold text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+            activeSubView === 'others-orders'
+              ? 'bg-white dark:bg-stone-900 text-amber-700 dark:text-amber-400 shadow-2xs'
+              : 'text-stone-500 hover:text-stone-800 dark:hover:text-stone-200'
+          }`}
+        >
+          <Users className="w-3.5 h-3.5" />
+          <span>Others' Orders</span>
+          {orderedMembersCount > 0 && (
+            <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-stone-200 dark:bg-stone-700 text-stone-700 dark:text-stone-200 font-bold">
+              {orderedMembersCount}
+            </span>
+          )}
+        </button>
       </div>
 
-      {/* ---------------- ADMIN: BUTTON FOR ADDING ITEMS FOR OTHERS ---------------- */}
-      {isAdmin && (
+      {/* ---------------- 1. MY ORDERS VIEW ---------------- */}
+      {activeSubView === 'my-orders' && (
+        <div className="space-y-4 animate-in fade-in">
+          {/* 1. ITEMS SELECTION OPTION */}
+          <div className="p-4 rounded-2xl bg-white dark:bg-stone-900 border border-stone-200/80 dark:border-stone-800 shadow-2xs space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="p-1.5 rounded-xl bg-amber-100 dark:bg-amber-950 text-amber-700 dark:text-amber-300">
+                  <ShoppingBag className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="font-heading font-bold text-sm text-stone-900 dark:text-stone-100">
+                    Select Items to Add
+                  </h3>
+                </div>
+              </div>
+            </div>
+
+            {isMyOrderConfirmed && !canEditConfirmed ? (
+              <div className="p-2.5 text-center text-xs text-stone-500 bg-stone-50 dark:bg-stone-800/40 rounded-xl border border-stone-200 dark:border-stone-800 flex items-center justify-center gap-1.5">
+                <Lock className="w-3.5 h-3.5 text-amber-600" />
+                <span>Ordering is locked</span>
+              </div>
+            ) : shopMenuItems.length === 0 ? (
+              <div className="p-4 text-center text-xs text-stone-400 bg-stone-50 dark:bg-stone-800/40 rounded-xl border border-dashed border-stone-200 dark:border-stone-800">
+                No items available in {activeSession.shopName} menu yet.
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 gap-2 max-h-56 overflow-y-auto pr-0.5">
+                {sortedMenuItems.map(item => (
+                  <button
+                    key={item.id}
+                    onClick={() => handleSelfAddItem(item)}
+                    className="p-2 rounded-xl border border-stone-200/80 dark:border-stone-800 bg-stone-50/60 dark:bg-stone-800/40 hover:border-amber-500 hover:bg-amber-50/50 dark:hover:bg-amber-950/20 text-left transition-all cursor-pointer active:scale-95 group flex items-center justify-between"
+                  >
+                    <div className="truncate pr-1">
+                      <div className="flex items-center gap-1.5 truncate">
+                        <span className="font-semibold text-xs text-stone-900 dark:text-stone-100 truncate group-hover:text-amber-700 dark:group-hover:text-amber-300">
+                          {item.name}
+                        </span>
+                      </div>
+                      <div className="text-[11px] font-bold text-amber-700 dark:text-amber-400 pl-5">
+                        ₹{item.price}
+                      </div>
+                    </div>
+
+                    <div className="w-5 h-5 rounded-full bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300 flex items-center justify-center shrink-0 group-hover:bg-amber-600 group-hover:text-white transition-colors">
+                      <Plus className="w-3 h-3" />
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* 2. ADDED ITEMS (UNDER THE ITEMS SELECTION OPTION) */}
+          <div className="p-4 rounded-2xl bg-white dark:bg-stone-900 border border-stone-200/80 dark:border-stone-800 shadow-2xs space-y-3.5">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="p-1.5 rounded-xl bg-amber-100 dark:bg-amber-950 text-amber-700 dark:text-amber-300">
+                  <Coffee className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="font-heading font-bold text-sm text-stone-900 dark:text-stone-100">
+                    In Your Cup
+                  </h3>
+                </div>
+              </div>
+
+              <span className="text-xs font-semibold text-stone-500 dark:text-stone-400">
+                {myItemCount} {myItemCount === 1 ? 'item' : 'items'}
+              </span>
+            </div>
+
+            {/* Admin audit notification banner */}
+            {currentUserExpense?.adminEdits && currentUserExpense.adminEdits.length > 0 && (
+              <div className="p-3 rounded-xl bg-amber-50 dark:bg-amber-950/50 border border-amber-300 dark:border-amber-700/80 text-amber-950 dark:text-amber-100 space-y-2 shadow-xs animate-in fade-in">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5 font-bold text-xs text-amber-900 dark:text-amber-300">
+                    <span className="p-1 rounded-md bg-amber-200 dark:bg-amber-900/80 text-amber-900 dark:text-amber-200">
+                      <AlertTriangle className="w-3.5 h-3.5" />
+                    </span>
+                    <span>Admin modified your confirmed order:</span>
+                  </div>
+                  <span className="text-[10px] font-bold text-amber-800 dark:text-amber-300 bg-amber-200/80 dark:bg-amber-900/60 px-2 py-0.5 rounded-full border border-amber-300 dark:border-amber-800">
+                    {currentUserExpense.adminEdits.length} {currentUserExpense.adminEdits.length === 1 ? 'change' : 'changes'}
+                  </span>
+                </div>
+                <div className="space-y-1.5 pt-0.5 divide-y divide-amber-200/60 dark:divide-amber-800/60">
+                  {currentUserExpense.adminEdits.map((edit, idx) => (
+                    <div key={idx} className="pt-1.5 first:pt-0 text-xs flex items-start justify-between gap-2">
+                      <div className="space-y-0.5">
+                        <div className="text-stone-800 dark:text-stone-200">
+                          Admin <strong className="text-amber-700 dark:text-amber-400">{edit.adminName}</strong>{' '}
+                          {edit.action === 'added' ? 'added' : edit.action === 'removed' ? 'removed' : 'adjusted'}{' '}
+                          <strong className="font-bold underline decoration-amber-500">{edit.itemName}</strong>
+                        </div>
+                        <div className="text-[11px] text-stone-600 dark:text-stone-400 font-mono">
+                          Quantity: <span className="line-through text-stone-400">{edit.oldQuantity ?? 0}</span> → <strong className="text-amber-700 dark:text-amber-300 font-bold">{edit.newQuantity ?? 0}</strong>
+                        </div>
+                      </div>
+                      <span className="text-[10px] text-stone-400 shrink-0 font-medium pt-0.5">{edit.editedAt}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* List of added items */}
+            {currentUserExpense && currentUserExpense.items.length > 0 ? (
+              <div className="space-y-1.5 p-2.5 rounded-xl bg-stone-50 dark:bg-stone-800/50 border border-stone-200/60 dark:border-stone-700/60">
+                <div className="text-[10px] font-bold text-stone-500 uppercase tracking-wider mb-1">
+                  In Your Cup ({myItemCount} items):
+                </div>
+                {currentUserExpense.items.map(item => (
+                  <div
+                    key={item.id}
+                    className="flex items-center justify-between text-xs py-1.5 px-2 rounded-lg bg-white dark:bg-stone-800 shadow-2xs"
+                  >
+                    <div className="flex items-center gap-1.5 truncate">
+                      <span className="font-medium text-stone-900 dark:text-stone-100 truncate">
+                        {item.name}
+                      </span>
+                      <span className="text-[10px] text-stone-400">
+                        (₹{item.price} each)
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-2 shrink-0">
+                      <span className="font-bold text-stone-800 dark:text-stone-200 text-xs">
+                        ₹{item.price * item.quantity}
+                      </span>
+                      <div className="flex items-center gap-1 bg-stone-100 dark:bg-stone-700 p-0.5 rounded-md">
+                        {(!isMyOrderConfirmed || canEditConfirmed) ? (
+                          <>
+                            <button
+                              onClick={() => handleSelfRemoveItem(item.id || item.menuItemId || item.name)}
+                              className="w-5 h-5 rounded flex items-center justify-center hover:bg-stone-200 dark:hover:bg-stone-600 text-stone-600 dark:text-stone-300 cursor-pointer"
+                              title="Decrease quantity"
+                            >
+                              <Minus className="w-3 h-3" />
+                            </button>
+                            <span className="font-bold text-[11px] px-1">{item.quantity}</span>
+                            <button
+                              onClick={() => {
+                                const mi =
+                                  shopMenuItems.find(m => m.id === item.menuItemId) ||
+                                  menuItems.find(m => m.id === item.menuItemId) || {
+                                    id: item.menuItemId || item.id,
+                                    name: item.name,
+                                    price: item.price,
+                                    category: 'snacks',
+                                    emoji: item.emoji || ''
+                                  }
+                                handleSelfAddItem(mi)
+                              }}
+                              className="w-5 h-5 rounded flex items-center justify-center hover:bg-stone-200 dark:hover:bg-stone-600 text-stone-600 dark:text-stone-300 cursor-pointer"
+                              title="Increase quantity"
+                            >
+                              <Plus className="w-3 h-3" />
+                            </button>
+                          </>
+                        ) : (
+                          <div className="flex items-center gap-1 px-1.5 py-0.5 text-[11px] font-bold text-stone-600 dark:text-stone-300">
+                            <Lock className="w-3 h-3 text-stone-400" />
+                            <span>Qty: {item.quantity}</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="p-3.5 text-center text-xs text-stone-400 bg-stone-50 dark:bg-stone-800/40 rounded-xl border border-dashed border-stone-200 dark:border-stone-800">
+                Your cup is empty. Select items from the menu above to add.
+              </div>
+            )}
+
+            {/* 3. CONFIRM OPTION (UNDER ADDED ITEMS) */}
+            <div className="pt-1">
+              {isMyOrderConfirmed ? (
+                <div className="p-3 rounded-xl bg-emerald-50/90 dark:bg-emerald-950/40 border border-emerald-200/90 dark:border-emerald-800/80 text-emerald-900 dark:text-emerald-200 text-xs flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                    <div>
+                      <span className="font-bold">Your order is confirmed and locked.</span>
+                      <span className="text-[11px] text-emerald-700 dark:text-emerald-300 ml-1">
+                        ({currentUserExpense?.confirmedAt || 'Earlier'})
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={handleConfirmMyOrder}
+                  disabled={isConfirming || !currentUserExpense || currentUserExpense.items.length === 0}
+                  id="confirm-my-order-btn"
+                  className="w-full py-3 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold text-xs shadow-xs cursor-pointer transition-all active:scale-[0.98] flex items-center justify-center gap-2"
+                  title="Confirm and lock your items"
+                >
+                  <CheckCircle2 className="w-4 h-4" />
+                  <span>{isConfirming ? 'Confirming...' : 'Confirm Items'}</span>
+                </button>
+              )}
+            </div>
+
+            {/* 4. PRICE AS BIG (UNDER CONFIRM OPTION) */}
+            <div className="p-4 rounded-xl bg-gradient-to-r from-amber-500/15 via-orange-500/10 to-amber-500/5 border border-amber-500/25 flex items-center justify-between">
+              <div>
+                <div className="text-[10px] font-bold uppercase tracking-wider text-amber-800 dark:text-amber-400">
+                  Total Amount
+                </div>
+                <div className="text-3xl font-black font-heading text-stone-900 dark:text-stone-100 flex items-baseline gap-2">
+                  <span>₹{myTotal}</span>
+                  <span className="text-xs font-semibold text-stone-500 dark:text-stone-400 font-sans">
+                    ({myItemCount} {myItemCount === 1 ? 'item' : 'items'})
+                  </span>
+                </div>
+              </div>
+
+              {isMyOrderConfirmed ? (
+                <span className="px-2.5 py-1 rounded-xl bg-emerald-100 dark:bg-emerald-950/80 text-emerald-800 dark:text-emerald-300 font-bold text-xs flex items-center gap-1 border border-emerald-300 dark:border-emerald-800 shadow-2xs">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                  <span>Confirmed</span>
+                </span>
+              ) : (
+                <span className="text-xs font-bold text-amber-700 dark:text-amber-300 bg-amber-100 dark:bg-amber-950/70 px-2.5 py-1 rounded-lg">
+                  Unconfirmed
+                </span>
+              )}
+            </div>
+
+            {/* 5. AFTER CONFIRMED: OPTION TO SEE OTHERS' ORDERS */}
+            {isMyOrderConfirmed && (
+              <button
+                type="button"
+                onClick={() => handleSubViewChange('others-orders')}
+                id="view-others-orders-after-confirmed-btn"
+                className="w-full py-3.5 px-4 rounded-xl bg-gradient-to-r from-amber-600 via-amber-700 to-orange-600 hover:from-amber-700 hover:to-orange-700 active:scale-[0.98] text-white font-bold text-sm shadow-md shadow-amber-900/10 transition-all cursor-pointer flex items-center justify-between group animate-in fade-in"
+              >
+                <div className="flex items-center gap-2.5">
+                  <div className="w-7 h-7 rounded-lg bg-white/20 flex items-center justify-center shrink-0">
+                    <Users className="w-4 h-4 text-white" />
+                  </div>
+                  <div className="text-left">
+                    <div className="text-xs font-bold leading-tight">See Others' Orders</div>
+                    <div className="text-[10px] text-amber-100/90 font-medium leading-tight">
+                      Check what colleagues have ordered
+                    </div>
+                  </div>
+                </div>
+                <div className="flex items-center gap-1 text-xs font-semibold bg-white/15 px-3 py-1.5 rounded-lg group-hover:translate-x-0.5 transition-transform shrink-0">
+                  <span>View</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </div>
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ---------------- 2. OTHERS' ORDERS VIEW ---------------- */}
+      {activeSubView === 'others-orders' && (
+        <div className="space-y-4 animate-in fade-in">
+          {/* ADMIN & PAYER: BUTTON FOR ADDING ITEMS FOR OTHERS */}
+          {canEditConfirmed && (
         <div className="pt-0.5">
           <button
             type="button"
@@ -769,11 +895,6 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
               <Receipt className="w-4 h-4 text-amber-600" />
               <span>Group Orders &amp; Bill Breakdown</span>
             </h3>
-            <p className="text-[10px] text-stone-400">
-              {isAdmin
-                ? 'Visible to all members • Admin can adjust quantities for any member'
-                : 'Visible to all members • Real-time live sync'}
-            </p>
           </div>
 
           <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300">
@@ -781,18 +902,15 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
           </span>
         </div>
 
-        {/* 1. TOTAL ITEMS EATEN & TOTAL PRICE FOR EACH ITEM (TAPRI COUNTER) */}
+        {/* 1. TOTAL ITEMS ORDERED & TOTAL PRICE FOR EACH ITEM (TAPRI COUNTER) */}
         <div className="space-y-2 pt-1">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-1.5">
               <Coffee className="w-3.5 h-3.5 text-amber-600" />
               <span className="text-xs font-bold text-stone-900 dark:text-stone-100 uppercase tracking-wide">
-                Total Items Eaten ({totalSessionItemCount})
+                Total Items Ordered ({totalSessionItemCount})
               </span>
             </div>
-            <span className="text-[10px] text-stone-400">
-              Tapri Order Summary
-            </span>
           </div>
 
           {aggregatedItems.length > 0 ? (
@@ -804,7 +922,6 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
                 >
                   <div className="space-y-0.5">
                     <div className="flex items-center gap-1.5">
-                      <span className="text-sm">{item.emoji}</span>
                       <span className="font-semibold text-xs text-stone-900 dark:text-stone-100">
                         {item.name}
                       </span>
@@ -812,16 +929,12 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
                         @ ₹{item.price} each
                       </span>
                     </div>
-                    {/* Who ate it */}
-                    <div className="text-[10px] text-stone-500 dark:text-stone-400 pl-5">
-                      Eaten by: {item.orderedBy.map(o => `${o.name} (${o.qty})`).join(', ')}
-                    </div>
                   </div>
 
                   <div className="text-right shrink-0 pl-2">
                     <div className="flex items-center gap-1.5 justify-end">
                       <span className="px-1.5 py-0.5 rounded-md bg-amber-100 dark:bg-amber-950/80 text-amber-800 dark:text-amber-300 font-bold text-[11px]">
-                        ×{item.quantity} eaten
+                        ×{item.quantity}
                       </span>
                       <span className="font-heading font-black text-xs text-stone-900 dark:text-stone-100 min-w-10 text-right">
                         ₹{item.totalPrice}
@@ -834,7 +947,7 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
               {/* Aggregated Total Row */}
               <div className="p-2.5 bg-amber-50/60 dark:bg-amber-950/20 flex items-center justify-between text-xs font-bold border-t border-amber-200/50 dark:border-amber-900/40">
                 <span className="text-amber-900 dark:text-amber-200 flex items-center gap-1">
-                  <span>Total Items Eaten:</span>
+                  <span>Total Items:</span>
                   <span className="text-amber-700 dark:text-amber-400">{totalSessionItemCount} items</span>
                 </span>
                 <span className="text-amber-900 dark:text-amber-200 font-heading text-sm">
@@ -844,10 +957,7 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
             </div>
           ) : (
             <div className="p-3 text-center text-xs text-stone-400 bg-stone-50 dark:bg-stone-800/40 rounded-xl border border-dashed border-stone-200 dark:border-stone-800 space-y-1">
-              <p className="font-medium">No items eaten yet</p>
-              <p className="text-[11px] text-stone-400">
-                When members add tea &amp; snacks, the total count and total price for each item will appear here.
-              </p>
+              <p className="font-medium">No items ordered yet</p>
             </div>
           )}
         </div>
@@ -861,12 +971,28 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
                 Each Member's Total &amp; Items ({group.members.length})
               </span>
             </div>
-            <span className="text-[10px] text-stone-400">
-              Tap member to view items
-            </span>
+            <button
+              type="button"
+              onClick={() => setShowAllMembersList(prev => !prev)}
+              id="toggle-all-members-items-btn"
+              className={`px-2.5 py-1 rounded-lg font-bold text-xs flex items-center gap-1 cursor-pointer active:scale-95 transition-all ${
+                showAllMembersList
+                  ? 'bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700'
+                  : 'bg-amber-50 dark:bg-amber-950/50 text-amber-800 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-900/40 border border-amber-200/60 dark:border-amber-800/40'
+              }`}
+              title={showAllMembersList ? "Hide member items" : "View all member items"}
+            >
+              <span>{showAllMembersList ? 'Hide' : 'View All'}</span>
+              {showAllMembersList ? (
+                <ChevronUp className="w-3.5 h-3.5" />
+              ) : (
+                <ChevronDown className="w-3.5 h-3.5" />
+              )}
+            </button>
           </div>
 
-          <div className="divide-y divide-stone-100 dark:divide-stone-800">
+          {showAllMembersList && (
+            <div className="divide-y divide-stone-100 dark:divide-stone-800">
             {sortedExpenses.map(expense => {
               const isUser =
                 expense.memberId === effectiveUser?.id ||
@@ -874,8 +1000,14 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
                 (currentUserExpense && expense.memberId === currentUserExpense.memberId) ||
                 (effectiveUser?.userCode && expense.memberId === effectiveUser.userCode)
               const isMemberAdmin = expense.memberId === effectiveAdminId
+              const isMemberPayer = Boolean(
+                designatedPayerId && (
+                  expense.memberId === designatedPayerId ||
+                  (group.payerName && expense.memberName.toLowerCase() === group.payerName.toLowerCase())
+                )
+              )
               const isConfirmed = Boolean(expense.isConfirmed)
-              const canEditThisMember = isAdmin || (!isConfirmed && isUser)
+              const canEditThisMember = canEditConfirmed || (!isConfirmed && isUser)
               const memberItemCount = expense.items.reduce((sum, it) => sum + it.quantity, 0)
               const isExpanded = expandedMemberIds.has(expense.memberId)
 
@@ -903,6 +1035,12 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
                           <span className="px-1.5 py-0.2 rounded text-[9px] bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 font-bold flex items-center gap-0.5">
                             <Crown className="w-2.5 h-2.5" />
                             <span>Admin</span>
+                          </span>
+                        )}
+                        {isMemberPayer && (
+                          <span className="px-1.5 py-0.2 rounded text-[9px] bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 font-bold flex items-center gap-0.5 border border-amber-300 dark:border-amber-800">
+                            <CreditCard className="w-2.5 h-2.5 text-amber-700" />
+                            <span>Payer</span>
                           </span>
                         )}
                         {isConfirmed && (
@@ -957,7 +1095,7 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
                           </div>
                           {expense.adminEdits.map((ed, idx) => (
                             <div key={idx} className="pl-4 text-stone-700 dark:text-stone-300 text-[10px]">
-                              • <strong>{ed.adminName}</strong> {ed.action} <strong>{ed.itemName}</strong> (Qty: {ed.oldQuantity ?? 0} ➔ <strong className="text-amber-700 dark:text-amber-400 font-bold">{ed.newQuantity ?? 0}</strong>) • {ed.editedAt}
+                              • <strong>{ed.adminName}</strong> {ed.action} <strong>{ed.itemName}</strong> (Qty: {ed.oldQuantity ?? 0} → <strong className="text-amber-700 dark:text-amber-400 font-bold">{ed.newQuantity ?? 0}</strong>) • {ed.editedAt}
                             </div>
                           ))}
                         </div>
@@ -971,7 +1109,6 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
                               key={item.id}
                               className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-stone-100 dark:bg-stone-800 text-[11px] text-stone-700 dark:text-stone-300 border border-stone-200/50 dark:border-stone-700/50"
                             >
-                              <span>{item.emoji}</span>
                               <span>{item.name}</span>
                               <span className="font-bold text-amber-700 dark:text-amber-400">
                                 x{item.quantity}
@@ -985,7 +1122,7 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
                                   <button
                                     onClick={(e) => {
                                       e.stopPropagation()
-                                      const adminName = isAdmin ? (effectiveUser?.name || 'Admin') : undefined
+                                      const adminName = canEditConfirmed ? (effectiveUser?.name || (isAdmin ? 'Admin' : 'Payer')) : undefined
                                       removeItemFromMember(expense.memberId, item.id || item.menuItemId || item.name, activeSession?.id, adminName)
                                     }}
                                     className="w-4 h-4 rounded flex items-center justify-center hover:bg-stone-200 dark:hover:bg-stone-700 text-stone-600 dark:text-stone-300 cursor-pointer"
@@ -1003,9 +1140,9 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
                                           name: item.name,
                                           price: item.price,
                                           category: 'snacks',
-                                          emoji: item.emoji || '☕'
+                                          emoji: item.emoji || ''
                                         }
-                                      const adminName = isAdmin ? (effectiveUser?.name || 'Admin') : undefined
+                                      const adminName = canEditConfirmed ? (effectiveUser?.name || (isAdmin ? 'Admin' : 'Payer')) : undefined
                                       addItemToMember(expense.memberId, mi, activeSession?.id, adminName)
                                     }}
                                     className="w-4 h-4 rounded flex items-center justify-center hover:bg-stone-200 dark:hover:bg-stone-700 text-stone-600 dark:text-stone-300 cursor-pointer"
@@ -1037,18 +1174,18 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
                             )}
                           </span>
 
-                          {!isConfirmed && (isUser || isBreakCreator || isAdmin) && (
+                          {!isConfirmed && (isUser || isBreakCreator || canEditConfirmed) && (
                             <button
                               type="button"
                               onClick={async (e) => {
                                 e.stopPropagation()
                                 await confirmMemberOrder(expense.memberId, activeSession?.id)
-                                showToast(`Confirmed items for ${expense.memberName} ✓`)
+                                showToast(`Confirmed items for ${expense.memberName}`)
                               }}
                               className="text-[10px] font-bold text-emerald-700 dark:text-emerald-300 hover:text-emerald-800 bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-300 dark:border-emerald-800 px-2 py-0.5 rounded-lg cursor-pointer hover:bg-emerald-100 dark:hover:bg-emerald-900 transition-colors flex items-center gap-1"
                             >
                               <CheckCircle2 className="w-2.5 h-2.5 text-emerald-600" />
-                              <span>Confirm Items ✓</span>
+                              <span>Confirm Items</span>
                             </button>
                           )}
                         </div>
@@ -1056,7 +1193,7 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
                       ) : (
                         <div className="flex items-center justify-between pl-8 text-[10px] text-stone-400">
                           <span className="italic">No items added yet</span>
-                          {isAdmin && !isUser && (
+                          {canEditConfirmed && !isUser && (
                             <button
                               type="button"
                               onClick={(e) => {
@@ -1077,7 +1214,8 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
                 </div>
               )
             })}
-          </div>
+            </div>
+          )}
         </div>
 
         {/* ---------------- 3. TOTAL BILL & END TASK OPTION (ONLY SEEN HERE) ---------------- */}
@@ -1091,7 +1229,7 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
               <div className="text-2xl font-black font-heading text-stone-900 dark:text-stone-100 flex items-baseline gap-1.5">
                 <span>₹{activeSession.totalAmount}</span>
                 <span className="text-xs font-semibold text-stone-500 font-sans">
-                  ({totalSessionItemCount} {totalSessionItemCount === 1 ? 'item' : 'items'} eaten)
+                  ({totalSessionItemCount} {totalSessionItemCount === 1 ? 'item' : 'items'} ordered)
                 </span>
               </div>
             </div>
@@ -1155,7 +1293,7 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
                     ) : (
                       <Sparkles className="w-3.5 h-3.5 text-white" />
                     )}
-                    <span>Settle &amp; Close 🎉</span>
+                    <span>Settle &amp; Close</span>
                     {unconfirmedMembers.length > 0 && (
                       <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-amber-200 dark:bg-amber-900 text-amber-900 dark:text-amber-100 font-bold">
                         {unconfirmedMembers.length} pending
@@ -1197,12 +1335,14 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
                 Created by: <strong className="text-stone-700 dark:text-stone-300">{activeSession?.creatorName || 'Member'}</strong>
               </span>
               <span className={`text-[10px] font-semibold ${canCloseBreak ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}`}>
-                {canCloseBreak ? (allMembersConfirmed ? '✓ Ready to settle' : '⏳ Awaiting confirmations') : '🔒 Only creator can close'}
+                {canCloseBreak ? (allMembersConfirmed ? 'Ready to settle' : 'Awaiting confirmations') : 'Only creator can close'}
               </span>
             </div>
           </div>
         </div>
       </div>
+        </div>
+      )}
 
       {/* Modal: Close / End Break Confirmation */}
       {showCancelConfirm && (
@@ -1271,9 +1411,6 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
               <div className="p-2.5 rounded-xl bg-amber-50/80 dark:bg-amber-950/40 border border-amber-200/60 dark:border-amber-900/40 text-[11px] text-amber-800 dark:text-amber-300 font-medium text-left space-y-1">
                 <div>• Current Break: <strong>{activeSession?.title || 'Tea Break'}</strong></div>
                 <div>• Created by: <strong>{activeSession?.creatorName || 'Creator'}</strong></div>
-                <div className="text-[10px] text-stone-500 dark:text-stone-400 pt-0.5">
-                  Only one break can be created at a time. Please ask <strong>{activeSession?.creatorName || 'the creator'}</strong> to close or settle this session.
-                </div>
               </div>
             </div>
 
@@ -1284,7 +1421,7 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
                 id="cannot-close-modal-ok-btn"
                 className="w-full py-2.5 px-4 rounded-xl text-xs font-bold bg-amber-600 hover:bg-amber-700 text-white shadow-xs cursor-pointer active:scale-95 transition-all text-center"
               >
-                Understood ✓
+                Understood
               </button>
             </div>
           </div>
@@ -1325,7 +1462,9 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
                 >
                   <div className="min-w-0">
                     <div className="font-bold text-xs text-stone-900 dark:text-stone-100 truncate flex items-center gap-1.5">
-                      <span>{member.memberAvatar || '☕'}</span>
+                      <div className="w-4 h-4 rounded-full bg-amber-200 dark:bg-amber-900 text-stone-800 dark:text-stone-200 text-[8px] font-bold flex items-center justify-center shrink-0">
+                        {member.memberName[0]}
+                      </div>
                       <span className="truncate">{member.memberName}</span>
                     </div>
                     <div className="text-[10px] text-stone-500 dark:text-stone-400 truncate">
@@ -1333,12 +1472,12 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
                     </div>
                   </div>
 
-                  {(isBreakCreator || isAdmin || effectiveUser?.id === member.memberId) && (
+                  {(isBreakCreator || canEditConfirmed || effectiveUser?.id === member.memberId) && (
                     <button
                       type="button"
                       onClick={async () => {
                         await confirmMemberOrder(member.memberId, activeSession?.id)
-                        showToast(`Confirmed items for ${member.memberName} ✓`)
+                        showToast(`Confirmed items for ${member.memberName}`)
                       }}
                       className="shrink-0 px-2.5 py-1 rounded-lg text-[10px] font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-2xs cursor-pointer active:scale-95 transition-all flex items-center gap-1"
                     >
@@ -1377,9 +1516,6 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
                   <h3 className="font-heading font-extrabold text-sm text-stone-900 dark:text-stone-100">
                     Add Items for Others
                   </h3>
-                  <p className="text-[10px] text-stone-400">
-                    Assign tea &amp; snacks to your teammates
-                  </p>
                 </div>
               </div>
 
@@ -1451,7 +1587,7 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
                       <span>In {selectedAssignee?.name}'s Cup:</span>
                       {isAssigneeConfirmed && (
                         <span className="px-1.5 py-0.2 rounded text-[9px] bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 font-bold border border-emerald-300 dark:border-emerald-800">
-                          ✓ Confirmed
+                          Confirmed
                         </span>
                       )}
                     </span>
@@ -1474,7 +1610,6 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
                           key={item.id}
                           className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-white dark:bg-stone-800 border border-stone-200 dark:border-stone-700 text-[10px]"
                         >
-                          <span>{item.emoji}</span>
                           <span>{item.name}</span>
                           <span className="font-bold text-amber-600">x{item.quantity}</span>
                           <button
@@ -1492,7 +1627,7 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
                                   name: item.name,
                                   price: item.price,
                                   category: 'snacks',
-                                  emoji: item.emoji || '☕'
+                                  emoji: item.emoji || ''
                                 }
                               handleAdminAssignItem(mi)
                             }}
@@ -1516,9 +1651,6 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
                 <span className="text-xs font-semibold text-stone-700 dark:text-stone-300">
                   Tap to add to {selectedAssignee?.name}'s cup:
                 </span>
-                <span className="text-[10px] text-stone-400 font-medium">
-                  {shopMenuItems.length} choices
-                </span>
               </div>
 
               {/* Menu items grid */}
@@ -1536,7 +1668,6 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
                     >
                     <div className="truncate pr-1">
                       <div className="flex items-center gap-1 truncate">
-                        <span className="text-xs shrink-0">{item.emoji}</span>
                         <span className="font-semibold text-[11px] text-stone-900 dark:text-stone-100 truncate group-hover:text-amber-700">
                           {item.name}
                         </span>
@@ -1562,7 +1693,7 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
                 onClick={() => setShowAssignModal(false)}
                 className="w-full py-2 rounded-xl font-bold text-xs bg-amber-600 hover:bg-amber-700 text-white shadow-xs cursor-pointer active:scale-95 transition-all text-center"
               >
-                Done ✓
+                Done
               </button>
             </div>
           </div>
