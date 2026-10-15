@@ -74,7 +74,7 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
 
   // Retrieve the break session specifically for this group
   const activeSession = (group?.id ? getActiveSessionForGroup(group.id) : undefined) ||
-    (globalActiveSession?.groupId === group?.id ? globalActiveSession : globalActiveSession)
+    (globalActiveSession?.groupId === group?.id ? globalActiveSession : undefined)
 
   const [toastNotice, setToastNotice] = useState<string | null>(null)
   const [showCancelConfirm, setShowCancelConfirm] = useState(false)
@@ -130,7 +130,7 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
   // Both Admin and the designated Bill Payer can edit confirmed items and assign items for others
   const canEditConfirmed = Boolean(isAdmin || isDesignatedPayer)
 
-  // Break Creator detection: strictly ONLY the user who created the break can close or settle it
+  // Break Creator detection: user who created the break
   const isBreakCreator = Boolean(
     activeSession && (
       (activeSession.creatorId && (
@@ -145,8 +145,8 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
     )
   )
 
-  // Strictly only the person who created the break can close or settle it
-  const canCloseBreak = Boolean(activeSession && isBreakCreator)
+  // Break closing rule: Both the person who created the break AND the group admin can close or settle it
+  const canCloseBreak = Boolean(activeSession && (isBreakCreator || isAdmin))
 
   // Selected colleague for admin assigning items
   const [selectedAssigneeId, setSelectedAssigneeId] = useState<string>(() => {
@@ -299,7 +299,7 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
     if (isSettling) return
     setIsSettling(true)
     setTimeout(() => {
-      settleActiveSession(activeSession?.id, currentUser?.id)
+      settleActiveSession(activeSession?.id, currentUser?.id, isAdmin)
       showToast(`Tea break bill settled successfully!`)
       setIsSettling(false)
       onBack()
@@ -316,7 +316,7 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
     if (isDeletingBreak) return
     setIsDeletingBreak(true)
     setTimeout(() => {
-      const res = cancelActiveSession(currentUser?.id, activeSession?.id)
+      const res = cancelActiveSession(currentUser?.id, activeSession?.id, isAdmin)
       setIsDeletingBreak(false)
       setShowCancelConfirm(false)
       if (res) {
@@ -1335,7 +1335,7 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
                 Created by: <strong className="text-stone-700 dark:text-stone-300">{activeSession?.creatorName || 'Member'}</strong>
               </span>
               <span className={`text-[10px] font-semibold ${canCloseBreak ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}`}>
-                {canCloseBreak ? (allMembersConfirmed ? 'Ready to settle' : 'Awaiting confirmations') : 'Only creator can close'}
+                {canCloseBreak ? (allMembersConfirmed ? 'Ready to settle' : 'Awaiting confirmations') : 'Only creator or admin can close'}
               </span>
             </div>
           </div>
@@ -1406,7 +1406,7 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
                 Break is running cannot create at the moment
               </h3>
               <p className="text-xs text-stone-600 dark:text-stone-400 leading-relaxed">
-                Not everyone can close the break. Who created the break ({activeSession?.creatorName || 'the break creator'}) can only close or settle the break.
+                Not everyone can close the break. Who created the break ({activeSession?.creatorName || 'the break creator'}) or the group admin can close or settle the break.
               </p>
               <div className="p-2.5 rounded-xl bg-amber-50/80 dark:bg-amber-950/40 border border-amber-200/60 dark:border-amber-900/40 text-[11px] text-amber-800 dark:text-amber-300 font-medium text-left space-y-1">
                 <div>• Current Break: <strong>{activeSession?.title || 'Tea Break'}</strong></div>

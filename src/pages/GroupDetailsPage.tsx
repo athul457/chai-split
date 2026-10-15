@@ -1345,7 +1345,7 @@ export const GroupDetailsPage: React.FC<GroupDetailsPageProps> = ({
                 <div>• Active Break: <strong>{groupActiveSession?.title || 'Chai Break'}</strong></div>
                 <div>• Created by: <strong>{groupActiveSession?.creatorName || 'Group Member'}</strong></div>
                 <div className="text-[10px] text-stone-500 dark:text-stone-400 pt-0.5">
-                  Not everyone can close the break. Who created the break can only close or settle the break.
+                  Not everyone can close the break. Who created the break or the group admin can close or settle the break.
                 </div>
               </div>
             </div>
