@@ -2,13 +2,112 @@
 
 @custom-variant dark (&:where(.dark, .dark *));
 
+@theme {
+  --font-sans: 'Plus Jakarta Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-heading: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+
+  /* Primary Palette (#D9531E) */
+  --color-primary: #D9531E;
+  --color-primary-50: #FFEDE8;
+  --color-primary-100: #FFDBCF;
+  --color-primary-200: #FFB59C;
+  --color-primary-300: #FF8B63;
+  --color-primary-400: #CF4C16;
+  --color-primary-500: #D9531E;
+  --color-primary-600: #AB3600;
+  --color-primary-700: #822700;
+  --color-primary-800: #5C1900;
+  --color-primary-900: #390C00;
+  --color-primary-950: #000000;
+
+  /* Secondary Palette (#F4EBE1) */
+  --color-secondary: #F4EBE1;
+  --color-secondary-50: #F8EFE5;
+  --color-secondary-100: #EAE1D7;
+  --color-secondary-200: #CDC5BC;
+  --color-secondary-300: #B2AAA1;
+  --color-secondary-400: #979087;
+  --color-secondary-500: #7C766E;
+  --color-secondary-600: #635E56;
+  --color-secondary-700: #4B463F;
+  --color-secondary-800: #343029;
+  --color-secondary-900: #1F1B15;
+  --color-secondary-950: #000000;
+
+  /* Tertiary Palette (#059669) */
+  --color-tertiary: #059669;
+  --color-tertiary-50: #BEFFDC;
+  --color-tertiary-100: #85F8C4;
+  --color-tertiary-200: #68DBA9;
+  --color-tertiary-300: #49BF8F;
+  --color-tertiary-400: #25A475;
+  --color-tertiary-500: #059669;
+  --color-tertiary-600: #006C4A;
+  --color-tertiary-700: #005137;
+  --color-tertiary-800: #003825;
+  --color-tertiary-900: #002114;
+  --color-tertiary-950: #000000;
+
+  /* Neutral Palette (#292524) */
+  --color-neutral: #292524;
+  --color-neutral-50: #F8EFED;
+  --color-neutral-100: #E9E1DF;
+  --color-neutral-200: #CDC5C3;
+  --color-neutral-300: #B1AAA8;
+  --color-neutral-400: #968F8E;
+  --color-neutral-500: #7C7674;
+  --color-neutral-600: #635D5C;
+  --color-neutral-700: #4B4644;
+  --color-neutral-800: #342F2E;
+  --color-neutral-900: #1E1B1A;
+  --color-neutral-950: #000000;
+
+  /* Cohesive mapping for existing amber, stone, and emerald classes */
+  --color-amber-50: #FFEDE8;
+  --color-amber-100: #FFDBCF;
+  --color-amber-200: #FFB59C;
+  --color-amber-300: #FF8B63;
+  --color-amber-400: #CF4C16;
+  --color-amber-500: #D9531E;
+  --color-amber-600: #D9531E;
+  --color-amber-700: #AB3600;
+  --color-amber-800: #822700;
+  --color-amber-900: #5C1900;
+  --color-amber-950: #390C00;
+
+  --color-stone-50: #F8EFED;
+  --color-stone-100: #E9E1DF;
+  --color-stone-200: #CDC5C3;
+  --color-stone-300: #B1AAA8;
+  --color-stone-400: #968F8E;
+  --color-stone-500: #7C7674;
+  --color-stone-600: #635D5C;
+  --color-stone-700: #4B4644;
+  --color-stone-800: #342F2E;
+  --color-stone-850: #292524;
+  --color-stone-900: #1E1B1A;
+  --color-stone-950: #12100F;
+
+  --color-emerald-50: #BEFFDC;
+  --color-emerald-100: #85F8C4;
+  --color-emerald-200: #68DBA9;
+  --color-emerald-300: #49BF8F;
+  --color-emerald-400: #25A475;
+  --color-emerald-500: #059669;
+  --color-emerald-600: #059669;
+  --color-emerald-700: #006C4A;
+  --color-emerald-800: #005137;
+  --color-emerald-900: #003825;
+  --color-emerald-950: #002114;
+}
+
 @layer base {
   body {
     font-family: 'Plus Jakarta Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   }
   
-  h1, h2, h3, h4, .font-heading {
-    font-family: 'Outfit', 'Plus Jakarta Sans', sans-serif;
+  h1, h2, h3, h4, h5, h6, .font-heading {
+    font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
   }
 }
 
@@ -112,3 +211,184 @@
   -webkit-backdrop-filter: blur(12px);
   border: 1px solid rgba(245, 158, 11, 0.2);
 }
+
+/* ==========================================================================
+   Design System: Buttons (Primary, Secondary, Inverted, Outlined) & Search Bar
+   ========================================================================== */
+
+/* Primary Button: Solid terracotta rust #AB3600 with white text */
+.btn-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.375rem;
+  background-color: #AB3600;
+  color: #FFFFFF;
+  font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+  font-weight: 600;
+  border-radius: 0.5rem; /* rounded-lg (8px) */
+  padding: 0.5rem 1rem;
+  transition: all 0.15s ease-in-out;
+  cursor: pointer;
+  border: 1px solid transparent;
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+}
+.btn-primary:hover {
+  background-color: #822700;
+}
+.btn-primary:active {
+  transform: scale(0.98);
+  background-color: #5C1900;
+}
+.btn-primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* Secondary Button: Soft warm cream #F4EBE1 with dark text #343029 */
+.btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.375rem;
+  background-color: #F4EBE1;
+  color: #343029;
+  font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+  font-weight: 600;
+  border-radius: 0.5rem; /* rounded-lg (8px) */
+  padding: 0.5rem 1rem;
+  transition: all 0.15s ease-in-out;
+  cursor: pointer;
+  border: 1px solid transparent;
+}
+.btn-secondary:hover {
+  background-color: #EAE1D7;
+}
+.btn-secondary:active {
+  transform: scale(0.98);
+}
+.btn-secondary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+}
+:where(.dark, .dark *) .btn-secondary {
+  background-color: #343029;
+  color: #F4EBE1;
+}
+:where(.dark, .dark *) .btn-secondary:hover {
+  background-color: #4B463F;
+}
+
+/* Inverted Button: Deep charcoal / near black #292524 with white text */
+.btn-inverted {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.375rem;
+  background-color: #292524;
+  color: #FFFFFF;
+  font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+  font-weight: 600;
+  border-radius: 0.5rem; /* rounded-lg (8px) */
+  padding: 0.5rem 1rem;
+  transition: all 0.15s ease-in-out;
+  cursor: pointer;
+  border: 1px solid transparent;
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+}
+.btn-inverted:hover {
+  background-color: #1E1B1A;
+}
+.btn-inverted:active {
+  transform: scale(0.98);
+}
+.btn-inverted:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+}
+:where(.dark, .dark *) .btn-inverted {
+  background-color: #1E1B1A;
+  color: #FFFFFF;
+}
+:where(.dark, .dark *) .btn-inverted:hover {
+  background-color: #000000;
+}
+
+/* Outlined Button: Transparent background with #CDC5BC border & #343029 text */
+.btn-outlined {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.375rem;
+  background-color: transparent;
+  color: #343029;
+  border: 1.5px solid #CDC5BC;
+  font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+  font-weight: 600;
+  border-radius: 0.5rem; /* rounded-lg (8px) */
+  padding: 0.5rem 1rem;
+  transition: all 0.15s ease-in-out;
+  cursor: pointer;
+}
+.btn-outlined:hover {
+  background-color: #F8EFE5;
+  border-color: #B2AAA1;
+}
+.btn-outlined:active {
+  transform: scale(0.98);
+}
+.btn-outlined:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+}
+:where(.dark, .dark *) .btn-outlined {
+  color: #EAE1D7;
+  border-color: #4B463F;
+}
+:where(.dark, .dark *) .btn-outlined:hover {
+  background-color: rgba(52, 48, 41, 0.4);
+  border-color: #635E56;
+}
+
+/* Search Input: Clean rounded-lg container with subtle warm border & clean typography */
+.search-input {
+  width: 100%;
+  padding-left: 2.25rem; /* 36px for left search icon */
+  padding-right: 2rem;
+  padding-top: 0.5rem;
+  padding-bottom: 0.5rem;
+  border-radius: 0.5rem; /* rounded-lg (8px) */
+  border: 1.5px solid #CDC5BC;
+  background-color: #FFFFFF;
+  color: #343029;
+  font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+  font-size: 0.8125rem;
+  line-height: 1.25rem;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.search-input::placeholder {
+  color: #979087;
+  font-weight: 400;
+}
+.search-input:focus {
+  outline: none;
+  border-color: #AB3600;
+  box-shadow: 0 0 0 1px #AB3600;
+}
+:where(.dark, .dark *) .search-input {
+  background-color: #1E1B1A;
+  border-color: #4B463F;
+  color: #E9E1DF;
+}
+:where(.dark, .dark *) .search-input::placeholder {
+  color: #7C766E;
+}
+:where(.dark, .dark *) .search-input:focus {
+  border-color: #CF4C16;
+  box-shadow: 0 0 0 1px #CF4C16;
+}
+

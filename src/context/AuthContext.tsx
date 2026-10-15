@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect } from 'react'
 import type { Session } from '@supabase/supabase-js'
 import type { User } from '../types'
 import { supabase } from '../lib/supabase'
+import { generateUserCode, getUserCode } from '../utils/userCode'
 
 interface AuthContextType {
   user: User | null
@@ -29,10 +30,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const saved = localStorage.getItem(USER_STORAGE_KEY)
       if (!saved) return null
       const parsed: User = JSON.parse(saved)
-      if (!parsed.userCode) {
-        const prefix = parsed.name.replace(/[^a-zA-Z]/g, '').slice(0, 5).toUpperCase() || 'USER'
-        parsed.userCode = `${prefix}4821`
-      }
+      parsed.userCode = getUserCode(parsed)
       return parsed
     } catch {
       return null
@@ -70,7 +68,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             email: p.email,
             avatar: p.avatar || '☕',
             teamName: p.team_name || 'Team',
-            userCode: p.user_code,
+            userCode: getUserCode({ name: p.name, userCode: p.user_code, id: p.id }),
             upiId: p.upi_id
           }))
           setAllUsers(mappedUsers)
@@ -105,13 +103,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           }
 
           if (resolvedProfile) {
+            const finalCode = getUserCode({
+              name: resolvedProfile.name,
+              userCode: resolvedProfile.user_code,
+              id: resolvedProfile.id
+            })
+            if (resolvedProfile.user_code !== finalCode && client) {
+              client.from('profiles').update({ user_code: finalCode }).eq('id', resolvedProfile.id).then(() => {})
+            }
             setUser({
               id: resolvedProfile.id,
               name: resolvedProfile.name,
               email: resolvedProfile.email,
               avatar: resolvedProfile.avatar || '☕',
               teamName: resolvedProfile.team_name || 'Team',
-              userCode: resolvedProfile.user_code,
+              userCode: finalCode,
               upiId: resolvedProfile.upi_id
             })
           } else {
@@ -283,13 +289,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             setSession(signUpData.session)
             const namePart = trimmed.split('@')[0]
             const formattedName = existingProfile?.name || namePart.charAt(0).toUpperCase() + namePart.slice(1)
+            const finalCode = getUserCode({
+              name: formattedName,
+              userCode: existingProfile?.user_code,
+              id: signUpData.user.id
+            })
             const loggedInUser: User = {
               id: signUpData.user.id,
               name: formattedName,
               email: trimmed,
               avatar: existingProfile?.avatar || formattedName.slice(0, 2).toUpperCase(),
               teamName: existingProfile?.team_name || 'Team',
-              userCode: existingProfile?.user_code || `${formattedName.slice(0, 4).toUpperCase()}4821`,
+              userCode: finalCode,
               upiId: existingProfile?.upi_id || `${namePart}@upi`
             }
             await client.from('profiles').upsert({
@@ -353,8 +364,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       .slice(0, 2)
       .toUpperCase() || '☕'
 
-    const codePrefix = name.replace(/[^a-zA-Z]/g, '').slice(0, 5).toUpperCase() || 'USER'
-
     // Register with Supabase Auth to issue authentic cryptographic JWT
     if (supabase) {
       try {
@@ -388,7 +397,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           email: trimmedEmail,
           avatar: initials,
           teamName: teamName?.trim() || 'Team',
-          userCode: `${codePrefix}${Math.floor(1000 + Math.random() * 9000)}`,
+          userCode: generateUserCode(name, authUserId),
           upiId: `${name.toLowerCase().replace(/\s+/g, '')}@okaxis`
         }
 
@@ -422,7 +431,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       email: trimmedEmail,
       avatar: initials,
       teamName: teamName?.trim() || 'Team',
-      userCode: `${codePrefix}${Math.floor(1000 + Math.random() * 9000)}`,
+      userCode: generateUserCode(name),
       upiId: `${name.toLowerCase().replace(/\s+/g, '')}@okaxis`
     }
     setAllUsers(prev => [newUser, ...prev])
@@ -432,14 +441,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const addUserToTeam = (name: string, email: string): User => {
     const initials = name.trim().split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()
-    const codePrefix = name.replace(/[^a-zA-Z]/g, '').slice(0, 5).toUpperCase() || 'USER'
     const newUser: User = {
       id: `user-${Date.now()}`,
       name: name.trim(),
       email: email.trim() || `${name.toLowerCase().replace(/\s+/g, '')}@office.com`,
       avatar: initials || '☕',
       teamName: user?.teamName || 'Team',
-      userCode: `${codePrefix}${Math.floor(1000 + Math.random() * 9000)}`,
+      userCode: generateUserCode(name),
       upiId: `${name.toLowerCase().replace(/\s+/g, '')}@upi`
     }
 
