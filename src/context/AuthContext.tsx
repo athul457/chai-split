@@ -14,6 +14,7 @@ interface AuthContextType {
   logout: () => Promise<void> | void
   allUsers: User[]
   addUserToTeam: (name: string, email: string) => User
+  updateUpiId: (upiId: string) => Promise<{ success: boolean; error?: string }>
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
@@ -482,6 +483,30 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }
 
+  const updateUpiId = async (upiId: string): Promise<{ success: boolean; error?: string }> => {
+    const trimmed = upiId.trim()
+    setUser(prev => (prev ? { ...prev, upiId: trimmed || undefined } : null))
+
+    if (user) {
+      setAllUsers(prev =>
+        prev.map(u => (u.id === user.id ? { ...u, upiId: trimmed || undefined } : u))
+      )
+
+      if (supabase) {
+        try {
+          await supabase
+            .from('profiles')
+            .update({ upi_id: trimmed || null })
+            .eq('id', user.id)
+        } catch (err) {
+          console.warn('Could not update UPI ID in Supabase:', err)
+        }
+      }
+    }
+
+    return { success: true }
+  }
+
   return (
     <AuthContext.Provider
       value={{
@@ -494,7 +519,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         register,
         logout,
         allUsers,
-        addUserToTeam
+        addUserToTeam,
+        updateUpiId
       }}
     >
       {children}

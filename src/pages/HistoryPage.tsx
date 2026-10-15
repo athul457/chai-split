@@ -14,7 +14,6 @@ import {
   Layers,
   Receipt,
   Search,
-  Sparkles,
   Store,
   UserCheck,
   Users,
@@ -24,6 +23,7 @@ import {
 import React, { useMemo, useState, useEffect } from 'react'
 import { useExpense } from '../context/ExpenseContext'
 import type { Group, TeaSession, User } from '../types'
+import { downloadExpensePdf, downloadSingleSessionPdf, type MemberPdfBreakdown } from '../utils/pdfReport'
 
 type TimeFilter = 'day' | 'week' | 'month' | 'year' | 'all' | 'custom'
 type SortOrder = 'date-desc' | 'date-asc' | 'amount-desc' | 'amount-asc' | 'items-desc'
@@ -69,20 +69,40 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({
 
   // Filter & Sort States
   const [sectionView, setSectionView] = useState<HistorySectionView>('personal')
-  const [selectedMemberId, setSelectedMemberId] = useState<string>(() => currentUser?.id || 'me')
-  const [timeFilter, setTimeFilter] = useState<TimeFilter>('all')
+  const [timeFilter, setTimeFilter] = useState<TimeFilter>('day')
   const [sortOrder, setSortOrder] = useState<SortOrder>('date-desc')
   const [selectedGroupId, setSelectedGroupId] = useState<string | 'all'>(initialGroupId || 'all')
   const [showOtherGroups, setShowOtherGroups] = useState(false)
+  const [showUniqueItems, setShowUniqueItems] = useState(false)
+  const [expandedBreakItemIds, setExpandedBreakItemIds] = useState<Set<string>>(new Set())
   const [viewMode, setViewMode] = useState<'grouped' | 'timeline'>('grouped')
   const [searchQuery, setSearchQuery] = useState('')
 
-  const handleAllGroupsClick = () => {
-    if (selectedGroupId !== 'all') {
-      setSelectedGroupId('all')
-    } else {
-      setShowOtherGroups(prev => !prev)
+  // Admin permission check: only show/allow PDF download for group admins
+  const isGroupAdmin = useMemo(() => {
+    if (!currentUser) return false
+    if (selectedGroupId === 'all') {
+      return userGroups.some(g => g.adminId === currentUser.id || (!g.adminId && g.members[0]?.id === currentUser.id))
     }
+    const targetGroup = userGroups.find(g => g.id === selectedGroupId)
+    if (!targetGroup) return false
+    return targetGroup.adminId === currentUser.id || (!targetGroup.adminId && targetGroup.members[0]?.id === currentUser.id)
+  }, [currentUser, selectedGroupId, userGroups])
+
+  const toggleBreakItems = (sessionId: string) => {
+    setExpandedBreakItemIds(prev => {
+      const next = new Set(prev)
+      if (next.has(sessionId)) {
+        next.delete(sessionId)
+      } else {
+        next.add(sessionId)
+      }
+      return next
+    })
+  }
+
+  const handleAllGroupsClick = () => {
+    setShowOtherGroups(prev => !prev)
   }
 
   // Reset selectedGroupId if it is not in userGroupIds
@@ -102,15 +122,49 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({
     return new Date().toISOString().slice(0, 10)
   })
 
-  // Collapsed state for group sections in "grouped" view
-  const [collapsedGroupIds, setCollapsedGroupIds] = useState<Set<string>>(new Set())
+  // Expanded state for group sections in "grouped" view (collapsed by default)
+  const [expandedGroupIds, setExpandedGroupIds] = useState<Set<string>>(new Set())
 
   // Modal: Selected Session for Full Bill Receipt
   const [selectedSessionForReceipt, setSelectedSessionForReceipt] = useState<TeaSession | null>(null)
   const [copiedUpi, setCopiedUpi] = useState(false)
+  const [expandedReceiptMemberIds, setExpandedReceiptMemberIds] = useState<Set<string>>(new Set())
 
-  const toggleGroupCollapse = (grpKey: string) => {
-    setCollapsedGroupIds(prev => {
+  const toggleReceiptMemberItems = (memberId: string) => {
+    setExpandedReceiptMemberIds(prev => {
+      const next = new Set(prev)
+      if (next.has(memberId)) {
+        next.delete(memberId)
+      } else {
+        next.add(memberId)
+      }
+      return next
+    })
+  }
+
+  const toggleAllReceiptMemberItems = () => {
+    if (!selectedSessionForReceipt) return
+    const membersWithItems = selectedSessionForReceipt.expenses
+      .filter(e => e.items && e.items.length > 0)
+      .map(e => e.memberId)
+
+    setExpandedReceiptMemberIds(prev => {
+      const allExpanded = membersWithItems.length > 0 && membersWithItems.every(id => prev.has(id))
+      if (allExpanded) {
+        return new Set()
+      } else {
+        return new Set(membersWithItems)
+      }
+    })
+  }
+
+  // Reset expanded member items whenever a different session receipt is opened
+  useEffect(() => {
+    setExpandedReceiptMemberIds(new Set())
+  }, [selectedSessionForReceipt])
+
+  const toggleGroupExpand = (grpKey: string) => {
+    setExpandedGroupIds(prev => {
       const next = new Set(prev)
       if (next.has(grpKey)) {
         next.delete(grpKey)
@@ -338,14 +392,15 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({
     return Array.from(map.values())
   }, [currentUser, userGroups, userSessions])
 
-  // Active selected member (defaulting to currentUser / first member)
-  const activeSelectedMember = useMemo(() => {
-    return availableMembers.find(m => m.id === selectedMemberId) || availableMembers[0]
-  }, [availableMembers, selectedMemberId])
 
-  // Compute unique eaten items and metrics for the active selected member
-  const memberEatenSummary = useMemo(() => {
-    if (!activeSelectedMember) {
+  // Current user member object for Personal Expense section
+  const currentUserMember = useMemo(() => {
+    return availableMembers.find(m => m.isCurrentUser) || availableMembers[0]
+  }, [availableMembers])
+
+  // Helper to compute eaten items and metrics for a given member
+  const computeMemberEatenData = (targetMember?: MemberOption) => {
+    if (!targetMember) {
       return {
         totalSpent: 0,
         totalItemsCount: 0,
@@ -381,13 +436,13 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({
 
     filteredSessions.forEach(sess => {
       const exp = sess.expenses?.find(e => {
-        if (activeSelectedMember.isCurrentUser && currentUser) {
+        if (targetMember.isCurrentUser && currentUser) {
           if (e.memberId === currentUser.id) return true
           if (e.memberName && currentUser.name && e.memberName.trim().toLowerCase() === currentUser.name.trim().toLowerCase()) return true
           if (currentUser.email && e.memberId === currentUser.email) return true
         }
-        if (e.memberId && activeSelectedMember.id && e.memberId === activeSelectedMember.id) return true
-        if (e.memberName && activeSelectedMember.name && e.memberName.trim().toLowerCase() === activeSelectedMember.name.trim().toLowerCase()) return true
+        if (e.memberId && targetMember.id && e.memberId === targetMember.id) return true
+        if (e.memberName && targetMember.name && e.memberName.trim().toLowerCase() === targetMember.name.trim().toLowerCase()) return true
         return false
       })
 
@@ -440,7 +495,13 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({
       topItem,
       breakRecords
     }
-  }, [activeSelectedMember, filteredSessions, currentUser])
+  }
+
+  // Personal Eaten Summary (Strictly for Current User)
+  const personalEatenSummary = useMemo(() => {
+    return computeMemberEatenData(currentUserMember)
+  }, [currentUserMember, filteredSessions, currentUser])
+
 
   // Group-wise Categorization
   interface GroupHistorySection {
@@ -499,33 +560,9 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({
     return Array.from(map.values())
   }, [sortedSessions, userGroups])
 
-  // Aggregate Metrics for Header
+  // Aggregate Metrics
   const totalSpent = useMemo(() => {
     return filteredSessions.reduce((sum, s) => sum + s.totalAmount, 0)
-  }, [filteredSessions])
-
-  const totalBreaks = filteredSessions.length
-
-  const avgPerBreak = useMemo(() => {
-    if (totalBreaks === 0) return 0
-    return Math.round(totalSpent / totalBreaks)
-  }, [totalSpent, totalBreaks])
-
-  const topShopName = useMemo(() => {
-    if (filteredSessions.length === 0) return 'None'
-    const counts: Record<string, number> = {}
-    filteredSessions.forEach(s => {
-      counts[s.shopName] = (counts[s.shopName] || 0) + 1
-    })
-    let top = 'None'
-    let max = 0
-    Object.entries(counts).forEach(([shop, count]) => {
-      if (count > max) {
-        max = count
-        top = shop
-      }
-    })
-    return top
   }, [filteredSessions])
 
   // Copy UPI Helper
@@ -537,214 +574,148 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({
   }
 
   // Helper to trigger browser file download
-  const triggerDownload = (filename: string, content: string, mimeType = 'text/csv;charset=utf-8;') => {
-    const blob = new Blob([content], { type: mimeType })
-    const url = URL.createObjectURL(blob)
-    const link = document.createElement('a')
-    link.setAttribute('href', url)
-    link.setAttribute('download', filename)
-    link.style.visibility = 'hidden'
-    document.body.appendChild(link)
-    link.click()
-    document.body.removeChild(link)
-    URL.revokeObjectURL(url)
-  }
-
-  // Export full CSV report of filtered past sessions
+  // Export PDF report of filtered past sessions matching ChaiSplit template
   const handleDownloadReport = () => {
+    if (!isGroupAdmin) {
+      alert('Only group admins can download the PDF expense report.')
+      return
+    }
+
     if (filteredSessions.length === 0) {
       alert('No sessions found to download for the current filters.')
       return
     }
 
-    const headers = [
-      'Date & Time',
-      'Session Title',
-      'Group Name',
-      'Shop Name',
-      'Paid In Full By',
-      'Payer UPI',
-      'Total Amount (INR)',
-      'Members Count',
-      'Total Items Count',
-      'Member-wise Breakdown & Items'
-    ]
+    // If exactly 1 session is filtered, export that session's exact slip
+    if (filteredSessions.length === 1) {
+      downloadSingleSessionPdf(filteredSessions[0])
+      return
+    }
 
-    const rows = filteredSessions.map(sess => {
-      const sDate = getSessionDate(sess)
-      const dateFormatted = !isNaN(sDate.getTime()) && sDate.getTime() !== 0
-        ? sDate.toLocaleString([], { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
-        : sess.createdAt || 'Settled'
+    const selectedGroupName =
+      selectedGroupId === 'all'
+        ? 'All Groups'
+        : userGroups.find(g => g.id === selectedGroupId)?.name || 'Group'
 
-      const itemsCount = sess.expenses.reduce((sum, e) => sum + e.items.reduce((s, it) => s + it.quantity, 0), 0)
+    const uniqueShops = Array.from(new Set(filteredSessions.map(s => s.shopName).filter(Boolean)))
+    const shopLabel =
+      uniqueShops.length === 1
+        ? uniqueShops[0]
+        : uniqueShops.length > 0
+        ? `${uniqueShops[0]} & others`
+        : 'Various Shops'
 
-      const breakdown = sess.expenses.map(e => {
-        const itemsStr = e.items.map(it => `${it.name} x${it.quantity}`).join(', ')
-        return `${e.memberName}: ${itemsStr || 'No items'} (Rs.${e.total})`
-      }).join('; ')
+    const totalSpend = totalSpent
 
-      return [
-        `"${dateFormatted.replace(/"/g, '""')}"`,
-        `"${(sess.title || '').replace(/"/g, '""')}"`,
-        `"${(sess.groupName || 'Direct / Walk-in').replace(/"/g, '""')}"`,
-        `"${(sess.shopName || '').replace(/"/g, '""')}"`,
-        `"${(sess.payerName || '').replace(/"/g, '""')}"`,
-        `"${(sess.payerUpi || '').replace(/"/g, '""')}"`,
-        sess.totalAmount,
-        sess.expenses.length,
-        itemsCount,
-        `"${breakdown.replace(/"/g, '""')}"`
-      ].join(',')
+    // Aggregate items and spend per member
+    const memberMap = new Map<
+      string,
+      {
+        memberName: string
+        itemMap: Map<string, { name: string; quantity: number; price?: number }>
+        shareAmount: number
+      }
+    >()
+
+    filteredSessions.forEach(sess => {
+      sess.expenses.forEach(exp => {
+        const key = exp.memberId || exp.memberName
+        if (!memberMap.has(key)) {
+          memberMap.set(key, {
+            memberName: exp.memberName,
+            itemMap: new Map(),
+            shareAmount: 0
+          })
+        }
+        const m = memberMap.get(key)!
+        m.shareAmount += exp.total || 0
+        exp.items?.forEach(it => {
+          const itKey = it.name.trim()
+          if (!m.itemMap.has(itKey)) {
+            m.itemMap.set(itKey, { name: it.name, quantity: 0, price: it.price })
+          }
+          const existingIt = m.itemMap.get(itKey)!
+          existingIt.quantity += it.quantity || 1
+          if (it.price) existingIt.price = it.price
+        })
+      })
     })
 
-    const summaryRow = [
-      '"TOTAL SUMMARY"',
-      '""',
-      '""',
-      '""',
-      '""',
-      '""',
-      totalSpent,
-      '""',
-      '""',
-      '""'
-    ].join(',')
-
-    const csvContent = '\uFEFF' + [headers.join(','), ...rows, summaryRow].join('\r\n')
-    const timestamp = new Date().toISOString().slice(0, 10)
-    const groupLabel = selectedGroupId === 'all'
-      ? 'All_Groups'
-      : (userGroups.find(g => g.id === selectedGroupId)?.name.replace(/[^a-zA-Z0-9]/g, '_') || 'Group')
-    const filename = `ChaiSplit_Expense_Report_${groupLabel}_${timeFilter}_${timestamp}.csv`
-
-    triggerDownload(filename, csvContent, 'text/csv;charset=utf-8;')
-  }
-
-  // Export individual session receipt
-  const handleDownloadSessionReceipt = (sess: TeaSession) => {
-    const sDate = getSessionDate(sess)
-    const dateFormatted = !isNaN(sDate.getTime()) && sDate.getTime() !== 0
-      ? sDate.toLocaleString([], { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
-      : sess.createdAt || 'Settled'
-
-    const lines = [
-      `========================================`,
-      `           CHAI-SPLIT RECEIPT           `,
-      `========================================`,
-      `Session:     ${sess.title}`,
-      `Group:       ${sess.groupName || 'Direct / Walk-in'}`,
-      `Shop:        ${sess.shopName}`,
-      `Date & Time: ${dateFormatted}`,
-      `Paid By:     ${sess.payerName}${sess.payerUpi ? ` (${sess.payerUpi})` : ''}`,
-      `Status:      Settled`,
-      `----------------------------------------`,
-      `MEMBER-WISE BREAKDOWN:`,
-      `----------------------------------------`
-    ]
-
-    sess.expenses.forEach(e => {
-      lines.push(`• ${e.memberName} — ₹${e.total}`)
-      if (e.items && e.items.length > 0) {
-        e.items.forEach(it => {
-          lines.push(`    - ${it.name} x${it.quantity} @ ₹${it.price} = ₹${it.price * it.quantity}`)
-        })
+    const members: MemberPdfBreakdown[] = Array.from(memberMap.values()).map(m => {
+      const items = Array.from(m.itemMap.values())
+      return {
+        memberName: m.memberName,
+        items,
+        totalQty: items.reduce((sum, it) => sum + it.quantity, 0),
+        shareAmount: m.shareAmount
       }
     })
 
-    lines.push(`----------------------------------------`)
-    lines.push(`GRAND TOTAL: ₹${sess.totalAmount}`)
-    lines.push(`========================================`)
-    lines.push(`Generated via Nibru-Tea ChaiSplit`)
+    const totalItemsCount = members.reduce((sum, m) => sum + m.totalQty, 0)
 
-    const textContent = lines.join('\n')
-    const cleanTitle = sess.title.replace(/[^a-zA-Z0-9_-]/g, '_')
-    const filename = `Receipt_${cleanTitle}_${sess.id}.txt`
-    triggerDownload(filename, textContent, 'text/plain;charset=utf-8;')
+    const now = new Date()
+    const dateTimeStr = now.toLocaleString([], {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit'
+    })
+
+    const reportTitle = `${selectedGroupName} Tea Break`
+
+    downloadExpensePdf(
+      {
+        title: reportTitle,
+        groupName: selectedGroupName,
+        shopName: shopLabel,
+        dateTimeStr,
+        totalSpend,
+        membersCount: members.length,
+        totalItemsCount,
+        members,
+        noteText:
+          'Note: The source export contains member totals and item quantities. Unit price and item total are calculated from session records.'
+      },
+      `ChaiSplit_Expense_Report_${selectedGroupName.replace(/[^a-zA-Z0-9_-]/g, '_')}_${timeFilter}.pdf`
+    )
+  }
+
+  // Export individual session receipt as PDF
+  const handleDownloadSessionReceipt = (sess: TeaSession) => {
+    downloadSingleSessionPdf(sess)
   }
 
   return (
     <div className="space-y-4 animate-in fade-in duration-200 pb-20">
-      {/* -------------------- HEADER & KPI SUMMARY -------------------- */}
-      <div className="p-4 rounded-3xl bg-gradient-to-br from-amber-600 via-orange-600 to-amber-700 text-white shadow-xl space-y-3.5 relative overflow-hidden">
-        <div className="absolute top-0 right-0 translate-x-8 -translate-y-8 w-40 h-40 bg-white/10 rounded-full blur-2xl pointer-events-none" />
-
-        <div className="flex items-center justify-between relative z-10">
-          <div>
-            <div className="flex items-center gap-2">
-              {onBack && (
-                <button
-                  type="button"
-                  onClick={onBack}
-                  className="p-1 rounded-lg bg-white/20 hover:bg-white/30 text-white transition-colors cursor-pointer mr-1"
-                >
-                  <ChevronDown className="w-4 h-4 rotate-90" />
-                </button>
-              )}
-              <h2 className="font-heading font-black text-lg flex items-center gap-2">
-                <span>Chai &amp; Bills History</span>
-                <span className="text-xl">🧾</span>
-              </h2>
-            </div>
-            <p className="text-amber-100/80 text-xs">
-              Archive of all past tea breaks &amp; payments
-            </p>
-          </div>
-
-          <div className="flex items-center gap-2 shrink-0">
-            {SHOW_DOWNLOAD_REPORT && (
-              <button
-                type="button"
-                onClick={handleDownloadReport}
-                id="download-history-report-btn"
-                className="px-2.5 py-1 rounded-xl bg-white/20 hover:bg-white/30 backdrop-blur-md text-white font-bold text-xs flex items-center gap-1.5 cursor-pointer shadow-xs active:scale-95 transition-all border border-white/25"
-                title="Download CSV report for current filtered view"
-              >
-                <Download className="w-3.5 h-3.5" />
-                <span>Download Report</span>
-              </button>
-            )}
-            <span className="px-3 py-1 rounded-full bg-white/20 backdrop-blur-md text-white font-extrabold text-xs shadow-inner shrink-0">
-              ₹{totalSpent} Total
-            </span>
-          </div>
-        </div>
-
-        {/* KPI 4-Card Summary Bar */}
-        <div className="grid grid-cols-4 gap-2 pt-1 relative z-10">
-          <div className="p-2.5 rounded-2xl bg-black/15 backdrop-blur-xs text-center border border-white/10 space-y-0.5">
-            <span className="text-[10px] text-amber-200 uppercase font-bold tracking-wider">Total</span>
-            <p className="font-heading font-black text-sm truncate">₹{totalSpent}</p>
-          </div>
-
-          <div className="p-2.5 rounded-2xl bg-black/15 backdrop-blur-xs text-center border border-white/10 space-y-0.5">
-            <span className="text-[10px] text-amber-200 uppercase font-bold tracking-wider">Breaks</span>
-            <p className="font-heading font-black text-sm">{totalBreaks}</p>
-          </div>
-
-          <div className="p-2.5 rounded-2xl bg-black/15 backdrop-blur-xs text-center border border-white/10 space-y-0.5">
-            <span className="text-[10px] text-amber-200 uppercase font-bold tracking-wider">Avg/Break</span>
-            <p className="font-heading font-black text-sm truncate">₹{avgPerBreak}</p>
-          </div>
-
-          <div className="p-2.5 rounded-2xl bg-black/15 backdrop-blur-xs text-center border border-white/10 space-y-0.5">
-            <span className="text-[10px] text-amber-200 uppercase font-bold tracking-wider">Top Shop</span>
-            <p className="font-heading font-bold text-xs truncate" title={topShopName}>
-              {topShopName}
-            </p>
-          </div>
-        </div>
-      </div>
-
       {/* -------------------- SWITCHING OPTION: PERSONAL EXPENSE VS TEAM EXPENSE -------------------- */}
       <div className="p-3 rounded-2xl bg-white dark:bg-stone-900 border border-stone-200/90 dark:border-stone-800 shadow-2xs space-y-2.5">
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-1.5 text-xs font-bold text-stone-700 dark:text-stone-300">
-            <Sparkles className="w-3.5 h-3.5 text-amber-600" />
-            <span>Switch History View:</span>
+          <div className="flex items-center gap-2">
+            {onBack && (
+              <button
+                type="button"
+                onClick={onBack}
+                className="p-1 rounded-lg bg-stone-100 hover:bg-stone-200 dark:bg-stone-800 dark:hover:bg-stone-700 text-stone-700 dark:text-stone-300 transition-colors cursor-pointer mr-0.5"
+                title="Back to Dashboard"
+              >
+                <ChevronDown className="w-4 h-4 rotate-90" />
+              </button>
+            )}
           </div>
-          <span className="text-[10px] font-bold text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/60 px-2.5 py-0.5 rounded-full border border-amber-200/70 dark:border-amber-900/60">
-            1st Priority: Personal
-          </span>
+          {isGroupAdmin && (
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={handleDownloadReport}
+                className="text-[11px] font-bold text-stone-600 dark:text-stone-300 hover:text-amber-700 dark:hover:text-amber-400 bg-stone-100 hover:bg-stone-200 dark:bg-stone-800 dark:hover:bg-stone-750 px-2.5 py-1 rounded-lg border border-stone-200/80 dark:border-stone-700 transition-colors cursor-pointer flex items-center gap-1.5"
+                title="Download PDF Report"
+              >
+                <Download className="w-3.5 h-3.5 text-amber-600" />
+                <span>Download PDF</span>
+              </button>
+            </div>
+          )}
         </div>
 
         {/* 2 Main Switching Options: Personal Expense and Team Expense */}
@@ -760,9 +731,6 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({
           >
             <UserCheck className="w-4 h-4 shrink-0" />
             <span className="truncate">Personal Expense</span>
-            <span className="text-[9px] px-1.5 py-0.2 rounded-full bg-white/20 text-white font-black uppercase tracking-wider shrink-0">
-              1st
-            </span>
           </button>
 
           <button
@@ -776,25 +744,6 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({
           >
             <Users className="w-4 h-4 shrink-0" />
             <span className="truncate">Team Expense</span>
-          </button>
-        </div>
-
-        {/* Option to show both on the same page */}
-        <div className="flex items-center justify-between px-1 pt-0.5">
-          <span className="text-[11px] text-stone-500 dark:text-stone-400">
-            Compare both on one page:
-          </span>
-          <button
-            type="button"
-            onClick={() => setSectionView(sectionView === 'both' ? 'personal' : 'both')}
-            className={`text-[11px] font-bold px-2.5 py-1 rounded-lg border transition-all cursor-pointer flex items-center gap-1.5 ${
-              sectionView === 'both'
-                ? 'bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-950 dark:text-amber-300 dark:border-amber-800 shadow-2xs'
-                : 'bg-white dark:bg-stone-850 text-stone-600 dark:text-stone-400 border-stone-200 dark:border-stone-700 hover:border-amber-400'
-            }`}
-          >
-            <Layers className="w-3.5 h-3.5 text-amber-600" />
-            <span>{sectionView === 'both' ? '✓ Showing Both (Personal & Team)' : 'Show Both Sections'}</span>
           </button>
         </div>
       </div>
@@ -838,7 +787,7 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({
         {/* Segmented Filter Pills */}
         <div className="grid grid-cols-6 gap-1 bg-stone-100 dark:bg-stone-800/80 p-1 rounded-xl">
           {[
-            { id: 'day', label: 'Day' },
+            { id: 'day', label: 'Today' },
             { id: 'week', label: 'Week' },
             { id: 'month', label: 'Month' },
             { id: 'year', label: 'Year' },
@@ -922,99 +871,131 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({
 
       {/* -------------------- GROUP FILTER & SORT BAR -------------------- */}
       <div className="space-y-2">
-        {/* Group Selector Horizontal Chips */}
-        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
-          <button
-            type="button"
-            onClick={handleAllGroupsClick}
-            className={`px-3 py-1.5 rounded-xl border text-xs font-bold flex items-center gap-1.5 whitespace-nowrap cursor-pointer transition-all shrink-0 ${
-              selectedGroupId === 'all'
-                ? 'border-amber-600 bg-amber-600 text-white shadow-xs'
-                : 'border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-900 text-stone-700 dark:text-stone-300 hover:border-amber-400'
-            }`}
-          >
-            <Users className="w-3.5 h-3.5" />
-            <span>All Groups</span>
-            <span
-              className={`px-1.5 py-0.2 rounded-full text-[10px] font-bold ${
-                selectedGroupId === 'all'
-                  ? 'bg-amber-700 text-amber-100'
-                  : 'bg-stone-100 dark:bg-stone-800 text-stone-500'
-              }`}
-            >
-              {userSessions.length}
-            </span>
-            {userGroups.length > 0 && (
-              <ChevronDown
-                className={`w-3.5 h-3.5 transition-transform duration-200 ${
-                  showOtherGroups ? 'rotate-180' : ''
-                }`}
-              />
-            )}
-          </button>
-
-          {/* When collapsed and a specific group is selected, show that active group chip */}
-          {!showOtherGroups && selectedGroupId !== 'all' && (() => {
-            const currentSelectedGroup = userGroups.find(g => g.id === selectedGroupId)
-            if (!currentSelectedGroup) return null
-            const grpCount = userSessions.filter(
-              s => s.groupId === currentSelectedGroup.id || (s.groupName && s.groupName.toLowerCase() === currentSelectedGroup.name.toLowerCase())
-            ).length
+        {/* Top Trigger: All Groups button with toggle + Active Group Chip */}
+        <div className="flex items-center gap-2">
+          {(() => {
+            const isAll = selectedGroupId === 'all'
+            const currentSelectedGroup = !isAll ? userGroups.find(g => g.id === selectedGroupId) : null
 
             return (
               <button
-                key={currentSelectedGroup.id}
                 type="button"
-                onClick={() => setShowOtherGroups(true)}
-                className="px-3 py-1.5 rounded-xl border border-amber-600 bg-amber-600 text-white shadow-xs text-xs font-bold flex items-center gap-1.5 whitespace-nowrap cursor-pointer transition-all shrink-0 animate-in fade-in duration-150"
-              >
-                <span>{currentSelectedGroup.shopEmoji || '👥'}</span>
-                <span>{currentSelectedGroup.name}</span>
-                {grpCount > 0 && (
-                  <span className="px-1.5 py-0.2 rounded-full text-[10px] font-bold bg-amber-700 text-amber-100">
-                    {grpCount}
-                  </span>
-                )}
-                <ChevronDown className="w-3 h-3 ml-0.5 opacity-80" />
-              </button>
-            )
-          })()}
-
-          {/* When expanded, show all other groups */}
-          {showOtherGroups && userGroups.map(group => {
-            const isSelected = selectedGroupId === group.id
-            const grpCount = userSessions.filter(
-              s => s.groupId === group.id || (s.groupName && s.groupName.toLowerCase() === group.name.toLowerCase())
-            ).length
-
-            return (
-              <button
-                key={group.id}
-                type="button"
-                onClick={() => setSelectedGroupId(group.id)}
-                className={`px-3 py-1.5 rounded-xl border text-xs font-bold flex items-center gap-1.5 whitespace-nowrap cursor-pointer transition-all shrink-0 animate-in fade-in duration-150 ${
-                  isSelected
+                onClick={handleAllGroupsClick}
+                className={`px-3.5 py-1.5 rounded-xl border text-xs font-bold flex items-center gap-2 cursor-pointer transition-all ${
+                  !isAll
                     ? 'border-amber-600 bg-amber-600 text-white shadow-xs'
                     : 'border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-900 text-stone-700 dark:text-stone-300 hover:border-amber-400'
                 }`}
               >
-                <span>{group.shopEmoji || '👥'}</span>
-                <span>{group.name}</span>
-                {grpCount > 0 && (
+                {isAll ? (
+                  <Users className="w-3.5 h-3.5" />
+                ) : (
+                  <span>{currentSelectedGroup?.shopEmoji || '☕'}</span>
+                )}
+                <span className="truncate max-w-[180px]">
+                  {isAll ? 'All Groups' : (currentSelectedGroup?.name || 'Selected Group')}
+                </span>
+
+                {!isAll && (
                   <span
-                    className={`px-1.5 py-0.2 rounded-full text-[10px] font-bold ${
-                      isSelected
-                        ? 'bg-amber-700 text-amber-100'
-                        : 'bg-stone-100 dark:bg-stone-800 text-stone-500'
-                    }`}
+                    role="button"
+                    tabIndex={0}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      setSelectedGroupId('all')
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.stopPropagation()
+                        setSelectedGroupId('all')
+                      }
+                    }}
+                    className="p-0.5 hover:bg-amber-700 rounded-full cursor-pointer transition-colors"
+                    title="Reset to All Groups"
                   >
-                    {grpCount}
+                    <X className="w-3 h-3" />
                   </span>
+                )}
+
+                {userGroups.length > 0 && (
+                  <ChevronDown
+                    className={`w-3.5 h-3.5 transition-transform duration-200 ${
+                      showOtherGroups ? 'rotate-180' : ''
+                    }`}
+                  />
                 )}
               </button>
             )
-          })}
+          })()}
         </div>
+
+        {/* When expanded, show all groups UNDER like row wise */}
+        {showOtherGroups && (
+          <div className="p-2 rounded-2xl bg-white dark:bg-stone-900 border border-stone-200/90 dark:border-stone-800 shadow-xs space-y-1 animate-in fade-in slide-in-from-top-1 duration-150">
+            <div className="text-[10px] font-bold uppercase tracking-wider text-stone-400 dark:text-stone-500 px-2 py-1 flex items-center justify-between">
+              <span>Select a group:</span>
+              <button
+                type="button"
+                onClick={() => setShowOtherGroups(false)}
+                className="text-stone-400 hover:text-stone-600 dark:hover:text-stone-300 cursor-pointer"
+                title="Close"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+
+            {/* Row 1: All Groups option */}
+            <button
+              type="button"
+              onClick={() => {
+                setSelectedGroupId('all')
+                setShowOtherGroups(false)
+              }}
+              className={`w-full px-3 py-2 rounded-xl text-xs font-semibold flex items-center justify-between cursor-pointer transition-colors ${
+                selectedGroupId === 'all'
+                  ? 'bg-amber-500/10 text-amber-700 dark:text-amber-300 font-bold border border-amber-300/80 dark:border-amber-800/80'
+                  : 'hover:bg-stone-50 dark:hover:bg-stone-800 text-stone-700 dark:text-stone-300'
+              }`}
+            >
+              <div className="flex items-center gap-2">
+                <Users className="w-4 h-4 text-amber-600 shrink-0" />
+                <span>All Groups (Combined)</span>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                {selectedGroupId === 'all' && <Check className="w-3.5 h-3.5 text-amber-600 shrink-0" />}
+              </div>
+            </button>
+
+            {/* Individual groups, each in its own row */}
+            {userGroups.map(group => {
+              const isSelected = selectedGroupId === group.id
+
+              return (
+                <button
+                  key={group.id}
+                  type="button"
+                  onClick={() => {
+                    setSelectedGroupId(group.id)
+                    setShowOtherGroups(false)
+                  }}
+                  className={`w-full px-3 py-2 rounded-xl text-xs font-semibold flex items-center justify-between cursor-pointer transition-colors ${
+                    isSelected
+                      ? 'bg-amber-500/10 text-amber-700 dark:text-amber-300 font-bold border border-amber-300/80 dark:border-amber-800/80'
+                      : 'hover:bg-stone-50 dark:hover:bg-stone-800 text-stone-700 dark:text-stone-300'
+                  }`}
+                >
+                  <div className="flex items-center gap-2 truncate">
+                    <span className="text-base shrink-0">{group.shopEmoji || '☕'}</span>
+                    <span className="truncate">{group.name}</span>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    {isSelected && <Check className="w-3.5 h-3.5 text-amber-600 shrink-0" />}
+                  </div>
+                </button>
+              )
+            })}
+          </div>
+        )}
 
         {/* Search & Sort Controls Bar */}
         <div className="flex items-center gap-2">
@@ -1061,134 +1042,139 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({
 
       {/* -------------------- SECTION 1: PERSONAL & MEMBER UNIQUE DATA (1ST PRIORITY) -------------------- */}
       {(sectionView === 'personal' || sectionView === 'both') && (
-        <div className="space-y-3.5 pt-1">
-          {/* Section 1 Header */}
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <div className="w-7 h-7 rounded-lg bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 flex items-center justify-center">
-                <UserCheck className="w-4 h-4" />
-              </div>
-              <div>
-                <h3 className="font-heading font-black text-sm text-stone-900 dark:text-stone-100 flex items-center gap-2">
-                  <span>Personal Expense</span>
-                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-600 text-white font-black tracking-wide">
-                    1st Priority
-                  </span>
-                </h3>
-                <p className="text-[11px] text-stone-400">
-                  Unique eaten breakdown &amp; personal break records
-                </p>
-              </div>
-            </div>
+        <div className="space-y-2 pt-1">
+          {/* Header outside the container with shortened wording */}
+          <div className="flex items-center justify-between px-1">
+            <h4 className="font-heading font-bold text-xs text-stone-900 dark:text-stone-100 flex items-center gap-1.5 uppercase tracking-wide">
+              <Receipt className="w-3.5 h-3.5 text-amber-600" />
+              <span>Break Orders ({personalEatenSummary.breakRecords.length})</span>
+            </h4>
+            <span className="text-[11px] text-stone-400">
+              Receipts
+            </span>
           </div>
 
-          {/* Member Switcher Bar */}
-          <div className="p-3 rounded-2xl bg-white dark:bg-stone-900 border border-stone-200/90 dark:border-stone-800 shadow-2xs space-y-2">
-            <div className="flex items-center justify-between text-xs font-semibold text-stone-600 dark:text-stone-400">
-              <span>Select Member to view their unique eaten data:</span>
-              <span className="text-[11px] font-bold text-amber-600 dark:text-amber-400">
-                {activeSelectedMember?.isCurrentUser ? '👤 Your Personal Data' : `👤 ${activeSelectedMember?.name}'s Data`}
-              </span>
-            </div>
+          {/* Break Orders Card Container */}
+          <div className="p-4 rounded-2xl bg-white dark:bg-stone-900 border border-stone-200/90 dark:border-stone-800 shadow-2xs">
 
-            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
-              {availableMembers.map(m => {
-                const isSelected = m.id === selectedMemberId
-                return (
-                  <button
-                    key={m.id}
-                    type="button"
-                    onClick={() => setSelectedMemberId(m.id)}
-                    className={`px-3 py-1.5 rounded-xl border text-xs font-bold flex items-center gap-1.5 whitespace-nowrap cursor-pointer transition-all shrink-0 ${
-                      isSelected
-                        ? 'border-amber-600 bg-amber-600 text-white shadow-xs'
-                        : 'border-stone-200 dark:border-stone-800 bg-stone-50 dark:bg-stone-850 text-stone-700 dark:text-stone-300 hover:border-amber-400'
-                    }`}
-                  >
-                    <span>{m.isCurrentUser ? '👤' : (m.avatar || '👤')}</span>
-                    <span>{m.isCurrentUser ? `You (${m.name})` : m.name}</span>
-                    {m.isCurrentUser && (
-                      <span
-                        className={`text-[9px] px-1.5 py-0.2 rounded-full font-black ${
-                          isSelected
-                            ? 'bg-amber-700 text-amber-100'
-                            : 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300'
-                        }`}
-                      >
-                        Me
-                      </span>
-                    )}
-                  </button>
-                )
-              })}
-            </div>
-          </div>
-
-          {/* Member 4-Card Summary Bar */}
-          <div className="grid grid-cols-4 gap-2">
-            <div className="p-2.5 rounded-2xl bg-amber-500/10 dark:bg-amber-500/15 border border-amber-500/20 text-center space-y-0.5">
-              <span className="text-[10px] text-amber-800 dark:text-amber-300 uppercase font-bold tracking-wider">
-                {activeSelectedMember?.isCurrentUser ? 'My Total' : 'Total Spent'}
-              </span>
-              <p className="font-heading font-black text-sm text-stone-900 dark:text-stone-100">
-                ₹{memberEatenSummary.totalSpent}
-              </p>
-            </div>
-
-            <div className="p-2.5 rounded-2xl bg-orange-500/10 dark:bg-orange-500/15 border border-orange-500/20 text-center space-y-0.5">
-              <span className="text-[10px] text-orange-800 dark:text-orange-300 uppercase font-bold tracking-wider">
-                Items Eaten
-              </span>
-              <p className="font-heading font-black text-sm text-stone-900 dark:text-stone-100">
-                {memberEatenSummary.totalItemsCount}
-              </p>
-            </div>
-
-            <div className="p-2.5 rounded-2xl bg-emerald-500/10 dark:bg-emerald-500/15 border border-emerald-500/20 text-center space-y-0.5">
-              <span className="text-[10px] text-emerald-800 dark:text-emerald-300 uppercase font-bold tracking-wider">
-                Breaks
-              </span>
-              <p className="font-heading font-black text-sm text-stone-900 dark:text-stone-100">
-                {memberEatenSummary.breaksCount}
-              </p>
-            </div>
-
-            <div className="p-2.5 rounded-2xl bg-indigo-500/10 dark:bg-indigo-500/15 border border-indigo-500/20 text-center space-y-0.5">
-              <span className="text-[10px] text-indigo-800 dark:text-indigo-300 uppercase font-bold tracking-wider">
-                Favorite
-              </span>
-              <p
-                className="font-heading font-bold text-xs text-stone-900 dark:text-stone-100 truncate"
-                title={memberEatenSummary.topItem ? `${memberEatenSummary.topItem.name} (${memberEatenSummary.topItem.count})` : 'None'}
-              >
-                {memberEatenSummary.topItem ? `${memberEatenSummary.topItem.emoji} ${memberEatenSummary.topItem.name}` : 'None'}
-              </p>
-            </div>
-          </div>
-
-          {/* Unique Items Eaten Card */}
-          <div className="p-4 rounded-2xl bg-white dark:bg-stone-900 border border-stone-200/90 dark:border-stone-800 shadow-2xs space-y-3">
-            <div className="flex items-center justify-between">
-              <h4 className="font-heading font-bold text-xs text-stone-900 dark:text-stone-100 flex items-center gap-1.5 uppercase tracking-wide">
-                <Utensils className="w-3.5 h-3.5 text-amber-600" />
-                <span>Unique Items Eaten ({memberEatenSummary.items.length})</span>
-              </h4>
-              <span className="text-[11px] text-stone-400">
-                {memberEatenSummary.totalItemsCount} total items consumed
-              </span>
-            </div>
-
-            {memberEatenSummary.items.length === 0 ? (
+            {personalEatenSummary.breakRecords.length === 0 ? (
               <div className="py-6 text-center text-xs text-stone-400 space-y-1">
-                <Coffee className="w-8 h-8 text-stone-300 dark:text-stone-700 mx-auto" />
-                <p>No items recorded for this member in the selected time range.</p>
+                <p>No break orders found for you in this period.</p>
               </div>
             ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                {memberEatenSummary.items.map(it => {
+              <div className="divide-y divide-stone-100 dark:divide-stone-800 space-y-2">
+                {personalEatenSummary.breakRecords.map(rec => (
+                  <div key={rec.sessionId} className="pt-2 first:pt-0 space-y-1.5">
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <h5 className="font-heading font-bold text-xs text-stone-900 dark:text-stone-100">
+                          {rec.sessionTitle}
+                        </h5>
+                        <p className="text-[11px] text-stone-400">
+                          {rec.shopName} • {rec.formattedDate}
+                        </p>
+                      </div>
+
+                      <div className="text-right shrink-0">
+                        <span className="font-heading font-black text-xs text-emerald-700 dark:text-emerald-400">
+                          ₹{rec.memberTotal}
+                        </span>
+                        <p className="text-[10px] text-stone-400">Paid by {rec.payerName}</p>
+                      </div>
+                    </div>
+
+                    {/* Action row: See Items toggle + Full Bill */}
+                    <div className="flex items-center justify-between gap-1.5 pt-0.5">
+                      {rec.items.length > 0 ? (
+                        <button
+                          type="button"
+                          onClick={() => toggleBreakItems(rec.sessionId)}
+                          className="px-2 py-0.5 rounded-md bg-stone-100 hover:bg-stone-200 dark:bg-stone-800 dark:hover:bg-stone-700 text-stone-700 dark:text-stone-300 text-[10px] font-semibold flex items-center gap-1 transition-colors cursor-pointer border border-stone-200/60 dark:border-stone-700/60"
+                        >
+                          <Utensils className="w-2.5 h-2.5 text-amber-600 dark:text-amber-400" />
+                          <span>{expandedBreakItemIds.has(rec.sessionId) ? 'Hide Items' : `See Items (${rec.items.length})`}</span>
+                          <ChevronDown
+                            className={`w-3 h-3 transition-transform duration-200 ${
+                              expandedBreakItemIds.has(rec.sessionId) ? 'rotate-180' : ''
+                            }`}
+                          />
+                        </button>
+                      ) : (
+                        <span className="text-[10px] text-stone-400 italic">No items listed</span>
+                      )}
+
+                      <button
+                        type="button"
+                        onClick={() => setSelectedSessionForReceipt(rec.rawSession)}
+                        className="ml-auto px-2 py-0.5 rounded-md bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-900 text-[10px] font-bold transition-colors cursor-pointer border border-amber-200/60 dark:border-amber-900/40"
+                      >
+                        Full Bill 🧾
+                      </button>
+                    </div>
+
+                    {/* Collapsible eaten items list */}
+                    {expandedBreakItemIds.has(rec.sessionId) && rec.items.length > 0 && (
+                      <div className="flex flex-wrap items-center gap-1 pt-1 animate-in fade-in duration-150">
+                        {rec.items.map((it, idx) => (
+                          <span
+                            key={`${it.id || it.name}-${idx}`}
+                            className="px-2 py-0.5 rounded-md bg-stone-100 dark:bg-stone-800 text-[10px] text-stone-700 dark:text-stone-300 font-medium border border-stone-200/60 dark:border-stone-700/60"
+                          >
+                            {it.emoji || '☕'} {it.name} ×{it.quantity} (₹{(it.price || 0) * (it.quantity || 1)})
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Unique Items Eaten Card (Placed at the bottom, not shown directly, with "See All" button) */}
+          <div className="p-4 rounded-2xl bg-white dark:bg-stone-900 border border-stone-200/90 dark:border-stone-800 shadow-2xs space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="w-6 h-6 rounded-lg bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 flex items-center justify-center">
+                  <Utensils className="w-3.5 h-3.5" />
+                </div>
+                <div>
+                  <h4 className="font-heading font-bold text-xs text-stone-900 dark:text-stone-100 uppercase tracking-wide">
+                    Unique Items Eaten ({personalEatenSummary.items.length})
+                  </h4>
+                  <p className="text-[10px] text-stone-400">
+                    {personalEatenSummary.totalItemsCount} total items consumed
+                  </p>
+                </div>
+              </div>
+
+              {personalEatenSummary.items.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setShowUniqueItems(prev => !prev)}
+                  className="px-3 py-1.5 rounded-xl bg-amber-50 dark:bg-amber-950/50 hover:bg-amber-100 dark:hover:bg-amber-900/60 text-amber-700 dark:text-amber-300 border border-amber-200/80 dark:border-amber-900/60 font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer shadow-xs active:scale-95"
+                >
+                  <span>{showUniqueItems ? 'Hide Items' : `See All (${personalEatenSummary.items.length})`}</span>
+                  <ChevronDown
+                    className={`w-3.5 h-3.5 transition-transform duration-200 ${
+                      showUniqueItems ? 'rotate-180' : ''
+                    }`}
+                  />
+                </button>
+              )}
+            </div>
+
+            {personalEatenSummary.items.length === 0 ? (
+              <div className="py-4 text-center text-xs text-stone-400 space-y-1">
+                <Coffee className="w-7 h-7 text-stone-300 dark:text-stone-700 mx-auto" />
+                <p>No items recorded for you in the selected time range.</p>
+              </div>
+            ) : showUniqueItems ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1 animate-in fade-in duration-200">
+                {personalEatenSummary.items.map(it => {
                   const pct =
-                    memberEatenSummary.totalItemsCount > 0
-                      ? Math.round((it.count / memberEatenSummary.totalItemsCount) * 100)
+                    personalEatenSummary.totalItemsCount > 0
+                      ? Math.round((it.count / personalEatenSummary.totalItemsCount) * 100)
                       : 0
 
                   return (
@@ -1226,70 +1212,7 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({
                   )
                 })}
               </div>
-            )}
-          </div>
-
-          {/* Personal Break-by-Break Orders */}
-          <div className="p-4 rounded-2xl bg-white dark:bg-stone-900 border border-stone-200/90 dark:border-stone-800 shadow-2xs space-y-3">
-            <div className="flex items-center justify-between">
-              <h4 className="font-heading font-bold text-xs text-stone-900 dark:text-stone-100 flex items-center gap-1.5 uppercase tracking-wide">
-                <Receipt className="w-3.5 h-3.5 text-amber-600" />
-                <span>Personal Break-by-Break Orders ({memberEatenSummary.breakRecords.length})</span>
-              </h4>
-              <span className="text-[11px] text-stone-400">
-                Individual break receipts
-              </span>
-            </div>
-
-            {memberEatenSummary.breakRecords.length === 0 ? (
-              <div className="py-6 text-center text-xs text-stone-400 space-y-1">
-                <p>No break orders found for this member in this period.</p>
-              </div>
-            ) : (
-              <div className="divide-y divide-stone-100 dark:divide-stone-800 space-y-2">
-                {memberEatenSummary.breakRecords.map(rec => (
-                  <div key={rec.sessionId} className="pt-2 first:pt-0 space-y-1.5">
-                    <div className="flex items-start justify-between gap-2">
-                      <div>
-                        <h5 className="font-heading font-bold text-xs text-stone-900 dark:text-stone-100">
-                          {rec.sessionTitle}
-                        </h5>
-                        <p className="text-[11px] text-stone-400">
-                          📍 {rec.shopName} • {rec.formattedDate}
-                        </p>
-                      </div>
-
-                      <div className="text-right shrink-0">
-                        <span className="font-heading font-black text-xs text-emerald-700 dark:text-emerald-400">
-                          ₹{rec.memberTotal}
-                        </span>
-                        <p className="text-[10px] text-stone-400">Paid by {rec.payerName}</p>
-                      </div>
-                    </div>
-
-                    {/* Items ordered in this break */}
-                    <div className="flex flex-wrap items-center gap-1">
-                      {rec.items.map((it, idx) => (
-                        <span
-                          key={`${it.id || it.name}-${idx}`}
-                          className="px-2 py-0.5 rounded-md bg-stone-100 dark:bg-stone-800 text-[10px] text-stone-700 dark:text-stone-300 font-medium border border-stone-200/60 dark:border-stone-700/60"
-                        >
-                          {it.emoji || '☕'} {it.name} ×{it.quantity} (₹{(it.price || 0) * (it.quantity || 1)})
-                        </span>
-                      ))}
-
-                      <button
-                        type="button"
-                        onClick={() => setSelectedSessionForReceipt(rec.rawSession)}
-                        className="ml-auto px-2 py-0.5 rounded-md bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-900 text-[10px] font-bold transition-colors cursor-pointer"
-                      >
-                        Full Bill 🧾
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
+            ) : null}
           </div>
         </div>
       )}
@@ -1360,17 +1283,19 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({
             /* GROUP-WISE VIEW */
             <div className="space-y-4">
               {groupWiseSections.map(section => {
-                const isCollapsed = collapsedGroupIds.has(section.key)
+                const isExpanded = expandedGroupIds.has(section.key)
 
                 return (
                   <div
                     key={section.key}
                     className="rounded-2xl border border-stone-200/90 dark:border-stone-800 bg-white dark:bg-stone-900 shadow-2xs overflow-hidden"
                   >
-                    {/* Group Header Card (Clickable to Collapse/Expand) */}
+                    {/* Group Header Card (Clickable to Expand/Collapse) */}
                     <div
-                      onClick={() => toggleGroupCollapse(section.key)}
-                      className="p-3.5 bg-stone-50/70 dark:bg-stone-800/40 border-b border-stone-100 dark:border-stone-800 flex items-center justify-between cursor-pointer select-none hover:bg-stone-100/60 dark:hover:bg-stone-800/70 transition-colors"
+                      onClick={() => toggleGroupExpand(section.key)}
+                      className={`p-3.5 bg-stone-50/70 dark:bg-stone-800/40 flex items-center justify-between cursor-pointer select-none hover:bg-stone-100/60 dark:hover:bg-stone-800/70 transition-colors ${
+                        isExpanded ? 'border-b border-stone-100 dark:border-stone-800' : ''
+                      }`}
                     >
                       <div className="flex items-center gap-2.5 min-w-0">
                         <span className="text-xl shrink-0">{section.groupEmoji}</span>
@@ -1389,14 +1314,14 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({
                           ₹{section.totalAmount}
                         </span>
                         <div className="text-stone-400 p-1">
-                          {isCollapsed ? <ChevronDown className="w-4 h-4" /> : <ChevronUp className="w-4 h-4" />}
+                          {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
                         </div>
                       </div>
                     </div>
 
-                    {/* Group Sessions Cards */}
-                    {!isCollapsed && (
-                      <div className="p-3 divide-y divide-stone-100 dark:divide-stone-800/80 space-y-2.5">
+                    {/* Group Sessions Cards - Hidden by default, shown on toggle */}
+                    {isExpanded && (
+                      <div className="p-3 divide-y divide-stone-100 dark:divide-stone-800/80 space-y-2.5 animate-in fade-in duration-150">
                         {section.sessions.map(sess => (
                           <SessionCard
                             key={sess.id}
@@ -1484,7 +1409,7 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({
                   <span className="font-heading font-bold text-xs text-stone-900 dark:text-stone-100">
                     {selectedSessionForReceipt.payerName}
                   </span>
-                  {selectedSessionForReceipt.payerUpi && (
+                  {selectedSessionForReceipt.payerUpi && currentUser && selectedSessionForReceipt.payerId === currentUser.id && (
                     <span className="text-[11px] text-stone-500 dark:text-stone-400 font-mono block">
                       {selectedSessionForReceipt.payerUpi}
                     </span>
@@ -1492,7 +1417,7 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({
                 </div>
               </div>
 
-              {selectedSessionForReceipt.payerUpi && (
+              {selectedSessionForReceipt.payerUpi && currentUser && selectedSessionForReceipt.payerId === currentUser.id && (
                 <button
                   type="button"
                   onClick={() => handleCopyUpi(selectedSessionForReceipt.payerUpi)}
@@ -1530,46 +1455,84 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({
 
             {/* Member Breakdown */}
             <div className="space-y-2">
-              <h4 className="font-heading font-bold text-xs text-stone-900 dark:text-stone-100 flex items-center gap-1.5 uppercase tracking-wide">
-                <Users className="w-3.5 h-3.5 text-amber-600" />
-                <span>Member-wise Expenses:</span>
-              </h4>
+              <div className="flex items-center justify-between">
+                <h4 className="font-heading font-bold text-xs text-stone-900 dark:text-stone-100 flex items-center gap-1.5 uppercase tracking-wide">
+                  <Users className="w-3.5 h-3.5 text-amber-600" />
+                  <span>Member-wise Expenses:</span>
+                </h4>
+                {selectedSessionForReceipt.expenses.some(e => e.items && e.items.length > 0) && (
+                  <button
+                    type="button"
+                    onClick={toggleAllReceiptMemberItems}
+                    className="px-2 py-0.5 rounded-lg text-[10px] font-bold text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-950/40 transition-colors cursor-pointer"
+                  >
+                    {(() => {
+                      const withItems = selectedSessionForReceipt.expenses.filter(e => e.items && e.items.length > 0)
+                      const allExpanded = withItems.length > 0 && withItems.every(e => expandedReceiptMemberIds.has(e.memberId))
+                      return allExpanded ? 'Hide All Items' : 'See All Items'
+                    })()}
+                  </button>
+                )}
+              </div>
 
               {selectedSessionForReceipt.expenses.length === 0 ? (
                 <p className="text-xs text-stone-400 italic">No individual member expenses recorded.</p>
               ) : (
                 <div className="rounded-xl border border-stone-200/80 dark:border-stone-800 divide-y divide-stone-100 dark:divide-stone-800 overflow-hidden">
-                  {selectedSessionForReceipt.expenses.map(exp => (
-                    <div key={exp.memberId} className="p-2.5 space-y-1 bg-white dark:bg-stone-900">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <div className="w-6 h-6 rounded-full bg-stone-200 dark:bg-stone-700 text-stone-800 dark:text-stone-200 font-bold text-[10px] flex items-center justify-center">
-                            {exp.memberAvatar || exp.memberName[0]}
-                          </div>
-                          <span className="font-bold text-xs text-stone-900 dark:text-stone-100">
-                            {exp.memberName}
-                          </span>
-                        </div>
-                        <span className="font-heading font-bold text-xs text-emerald-700 dark:text-emerald-400">
-                          ₹{exp.total}
-                        </span>
-                      </div>
+                  {selectedSessionForReceipt.expenses.map(exp => {
+                    const hasItems = Boolean(exp.items && exp.items.length > 0)
+                    const isExpanded = expandedReceiptMemberIds.has(exp.memberId)
 
-                      {/* Items ordered by this member */}
-                      {exp.items && exp.items.length > 0 && (
-                        <div className="flex flex-wrap gap-1 pl-8">
-                          {exp.items.map((it, idx) => (
-                            <span
-                              key={`${it.id}-${idx}`}
-                              className="px-1.5 py-0.5 rounded-md bg-stone-100 dark:bg-stone-800 text-[10px] text-stone-600 dark:text-stone-400 font-medium"
-                            >
-                              {it.emoji} {it.name} ×{it.quantity} (₹{it.price * it.quantity})
+                    return (
+                      <div key={exp.memberId} className="p-2.5 space-y-1.5 bg-white dark:bg-stone-900">
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <div className="w-6 h-6 rounded-full bg-stone-200 dark:bg-stone-700 text-stone-800 dark:text-stone-200 font-bold text-[10px] flex items-center justify-center shrink-0">
+                              {exp.memberAvatar || exp.memberName[0]}
+                            </div>
+                            <span className="font-bold text-xs text-stone-900 dark:text-stone-100 truncate">
+                              {exp.memberName}
                             </span>
-                          ))}
+                          </div>
+
+                          <div className="flex items-center gap-2 shrink-0">
+                            {hasItems && (
+                              <button
+                                type="button"
+                                onClick={() => toggleReceiptMemberItems(exp.memberId)}
+                                className="px-2 py-0.5 rounded-md bg-stone-100 hover:bg-stone-200 dark:bg-stone-800 dark:hover:bg-stone-750 text-stone-700 dark:text-stone-300 text-[10px] font-semibold flex items-center gap-1 transition-colors cursor-pointer border border-stone-200/60 dark:border-stone-700/60"
+                              >
+                                <Utensils className="w-2.5 h-2.5 text-amber-600 dark:text-amber-400" />
+                                <span>{isExpanded ? 'Hide' : `See Items (${exp.items.length})`}</span>
+                                <ChevronDown
+                                  className={`w-3 h-3 transition-transform duration-200 ${
+                                    isExpanded ? 'rotate-180' : ''
+                                  }`}
+                                />
+                              </button>
+                            )}
+                            <span className="font-heading font-bold text-xs text-emerald-700 dark:text-emerald-400">
+                              ₹{exp.total}
+                            </span>
+                          </div>
                         </div>
-                      )}
-                    </div>
-                  ))}
+
+                        {/* Items ordered by this member */}
+                        {hasItems && isExpanded && (
+                          <div className="flex flex-wrap gap-1 pl-8 pt-0.5 animate-in fade-in duration-150">
+                            {exp.items.map((it, idx) => (
+                              <span
+                                key={`${it.id}-${idx}`}
+                                className="px-1.5 py-0.5 rounded-md bg-stone-100 dark:bg-stone-800 text-[10px] text-stone-600 dark:text-stone-400 font-medium border border-stone-200/60 dark:border-stone-700/60"
+                              >
+                                {it.emoji} {it.name} ×{it.quantity} (₹{it.price * it.quantity})
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
                 </div>
               )}
             </div>
@@ -1644,7 +1607,7 @@ const SessionCard: React.FC<SessionCardProps> = ({
             )}
           </div>
           <p className="text-[11px] text-stone-400 truncate flex items-center gap-1">
-            <span>📍 {session.shopName}</span>
+            <span>{session.shopName}</span>
             <span>•</span>
             <span>{formattedDate}</span>
           </p>
