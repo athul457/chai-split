@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Check, Sun, Moon, X } from 'lucide-react'
+import { Check, Sun, Moon, X, Copy, Edit3, Trash2, Plus } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { useTheme } from '../context/ThemeContext'
 import type { PageRoute } from '../types'
@@ -11,9 +11,13 @@ interface ProfileDropdownProps {
 }
 
 export const ProfileDropdown: React.FC<ProfileDropdownProps> = ({ isOpen, onClose, onNavigate }) => {
-  const { user, logout } = useAuth()
+  const { user, logout, updateUpiId } = useAuth()
   const { isDark, toggleTheme } = useTheme()
   const [copied, setCopied] = useState(false)
+  const [copiedUpi, setCopiedUpi] = useState(false)
+  const [isEditingUpi, setIsEditingUpi] = useState(false)
+  const [upiInput, setUpiInput] = useState('')
+  const [upiError, setUpiError] = useState('')
 
   if (!isOpen || !user) return null
 
@@ -26,6 +30,41 @@ export const ProfileDropdown: React.FC<ProfileDropdownProps> = ({ isOpen, onClos
     navigator.clipboard.writeText(userCode)
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
+  }
+
+  const handleStartEditUpi = () => {
+    setUpiInput(user.upiId || '')
+    setUpiError('')
+    setIsEditingUpi(true)
+  }
+
+  const handleSaveUpi = async () => {
+    const trimmed = upiInput.trim()
+    if (!trimmed) {
+      setUpiError('Please enter a valid UPI ID or cancel.')
+      return
+    }
+    if (!trimmed.includes('@')) {
+      setUpiError('UPI ID must include @ (e.g. name@upi)')
+      return
+    }
+    await updateUpiId(trimmed)
+    setIsEditingUpi(false)
+    setUpiError('')
+  }
+
+  const handleDeleteUpi = async () => {
+    await updateUpiId('')
+    setIsEditingUpi(false)
+    setUpiInput('')
+    setUpiError('')
+  }
+
+  const handleCopyUpi = () => {
+    if (!user.upiId) return
+    navigator.clipboard.writeText(user.upiId)
+    setCopiedUpi(true)
+    setTimeout(() => setCopiedUpi(false), 2000)
   }
 
   const handleSignOut = () => {
@@ -102,6 +141,107 @@ export const ProfileDropdown: React.FC<ProfileDropdownProps> = ({ isOpen, onClos
               )}
             </button>
           </div>
+        </div>
+
+        {/* UPI ID Section (Private to this user) */}
+        <div className="mt-3 pt-3 border-t border-stone-100 dark:border-stone-800/80">
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-[11px] font-medium text-stone-500 dark:text-stone-400">
+              UPI ID
+            </span>
+            <span className="text-[9px] text-stone-400 dark:text-stone-500 font-semibold">
+              Private to you
+            </span>
+          </div>
+
+          {isEditingUpi ? (
+            <div className="space-y-1.5 p-2 rounded-xl bg-stone-50 dark:bg-stone-800/60 border border-amber-300 dark:border-amber-700/80">
+              <input
+                type="text"
+                value={upiInput}
+                onChange={e => {
+                  setUpiInput(e.target.value)
+                  if (upiError) setUpiError('')
+                }}
+                placeholder="e.g. username@okhdfcbank"
+                className="w-full px-2.5 py-1.5 text-xs font-mono rounded-lg bg-white dark:bg-stone-900 border border-stone-200 dark:border-stone-700 text-stone-900 dark:text-stone-100 placeholder-stone-400 focus:outline-none focus:ring-1 focus:ring-amber-500"
+                autoFocus
+              />
+              {upiError && (
+                <p className="text-[10px] text-rose-500 font-medium px-1 leading-tight">{upiError}</p>
+              )}
+              <div className="flex items-center justify-end gap-1.5 pt-0.5">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsEditingUpi(false)
+                    setUpiError('')
+                  }}
+                  className="px-2 py-1 rounded-md text-[10px] font-bold text-stone-500 hover:text-stone-700 dark:text-stone-400 dark:hover:text-stone-200 cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSaveUpi}
+                  className="px-2.5 py-1 rounded-md text-[10px] font-bold bg-amber-600 hover:bg-amber-700 text-white shadow-2xs cursor-pointer transition-colors"
+                >
+                  Save
+                </button>
+              </div>
+            </div>
+          ) : user.upiId ? (
+            <div className="flex items-center justify-between px-3 py-2 rounded-xl bg-stone-50 dark:bg-stone-800/60 border border-stone-200/80 dark:border-stone-700/80 gap-1.5">
+              <span className="font-mono text-xs text-stone-900 dark:text-stone-100 truncate min-w-0 flex-1">
+                {user.upiId}
+              </span>
+
+              <div className="flex items-center gap-1 shrink-0">
+                <button
+                  type="button"
+                  onClick={handleCopyUpi}
+                  title="Copy UPI ID"
+                  className="p-1 rounded-md text-stone-500 hover:text-amber-600 dark:text-stone-400 dark:hover:text-amber-400 hover:bg-stone-200/60 dark:hover:bg-stone-700 transition-colors cursor-pointer flex items-center gap-1"
+                >
+                  {copiedUpi ? (
+                    <>
+                      <Check className="w-3.5 h-3.5 text-emerald-600" />
+                      <span className="text-[10px] text-emerald-600 font-bold">Copied</span>
+                    </>
+                  ) : (
+                    <Copy className="w-3.5 h-3.5" />
+                  )}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleStartEditUpi}
+                  title="Edit UPI ID"
+                  className="p-1 rounded-md text-stone-500 hover:text-amber-600 dark:text-stone-400 dark:hover:text-amber-400 hover:bg-stone-200/60 dark:hover:bg-stone-700 transition-colors cursor-pointer"
+                >
+                  <Edit3 className="w-3.5 h-3.5" />
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleDeleteUpi}
+                  title="Delete UPI ID"
+                  className="p-1 rounded-md text-stone-500 hover:text-rose-600 dark:text-stone-400 dark:hover:text-rose-400 hover:bg-stone-200/60 dark:hover:bg-stone-700 transition-colors cursor-pointer"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={handleStartEditUpi}
+              className="w-full py-2 px-3 rounded-xl border border-dashed border-stone-300 dark:border-stone-700 hover:border-amber-500 dark:hover:border-amber-500 text-stone-600 dark:text-stone-400 hover:text-amber-600 dark:hover:text-amber-400 text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors cursor-pointer bg-stone-50/50 dark:bg-stone-850"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>Add UPI ID</span>
+            </button>
+          )}
         </div>
 
         {/* Dark Mode Switch Row */}
