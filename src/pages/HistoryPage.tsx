@@ -1156,11 +1156,11 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({
                         </p>
                       </div>
 
-                      <div className="text-right shrink-0 space-y-1">
-                        <span className="font-heading font-black text-2xl sm:text-3xl text-emerald-700 dark:text-emerald-400 block leading-none">
+                      <div className="text-right shrink-0 space-y-0.5">
+                        <span className="font-heading font-bold text-sm sm:text-base text-emerald-700 dark:text-emerald-400 block leading-tight">
                           ₹{rec.memberTotal}
                         </span>
-                        <p className="text-[11px] text-stone-400 font-medium">Paid by {rec.payerName}</p>
+                        <p className="text-[10px] text-stone-400 font-medium">Paid by {rec.payerName}</p>
                       </div>
                     </div>
 
