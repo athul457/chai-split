@@ -15,12 +15,14 @@ import {
   Receipt,
   Search,
   Store,
+  TrendingDown,
+  TrendingUp,
   UserCheck,
   Users,
   Utensils,
   X
 } from 'lucide-react'
-import React, { useMemo, useState, useEffect } from 'react'
+import React, { useMemo, useState, useEffect, useRef } from 'react'
 import { useExpense } from '../context/ExpenseContext'
 import type { Group, TeaSession, User } from '../types'
 import { downloadExpensePdf, downloadSingleSessionPdf, type MemberPdfBreakdown } from '../utils/pdfReport'
@@ -28,6 +30,14 @@ import { downloadExpensePdf, downloadSingleSessionPdf, type MemberPdfBreakdown }
 type TimeFilter = 'day' | 'week' | 'month' | 'year' | 'all' | 'custom'
 type SortOrder = 'date-desc' | 'date-asc' | 'amount-desc' | 'amount-asc' | 'items-desc'
 type HistorySectionView = 'personal' | 'team' | 'both'
+
+const SORT_OPTIONS: { id: SortOrder; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
+  { id: 'date-desc', label: 'Newest First', icon: Clock },
+  { id: 'date-asc', label: 'Oldest First', icon: CalendarDays },
+  { id: 'amount-desc', label: 'Highest ₹', icon: TrendingUp },
+  { id: 'amount-asc', label: 'Lowest ₹', icon: TrendingDown },
+  { id: 'items-desc', label: 'Most Items', icon: Utensils }
+]
 
 interface MemberOption {
   id: string
@@ -71,6 +81,28 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({
   const [sectionView, setSectionView] = useState<HistorySectionView>('personal')
   const [timeFilter, setTimeFilter] = useState<TimeFilter>('day')
   const [sortOrder, setSortOrder] = useState<SortOrder>('date-desc')
+  const [isSortOpen, setIsSortOpen] = useState(false)
+  const sortDropdownRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (sortDropdownRef.current && !sortDropdownRef.current.contains(e.target as Node)) {
+        setIsSortOpen(false)
+      }
+    }
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setIsSortOpen(false)
+    }
+    if (isSortOpen) {
+      document.addEventListener('mousedown', handleClickOutside)
+      document.addEventListener('keydown', handleKeyDown)
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+      document.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [isSortOpen])
+
   const [selectedGroupId, setSelectedGroupId] = useState<string | 'all'>(initialGroupId || 'all')
   const [showOtherGroups, setShowOtherGroups] = useState(false)
   const [showUniqueItems, setShowUniqueItems] = useState(false)
@@ -708,10 +740,10 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({
               <button
                 type="button"
                 onClick={handleDownloadReport}
-                className="text-[11px] font-bold text-stone-600 dark:text-stone-300 hover:text-amber-700 dark:hover:text-amber-400 bg-stone-100 hover:bg-stone-200 dark:bg-stone-800 dark:hover:bg-stone-750 px-2.5 py-1 rounded-lg border border-stone-200/80 dark:border-stone-700 transition-colors cursor-pointer flex items-center gap-1.5"
+                className="btn-outlined text-[11px] py-1.5 px-3 rounded-lg"
                 title="Download PDF Report"
               >
-                <Download className="w-3.5 h-3.5 text-amber-600" />
+                <Download className="w-3.5 h-3.5 text-[#AB3600]" />
                 <span>Download PDF</span>
               </button>
             </div>
@@ -1001,41 +1033,90 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({
         <div className="flex items-center gap-2">
           {/* Search Input */}
           <div className="relative flex-1">
-            <Search className="w-3.5 h-3.5 text-stone-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+            <Search className="w-4 h-4 text-[#979087] dark:text-[#7C766E] absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
             <input
               type="text"
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
               placeholder="Search history by title, shop, item..."
-              className="w-full pl-8 pr-7 py-2 rounded-xl border border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-900 text-xs text-stone-900 dark:text-stone-100 placeholder-stone-400 focus:outline-none focus:ring-1 focus:ring-amber-500"
+              className="search-input"
             />
             {searchQuery && (
               <button
                 type="button"
                 onClick={() => setSearchQuery('')}
-                className="absolute right-2 top-1/2 -translate-y-1/2 text-stone-400 hover:text-stone-600 cursor-pointer p-0.5"
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[#979087] hover:text-[#343029] dark:hover:text-[#E9E1DF] cursor-pointer p-0.5"
               >
                 <X className="w-3.5 h-3.5" />
               </button>
             )}
           </div>
 
-          {/* Sort Dropdown */}
-          <div className="shrink-0 relative">
-            <div className="flex items-center gap-1 px-2.5 py-2 rounded-xl border border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-900 text-stone-700 dark:text-stone-300 text-xs font-semibold">
-              <ArrowUpDown className="w-3.5 h-3.5 text-amber-600" />
-              <select
-                value={sortOrder}
-                onChange={e => setSortOrder(e.target.value as SortOrder)}
-                className="bg-transparent text-xs font-semibold focus:outline-none cursor-pointer pr-1"
-              >
-                <option value="date-desc">Newest First</option>
-                <option value="date-asc">Oldest First</option>
-                <option value="amount-desc">Highest ₹</option>
-                <option value="amount-asc">Lowest ₹</option>
-                <option value="items-desc">Most Items</option>
-              </select>
-            </div>
+          {/* Super UI Sort Dropdown */}
+          <div className="shrink-0 relative" ref={sortDropdownRef}>
+            <button
+              type="button"
+              onClick={() => setIsSortOpen(prev => !prev)}
+              id="sort-order-dropdown-btn"
+              className={`flex items-center gap-1.5 px-3 py-2 rounded-lg border 1.5px transition-all cursor-pointer font-semibold text-xs ${
+                isSortOpen
+                  ? 'border-[#AB3600] ring-2 ring-[#AB3600]/20 bg-[#F4EBE1]/50 dark:bg-[#343029]/70 text-[#AB3600] dark:text-[#FF8B63]'
+                  : 'border-[#CDC5BC] dark:border-[#4B463F] bg-white dark:bg-[#1E1B1A] text-[#343029] dark:text-[#E9E1DF] hover:border-[#AB3600]/60'
+              }`}
+              aria-haspopup="listbox"
+              aria-expanded={isSortOpen}
+            >
+              <ArrowUpDown className="w-3.5 h-3.5 text-[#AB3600] shrink-0" />
+              <span>{SORT_OPTIONS.find(o => o.id === sortOrder)?.label || 'Sort'}</span>
+              <ChevronDown
+                className={`w-3 h-3 text-[#979087] transition-transform duration-200 shrink-0 ${
+                  isSortOpen ? 'rotate-180 text-[#AB3600]' : ''
+                }`}
+              />
+            </button>
+
+            {/* Custom Modern Dropdown Popover */}
+            {isSortOpen && (
+              <div className="absolute right-0 top-full mt-1.5 w-48 rounded-xl bg-white/95 dark:bg-[#1E1B1A]/95 backdrop-blur-md border 1.5px border-[#CDC5BC] dark:border-[#4B463F] shadow-xl shadow-stone-900/10 dark:shadow-black/50 p-1.5 z-50 animate-in fade-in zoom-in-95 duration-150">
+                <div className="text-[10px] font-bold uppercase tracking-wider text-[#979087] dark:text-[#7C766E] px-2.5 py-1 mb-0.5">
+                  Sort Sessions
+                </div>
+                <div className="space-y-0.5">
+                  {SORT_OPTIONS.map(opt => {
+                    const Icon = opt.icon
+                    const isSelected = sortOrder === opt.id
+
+                    return (
+                      <button
+                        key={opt.id}
+                        type="button"
+                        onClick={() => {
+                          setSortOrder(opt.id)
+                          setIsSortOpen(false)
+                        }}
+                        className={`w-full flex items-center justify-between px-2.5 py-2 rounded-lg text-xs font-medium cursor-pointer transition-all ${
+                          isSelected
+                            ? 'bg-[#AB3600]/10 dark:bg-[#AB3600]/25 text-[#AB3600] dark:text-[#FF8B63] font-bold shadow-2xs'
+                            : 'text-[#343029] dark:text-[#E9E1DF] hover:bg-[#F4EBE1]/70 dark:hover:bg-[#343029]/70'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2">
+                          <Icon
+                            className={`w-3.5 h-3.5 shrink-0 ${
+                              isSelected ? 'text-[#AB3600] dark:text-[#FF8B63]' : 'text-[#979087] dark:text-[#7C766E]'
+                            }`}
+                          />
+                          <span>{opt.label}</span>
+                        </div>
+                        {isSelected && (
+                          <Check className="w-3.5 h-3.5 text-[#AB3600] dark:text-[#FF8B63] shrink-0" />
+                        )}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -1062,51 +1143,51 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({
                 <p>No break orders found for you in this period.</p>
               </div>
             ) : (
-              <div className="divide-y divide-stone-100 dark:divide-stone-800 space-y-2">
+              <div className="divide-y divide-stone-100 dark:divide-stone-800 space-y-3">
                 {personalEatenSummary.breakRecords.map(rec => (
-                  <div key={rec.sessionId} className="pt-2 first:pt-0 space-y-1.5">
-                    <div className="flex items-start justify-between gap-2">
-                      <div>
-                        <h5 className="font-heading font-bold text-xs text-stone-900 dark:text-stone-100">
+                  <div key={rec.sessionId} className="pt-3 first:pt-0 space-y-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="space-y-1 min-w-0">
+                        <h5 className="font-heading font-bold text-sm text-stone-900 dark:text-stone-100 leading-snug">
                           {rec.sessionTitle}
                         </h5>
-                        <p className="text-[11px] text-stone-400">
+                        <p className="text-xs text-stone-500 dark:text-stone-400">
                           {rec.shopName} • {rec.formattedDate}
                         </p>
                       </div>
 
-                      <div className="text-right shrink-0">
-                        <span className="font-heading font-black text-xs text-emerald-700 dark:text-emerald-400">
+                      <div className="text-right shrink-0 space-y-1">
+                        <span className="font-heading font-black text-2xl sm:text-3xl text-emerald-700 dark:text-emerald-400 block leading-none">
                           ₹{rec.memberTotal}
                         </span>
-                        <p className="text-[10px] text-stone-400">Paid by {rec.payerName}</p>
+                        <p className="text-[11px] text-stone-400 font-medium">Paid by {rec.payerName}</p>
                       </div>
                     </div>
 
                     {/* Action row: See Items toggle + Full Bill */}
-                    <div className="flex items-center justify-between gap-1.5 pt-0.5">
+                    <div className="flex items-center justify-between gap-2 pt-1">
                       {rec.items.length > 0 ? (
                         <button
                           type="button"
                           onClick={() => toggleBreakItems(rec.sessionId)}
-                          className="px-2 py-0.5 rounded-md bg-stone-100 hover:bg-stone-200 dark:bg-stone-800 dark:hover:bg-stone-700 text-stone-700 dark:text-stone-300 text-[10px] font-semibold flex items-center gap-1 transition-colors cursor-pointer border border-stone-200/60 dark:border-stone-700/60"
+                          className="px-2.5 py-1 rounded-lg bg-stone-100 hover:bg-stone-200 dark:bg-stone-800 dark:hover:bg-stone-700 text-stone-700 dark:text-stone-300 text-[11px] font-semibold flex items-center gap-1.5 transition-colors cursor-pointer border border-stone-200/60 dark:border-stone-700/60"
                         >
-                          <Utensils className="w-2.5 h-2.5 text-amber-600 dark:text-amber-400" />
+                          <Utensils className="w-3 h-3 text-amber-600 dark:text-amber-400" />
                           <span>{expandedBreakItemIds.has(rec.sessionId) ? 'Hide Items' : `See Items (${rec.items.length})`}</span>
                           <ChevronDown
-                            className={`w-3 h-3 transition-transform duration-200 ${
+                            className={`w-3.5 h-3.5 transition-transform duration-200 ${
                               expandedBreakItemIds.has(rec.sessionId) ? 'rotate-180' : ''
                             }`}
                           />
                         </button>
                       ) : (
-                        <span className="text-[10px] text-stone-400 italic">No items listed</span>
+                        <span className="text-[11px] text-stone-400 italic">No items listed</span>
                       )}
 
                       <button
                         type="button"
                         onClick={() => setSelectedSessionForReceipt(rec.rawSession)}
-                        className="ml-auto px-2 py-0.5 rounded-md bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-900 text-[10px] font-bold transition-colors cursor-pointer border border-amber-200/60 dark:border-amber-900/40"
+                        className="ml-auto px-2.5 py-1 rounded-lg bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-900 text-[11px] font-bold transition-colors cursor-pointer border border-amber-200/60 dark:border-amber-900/40 shadow-2xs"
                       >
                         Full Bill 🧾
                       </button>
@@ -1114,7 +1195,7 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({
 
                     {/* Collapsible eaten items list */}
                     {expandedBreakItemIds.has(rec.sessionId) && rec.items.length > 0 && (
-                      <div className="flex flex-wrap items-center gap-1 pt-1 animate-in fade-in duration-150">
+                      <div className="flex flex-wrap items-center gap-1.5 pt-1.5 animate-in fade-in duration-150">
                         {rec.items.map((it, idx) => (
                           <span
                             key={`${it.id || it.name}-${idx}`}

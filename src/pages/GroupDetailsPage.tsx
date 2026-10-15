@@ -14,7 +14,6 @@ import {
   Flame,
   LogOut,
   Plus,
-  Receipt,
   ShieldAlert,
   Store,
   Trash2,
@@ -29,6 +28,7 @@ import { ChaiLoader } from '../components/ChaiLoader'
 import type { Group, User, MenuItem } from '../types'
 import { TeaBreakPage } from './TeaBreakPage'
 import { HistoryPage } from './HistoryPage'
+import { getUserCode } from '../utils/userCode'
 
 interface GroupDetailsPageProps {
   group: Group
@@ -73,13 +73,37 @@ export const GroupDetailsPage: React.FC<GroupDetailsPageProps> = ({
   const [isSubmittingMember, setIsSubmittingMember] = useState(false)
   const [toastNotice, setToastNotice] = useState<string | null>(null)
   const [breakTitleInput, setBreakTitleInput] = useState(`${group.name} Tea Break`)
+  const [isEditingTitle, setIsEditingTitle] = useState(false)
+  const [tempTitle, setTempTitle] = useState(`${group.name} Tea Break`)
+  const [showConfirmEditModal, setShowConfirmEditModal] = useState(false)
+  const [titleEditConfirmed, setTitleEditConfirmed] = useState(false)
   const [isStartingBreak, setIsStartingBreak] = useState(false)
   const [showBreakRunningModal, setShowBreakRunningModal] = useState(false)
 
   // Ensure break title has no stray emojis
   useEffect(() => {
     setBreakTitleInput(`${group.name} Tea Break`)
+    setTempTitle(`${group.name} Tea Break`)
   }, [group.name, group.id])
+
+  const handleSaveTitleClick = () => {
+    const clean = sanitizeText(tempTitle) || `${group.name} Tea Break`
+    if (clean === breakTitleInput) {
+      setIsEditingTitle(false)
+      return
+    }
+    setShowConfirmEditModal(true)
+  }
+
+  const handleConfirmSaveTitle = () => {
+    const clean = sanitizeText(tempTitle) || `${group.name} Tea Break`
+    setBreakTitleInput(clean)
+    setIsEditingTitle(false)
+    setShowConfirmEditModal(false)
+    setTitleEditConfirmed(true)
+    showToast(`Break title updated to "${clean}"`)
+    setTimeout(() => setTitleEditConfirmed(false), 4000)
+  }
 
   const sanitizeText = (txt: string) =>
     txt.replace(/[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}\u{1F1E6}-\u{1F1FF}\u{1F600}-\u{1F64F}\u{1F680}-\u{1F6FF}]/gu, '').replace(/\s+/g, ' ').trim()
@@ -297,7 +321,7 @@ export const GroupDetailsPage: React.FC<GroupDetailsPageProps> = ({
       )
       if (alreadyInGroup) {
         setAddMemberError(
-          `${alreadyInGroup.name} (${alreadyInGroup.userCode || alreadyInGroup.id}) is already in this group!`
+          `${alreadyInGroup.name} (${getUserCode(alreadyInGroup)}) is already in this group!`
         )
         setIsSubmittingMember(false)
         return
@@ -388,7 +412,7 @@ export const GroupDetailsPage: React.FC<GroupDetailsPageProps> = ({
 
       setMemberUniqueIdInput('')
       setShowAddUserModal(false)
-      showToast(`Added ${memberToAdd.name} (${memberToAdd.userCode || memberToAdd.id}) to group!`)
+      showToast(`Added ${memberToAdd.name} (${getUserCode(memberToAdd)}) to group!`)
     } catch (err: any) {
       setAddMemberError(err?.message || 'Failed to add member by Unique ID')
     } finally {
@@ -577,7 +601,7 @@ export const GroupDetailsPage: React.FC<GroupDetailsPageProps> = ({
                         {isCurrentUser && (
                           <div className="flex items-center gap-1.5 text-[10px] text-stone-400 mt-0.5">
                             <span className="font-mono font-bold text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/60 px-1.5 py-0.5 rounded border border-amber-200/50 dark:border-amber-900/40">
-                              Your ID: {member.userCode || member.id}
+                              Your ID: {getUserCode(member)}
                             </span>
                           </div>
                         )}
@@ -733,16 +757,8 @@ export const GroupDetailsPage: React.FC<GroupDetailsPageProps> = ({
                 </span>
               </div>
 
-              {/* BUTTONS: HISTORY AND VIEW MEMBERS */}
+              {/* BUTTON: VIEW MEMBERS */}
               <div className="flex items-center gap-1.5 shrink-0">
-                <button
-                  onClick={() => setShowGroupHistory(true)}
-                  id="view-group-history-banner-btn"
-                  className="px-2.5 py-1 rounded-xl bg-white/20 hover:bg-white/30 text-white active:scale-95 text-xs font-bold shadow-xs cursor-pointer flex items-center gap-1 transition-all"
-                >
-                  <Receipt className="w-3.5 h-3.5 text-amber-200" />
-                  <span>History</span>
-                </button>
                 <button
                   onClick={() => setShowMembersPage(true)}
                   id="view-members-banner-btn"
@@ -829,24 +845,77 @@ export const GroupDetailsPage: React.FC<GroupDetailsPageProps> = ({
                 </span>
               </div>
 
-              <div className="space-y-1">
+              <div className="space-y-1.5">
                 <label className="text-[11px] font-semibold text-stone-700 dark:text-stone-300">
                   Break Title
                 </label>
-                <input
-                  type="text"
-                  value={sanitizeText(breakTitleInput)}
-                  onChange={e => setBreakTitleInput(sanitizeText(e.target.value))}
-                  placeholder="e.g. 4:30 PM Tea Break"
-                  className="w-full py-2 px-3 rounded-xl border border-stone-300 dark:border-stone-700 bg-stone-50 dark:bg-stone-800 text-xs text-stone-900 dark:text-stone-100 focus:outline-none focus:ring-1 focus:ring-amber-500 font-medium"
-                />
+
+                {!isEditingTitle ? (
+                  <div
+                    onClick={() => {
+                      setTempTitle(breakTitleInput)
+                      setIsEditingTitle(true)
+                    }}
+                    className="flex items-center justify-between py-2 px-3 rounded-lg border border-[#CDC5BC] dark:border-stone-700 bg-white dark:bg-stone-900 text-xs text-stone-900 dark:text-stone-100 font-medium shadow-2xs cursor-pointer group hover:border-[#AB3600]/60 transition-colors"
+                    title="Click to edit break title"
+                    id="edit-break-title-box"
+                  >
+                    <span className="truncate">{breakTitleInput}</span>
+                    <span className="p-1 rounded-md text-stone-400 group-hover:text-[#AB3600] transition-colors shrink-0 ml-2">
+                      <Edit2 className="w-3.5 h-3.5" />
+                    </span>
+                  </div>
+                ) : (
+                  <div className="space-y-2 p-2.5 rounded-lg bg-stone-50 dark:bg-stone-800/60 border border-[#CDC5BC] dark:border-stone-700 animate-in fade-in">
+                    <input
+                      type="text"
+                      autoFocus
+                      value={tempTitle}
+                      onChange={e => setTempTitle(e.target.value)}
+                      onKeyDown={e => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault()
+                          handleSaveTitleClick()
+                        } else if (e.key === 'Escape') {
+                          setIsEditingTitle(false)
+                        }
+                      }}
+                      placeholder="e.g. 4:30 PM Tea Break"
+                      className="w-full py-1.5 px-2.5 rounded-lg border border-[#CDC5BC] dark:border-stone-700 bg-white dark:bg-stone-900 text-xs text-stone-900 dark:text-stone-100 focus:outline-none focus:ring-1 focus:ring-[#AB3600] font-medium"
+                    />
+                    <div className="flex items-center justify-end gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => setIsEditingTitle(false)}
+                        className="btn-secondary text-xs py-1 px-2.5 rounded-lg"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleSaveTitleClick}
+                        className="btn-primary text-xs py-1 px-3 rounded-lg"
+                        id="save-break-title-btn"
+                      >
+                        Save
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {titleEditConfirmed && (
+                  <div className="flex items-center gap-1.5 text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200 dark:border-emerald-800 px-2.5 py-1.5 rounded-lg animate-in fade-in">
+                    <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+                    <span>Break title updated to "{breakTitleInput}"</span>
+                  </div>
+                )}
               </div>
 
               <button
                 onClick={handleStartBreak}
                 disabled={isStartingBreak}
                 id="start-tea-break-btn"
-                className="w-full py-2.5 px-4 rounded-xl font-bold text-xs bg-gradient-to-r from-amber-600 via-orange-600 to-amber-700 hover:from-amber-700 hover:to-orange-700 disabled:opacity-80 disabled:cursor-wait text-white shadow-md active:scale-[0.98] transition-all cursor-pointer flex items-center justify-center gap-2"
+                className="w-full py-2.5 px-4 rounded-lg font-bold text-xs btn-primary shadow-md active:scale-[0.98] transition-all cursor-pointer flex items-center justify-center gap-2"
               >
                 {isStartingBreak ? (
                   <ChaiLoader variant="spinner" size="sm" text="Starting Tea Break..." />
@@ -1023,13 +1092,13 @@ export const GroupDetailsPage: React.FC<GroupDetailsPageProps> = ({
               <div className="space-y-1.5">
                 <label className="text-xs font-semibold text-stone-700 dark:text-stone-300 flex items-center justify-between">
                   <span>Member Unique ID / User Code</span>
-                  <span className="text-[10px] text-amber-600 font-normal">e.g. JOHN4821</span>
+                  <span className="text-[10px] text-amber-600 font-normal">e.g. ATHUL7664</span>
                 </label>
                 <input
                   type="text"
                   required
                   autoFocus
-                  placeholder="Enter Unique ID (e.g. JOHN4821)"
+                  placeholder="Enter Unique ID (e.g. ATHUL7664)"
                   value={memberUniqueIdInput}
                   onChange={e => {
                     setMemberUniqueIdInput(e.target.value)
@@ -1060,7 +1129,7 @@ export const GroupDetailsPage: React.FC<GroupDetailsPageProps> = ({
                         {matchedUser.name}
                       </div>
                       <div className="text-[10px] text-stone-500 dark:text-stone-400 font-mono">
-                        ID: {matchedUser.userCode || matchedUser.id}
+                        ID: {getUserCode(matchedUser)}
                       </div>
                     </div>
                   </div>
@@ -1135,7 +1204,7 @@ export const GroupDetailsPage: React.FC<GroupDetailsPageProps> = ({
                             {colleague.name}
                           </div>
                           <div className="text-[10px] font-mono font-bold text-amber-700 dark:text-amber-400 truncate">
-                            ID: {colleague.userCode || colleague.id}
+                            ID: {getUserCode(colleague)}
                           </div>
                         </div>
                       </div>
@@ -1371,6 +1440,47 @@ export const GroupDetailsPage: React.FC<GroupDetailsPageProps> = ({
                 className="flex-1 py-2 px-3 rounded-xl text-xs font-bold bg-amber-600 hover:bg-amber-700 text-white shadow-xs cursor-pointer active:scale-95 transition-all flex items-center justify-center gap-1"
               >
                 <span>Enter Break</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Confirmation Modal: Break Title Edit */}
+      {showConfirmEditModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-900/60 backdrop-blur-xs animate-in fade-in">
+          <div className="w-full max-w-sm bg-white dark:bg-stone-900 rounded-2xl shadow-2xl border border-stone-200 dark:border-stone-800 p-5 space-y-4 text-center">
+            <div className="w-11 h-11 rounded-full bg-amber-100 dark:bg-amber-950/70 text-[#AB3600] dark:text-amber-400 flex items-center justify-center mx-auto shadow-inner">
+              <CheckCircle2 className="w-6 h-6" />
+            </div>
+
+            <div className="space-y-1.5">
+              <h4 className="font-heading font-bold text-sm text-stone-900 dark:text-stone-100">
+                Confirm Title Change
+              </h4>
+              <p className="text-xs text-stone-500 dark:text-stone-400">
+                Are you sure you want to change the break title to:
+              </p>
+              <div className="p-2.5 rounded-lg bg-stone-50 dark:bg-stone-800/80 border border-stone-200 dark:border-stone-700 font-bold text-xs text-[#AB3600] dark:text-amber-400 break-words">
+                "{tempTitle.trim() || `${group.name} Tea Break`}"
+              </div>
+            </div>
+
+            <div className="flex items-center justify-center gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => setShowConfirmEditModal(false)}
+                className="btn-secondary text-xs py-1.5 px-3.5 rounded-lg flex-1"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmSaveTitle}
+                id="confirm-save-break-title-btn"
+                className="btn-primary text-xs py-1.5 px-4 rounded-lg flex-1"
+              >
+                Confirm & Update
               </button>
             </div>
           </div>

@@ -23,6 +23,7 @@ import { DEFAULT_SHOPS } from '../lib/mockData'
 import { supabase } from '../lib/supabase'
 import { GroupCardSkeleton } from '../components/ChaiSkeleton'
 import type { PageRoute, BottomTab, Shop, MenuItem, Group, User } from '../types'
+import { getUserCode } from '../utils/userCode'
 
 interface DashboardProps {
   onNavigate?: (page: PageRoute) => void
@@ -1102,17 +1103,16 @@ export const Dashboard: React.FC<DashboardProps> = () => {
                             {g.name}
                           </h4>
                           <p className="text-[10px] text-stone-400 truncate">
-                            📍 {g.shopName || 'Chayakkada'} • {g.members?.length || 1} members
+                            {g.shopName || 'Chayakkada'} • {g.members?.length || 1} members
                           </p>
                         </div>
                         <button
                           type="button"
                           onClick={() => handleStartBreakForGroup(g)}
                           id={`start-break-btn-${g.id}`}
-                          className="px-3.5 py-2 rounded-xl text-xs font-bold bg-amber-600 hover:bg-amber-700 text-white shadow-xs cursor-pointer active:scale-95 transition-all shrink-0 flex items-center gap-1.5"
+                          className="btn-primary text-xs py-2 px-3.5 rounded-lg shrink-0"
                         >
-                          <Coffee className="w-3.5 h-3.5" />
-                          <span>Create Break</span>
+                          Create Break
                         </button>
                       </div>
                     ))}
@@ -1189,12 +1189,12 @@ export const Dashboard: React.FC<DashboardProps> = () => {
               {user && (
                 <button
                   type="button"
-                  onClick={() => handleCopy(user.userCode || user.id, 'My Unique ID')}
+                  onClick={() => handleCopy(getUserCode(user), 'My Unique ID')}
                   className="px-2.5 py-1.5 rounded-xl bg-white/20 hover:bg-white/30 text-white text-[11px] font-bold flex items-center gap-1.5 backdrop-blur-xs cursor-pointer active:scale-95 transition-all shrink-0"
                   title="Click to copy your unique ID for colleagues to add you"
                 >
                   <KeyRound className="w-3.5 h-3.5 text-amber-200" />
-                  <span>ID: {user.userCode || user.id}</span>
+                  <span>ID: {getUserCode(user)}</span>
                 </button>
               )}
             </div>
@@ -1204,19 +1204,19 @@ export const Dashboard: React.FC<DashboardProps> = () => {
             <div className="space-y-2">
               <div className="flex items-center gap-2">
                 <div className="relative flex-1">
-                  <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-stone-400 pointer-events-none" />
+                  <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-[#979087] dark:text-[#7C766E] pointer-events-none" />
                   <input
                     type="text"
                     value={groupSearchQuery}
                     onChange={e => setGroupSearchQuery(e.target.value)}
                     placeholder="Search groups by name, tapri or ID..."
-                    className="w-full pl-9 pr-8 py-2.5 rounded-xl border border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-900 text-xs text-stone-900 dark:text-stone-100 placeholder:text-stone-400 focus:outline-none focus:ring-2 focus:ring-amber-500 shadow-2xs"
+                    className="search-input"
                   />
                   {groupSearchQuery && (
                     <button
                       type="button"
                       onClick={() => setGroupSearchQuery('')}
-                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-stone-400 hover:text-stone-600 p-0.5"
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[#979087] hover:text-[#343029] dark:hover:text-[#E9E1DF] p-0.5 cursor-pointer"
                     >
                       <X className="w-3.5 h-3.5" />
                     </button>
@@ -1231,10 +1231,10 @@ export const Dashboard: React.FC<DashboardProps> = () => {
                     setShowJoinGroupModal(true)
                   }}
                   id="join-group-search-btn"
-                  className="px-3 py-2.5 rounded-xl border border-stone-200 dark:border-stone-700 hover:border-amber-500 text-stone-700 dark:text-stone-300 hover:text-amber-700 dark:hover:text-amber-400 bg-white dark:bg-stone-900 shadow-2xs cursor-pointer flex items-center gap-1 active:scale-95 transition-all text-xs font-semibold shrink-0"
+                  className="btn-outlined text-xs py-2 px-3 rounded-lg shrink-0"
                   title="Join Group with Group ID"
                 >
-                  <KeyRound className="w-3.5 h-3.5 text-amber-600" />
+                  <KeyRound className="w-3.5 h-3.5 text-[#AB3600]" />
                   <span>Join</span>
                 </button>
 
@@ -1242,7 +1242,7 @@ export const Dashboard: React.FC<DashboardProps> = () => {
                   type="button"
                   onClick={() => setShowCreateGroupModal(true)}
                   id="create-group-search-btn"
-                  className="px-3.5 py-2.5 rounded-xl font-bold text-xs bg-amber-600 hover:bg-amber-700 text-white shadow-xs cursor-pointer flex items-center gap-1 active:scale-95 transition-all shrink-0"
+                  className="btn-primary text-xs py-2 px-3.5 rounded-lg shrink-0"
                 >
                   <Plus className="w-3.5 h-3.5" />
                   <span>Create</span>
@@ -1347,42 +1347,43 @@ export const Dashboard: React.FC<DashboardProps> = () => {
                       }}
                       className={`p-4 rounded-2xl transition-all cursor-pointer border ${
                         isGroupBreakActive
-                          ? 'bg-gradient-to-br from-emerald-500/10 via-amber-500/5 to-transparent border-emerald-500/50 ring-1 ring-emerald-500/30'
+                          ? 'bg-gradient-to-br from-emerald-500/10 via-amber-500/5 to-transparent border-emerald-500/60 ring-1 ring-emerald-500/30'
                           : isActive
-                          ? 'bg-gradient-to-br from-amber-500/10 via-orange-500/5 to-transparent border-amber-500/60 ring-1 ring-amber-500/30 dark:bg-amber-950/20'
-                          : 'bg-white dark:bg-stone-900 border-stone-200/80 dark:border-stone-800 hover:border-stone-300 dark:hover:border-stone-700'
-                      } shadow-2xs space-y-3`}
+                          ? 'bg-[#FFEDE8]/25 dark:bg-[#1E1B1A] border-[#FFB59C] dark:border-[#822700]/80 shadow-2xs'
+                          : 'bg-white dark:bg-stone-900 border-[#EAE1D7] dark:border-stone-800 hover:border-[#FFB59C]/60 dark:hover:border-stone-700 shadow-2xs'
+                      } space-y-3`}
                     >
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="space-y-1">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <h3 className="font-heading font-extrabold text-sm text-stone-900 dark:text-stone-100">
-                              {group.name}
-                            </h3>
-                            {isGroupBreakActive && (
-                              <span className="px-2 py-0.5 rounded-full text-[9px] font-bold bg-emerald-600 text-white animate-pulse flex items-center gap-1">
-                                <span className="w-1.5 h-1.5 rounded-full bg-white animate-ping" />
-                                <span>Live Break</span>
-                              </span>
-                            )}
-                            {isActive && !isGroupBreakActive && (
-                              <span className="px-2 py-0.5 rounded-full text-[9px] font-bold bg-amber-600 text-white">
-                                Active
-                              </span>
-                            )}
-                          </div>
-                          <p className="text-xs text-stone-500 dark:text-stone-400 flex items-center gap-1.5 flex-wrap">
-                            {group.shopName && (
-                              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-amber-100/90 dark:bg-amber-950/70 text-amber-900 dark:text-amber-300 font-semibold text-[10px]">
-                                <Store className="w-3 h-3 text-amber-800 dark:text-amber-300" />
-                                <span>{group.shopName}</span>
-                              </span>
-                            )}
-                            <span>
-                              {group.members?.length || 1}{' '}
-                              {group.members?.length === 1 ? 'member' : 'members'}
+                      <div className="space-y-2">
+                        {/* Top row: Group name + Active badge on the left */}
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <h3 className="font-heading font-extrabold text-base sm:text-lg text-[#1E1B1A] dark:text-stone-100 truncate">
+                            {group.name}
+                          </h3>
+                          {isGroupBreakActive && (
+                            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-600 text-white animate-pulse flex items-center gap-1">
+                              <span className="w-1.5 h-1.5 rounded-full bg-white animate-ping" />
+                              <span>Live Break</span>
                             </span>
-                          </p>
+                          )}
+                          {isActive && !isGroupBreakActive && (
+                            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-[#CF4C16] text-white">
+                              Active
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Shop tag & members count together on the left */}
+                        <div className="flex items-center gap-2 flex-wrap">
+                          {group.shopName && (
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md bg-[#FFEDE8] dark:bg-[#390C00]/50 text-[#822700] dark:text-[#FFB59C] font-semibold text-xs border border-[#FFDBCF]/60 dark:border-[#822700]/40">
+                              <Store className="w-3.5 h-3.5 text-[#CF4C16] dark:text-[#FF8B63]" />
+                              <span>{group.shopName}</span>
+                            </span>
+                          )}
+                          <span className="text-xs text-[#7C766E] dark:text-stone-400 font-normal">
+                            {group.members?.length || 1}{' '}
+                            {group.members?.length === 1 ? 'member' : 'members'}
+                          </span>
                         </div>
                       </div>
 
@@ -1397,25 +1398,28 @@ export const Dashboard: React.FC<DashboardProps> = () => {
                               setViewingBreakGroupId(group.id)
                             }}
                             id={`enter-break-btn-${group.id}`}
-                            className="w-full py-2 px-3 rounded-xl font-bold text-xs bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white shadow-xs cursor-pointer flex items-center justify-center gap-1.5 active:scale-98 transition-all"
+                            className="w-full py-2.5 px-3 rounded-xl font-bold text-xs sm:text-sm bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white shadow-xs cursor-pointer flex items-center justify-center gap-1.5 active:scale-98 transition-all"
                           >
-                            <Coffee className="w-3.5 h-3.5" />
+                            <Coffee className="w-4 h-4" />
                             <span>Enter Tea Break →</span>
                           </button>
                         </div>
                       )}
 
-                      <div className="flex items-center justify-between pt-2 border-t border-stone-100 dark:border-stone-800 text-xs gap-2 flex-wrap">
-                        <div className="flex items-center gap-1.5">
-                          <span className="text-[10px] text-stone-400 font-semibold uppercase tracking-wider">
-                            Group ID:
+                      {/* Divider */}
+                      <div className="pt-2.5 border-t border-[#F4EBE1] dark:border-stone-800 space-y-3">
+                        {/* Group ID row */}
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-[#979087] dark:text-stone-500 font-semibold uppercase tracking-wider shrink-0">
+                            GROUP ID:
                           </span>
-                          <span className="font-mono font-bold text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/60 px-2 py-0.5 rounded-md border border-amber-200/50 dark:border-amber-900/50">
+                          <span className="font-mono font-bold text-[#CF4C16] dark:text-[#FF8B63] bg-[#FFF6F3] dark:bg-[#390C00]/60 px-3 py-1 rounded-lg border border-[#FFB59C] dark:border-[#822700]/60 text-xs sm:text-sm">
                             {group.code || group.id}
                           </span>
                         </div>
 
-                        <div className="flex items-center gap-1.5">
+                        {/* Action buttons row: View Group & Menu and Copy ID on the left */}
+                        <div className="flex items-center gap-1.5 flex-wrap">
                           <button
                             type="button"
                             onClick={(e) => {
@@ -1423,10 +1427,11 @@ export const Dashboard: React.FC<DashboardProps> = () => {
                               setActiveGroupId(group.id)
                               setViewingGroupId(group.id)
                             }}
-                            className="px-2 py-1 rounded-lg bg-stone-100 dark:bg-stone-800 hover:bg-stone-200 dark:hover:bg-stone-700 text-stone-700 dark:text-stone-300 font-medium text-[11px] flex items-center gap-1 cursor-pointer transition-colors"
+                            className="px-2.5 py-1 rounded-lg bg-white hover:bg-[#F8EFE5] dark:bg-stone-800 dark:hover:bg-stone-700 text-[#292524] dark:text-stone-100 font-semibold text-[11px] flex items-center gap-1.5 border border-[#CDC5BC] dark:border-stone-700 cursor-pointer transition-colors shadow-2xs shrink-0"
                           >
-                            <Store className="w-3 h-3 text-amber-600" />
-                            <span>View Group &amp; Menu →</span>
+                            <Store className="w-3 h-3 text-[#CF4C16] dark:text-[#FF8B63]" />
+                            <span>View Group &amp; Menu</span>
+                            <span className="text-[#7C766E] dark:text-stone-400 text-[10px]">→</span>
                           </button>
 
                           <button
@@ -1435,9 +1440,10 @@ export const Dashboard: React.FC<DashboardProps> = () => {
                               e.stopPropagation()
                               handleCopy(group.code || group.id, `${group.name} Group ID`)
                             }}
-                            className="px-2 py-1 rounded-lg bg-stone-100 dark:bg-stone-800 hover:bg-amber-100 dark:hover:bg-amber-950/60 text-stone-600 dark:text-stone-300 hover:text-amber-800 dark:hover:text-amber-200 font-medium text-[11px] flex items-center gap-1 cursor-pointer transition-colors"
+                            className="px-2 py-1 rounded-lg bg-[#F0ECE6] hover:bg-[#EAE1D7] dark:bg-stone-800 dark:hover:bg-stone-700 text-[#4B463F] dark:text-stone-300 font-medium text-[11px] flex items-center gap-1 border border-[#CDC5BC]/60 dark:border-stone-700 cursor-pointer transition-colors shadow-2xs shrink-0"
+                            title="Copy Group ID"
                           >
-                            <Copy className="w-3 h-3" />
+                            <Copy className="w-3 h-3 text-[#4B463F] dark:text-stone-400" />
                             <span>Copy ID</span>
                           </button>
                         </div>
@@ -1653,14 +1659,14 @@ export const Dashboard: React.FC<DashboardProps> = () => {
                     setShowJoinGroupModal(false)
                     setJoinGroupError(null)
                   }}
-                  className="px-3 py-1.5 rounded-lg text-xs font-semibold text-stone-600 dark:text-stone-400 hover:bg-stone-100 dark:hover:bg-stone-800 cursor-pointer"
+                  className="btn-secondary text-xs py-1.5 px-3 rounded-lg"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   id="submit-join-group-btn"
-                  className="px-4 py-1.5 rounded-lg text-xs font-semibold bg-amber-600 hover:bg-amber-700 text-white cursor-pointer shadow-xs active:scale-95 transition-all flex items-center gap-1"
+                  className="btn-primary text-xs py-1.5 px-4 rounded-lg"
                 >
                   <KeyRound className="w-3.5 h-3.5" />
                   <span>Join Group</span>
@@ -1746,14 +1752,14 @@ export const Dashboard: React.FC<DashboardProps> = () => {
                 <button
                   type="button"
                   onClick={() => setShowAddItemModal(false)}
-                  className="px-3 py-1.5 rounded-lg text-xs font-semibold text-stone-600 hover:bg-stone-100 cursor-pointer"
+                  className="btn-secondary text-xs py-1.5 px-3 rounded-lg"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   id="save-menu-item-submit-btn"
-                  className="px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-amber-600 hover:bg-amber-700 text-white shadow-xs cursor-pointer flex items-center gap-1"
+                  className="btn-primary text-xs py-1.5 px-3.5 rounded-lg"
                 >
                   <Plus className="w-3.5 h-3.5" />
                   <span>Add Item</span>
@@ -1831,7 +1837,7 @@ export const Dashboard: React.FC<DashboardProps> = () => {
                   setGroupToDelete(null)
                   setDeleteConfirmNameInput('')
                 }}
-                className="px-4 py-2.5 rounded-xl text-xs font-semibold text-stone-600 dark:text-stone-300 hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors cursor-pointer disabled:opacity-50"
+                className="btn-secondary text-xs py-2 px-4 rounded-lg"
               >
                 Cancel
               </button>

@@ -3,6 +3,7 @@ import { Check, Sun, Moon, X, Copy, Edit3, Trash2, Plus } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { useTheme } from '../context/ThemeContext'
 import type { PageRoute } from '../types'
+import { getUserCode } from '../utils/userCode'
 
 interface ProfileDropdownProps {
   isOpen: boolean
@@ -21,10 +22,8 @@ export const ProfileDropdown: React.FC<ProfileDropdownProps> = ({ isOpen, onClos
 
   if (!isOpen || !user) return null
 
-  // Ensure an ID like 'USER4821'
-  const userCode = user.userCode || (
-    user.name.replace(/[^a-zA-Z]/g, '').slice(0, 5).toUpperCase() + '4821'
-  )
+  // Ensure unique ID matches specification like 'ATHUL7664'
+  const userCode = getUserCode(user)
 
   const handleCopyId = () => {
     navigator.clipboard.writeText(userCode)
@@ -177,14 +176,14 @@ export const ProfileDropdown: React.FC<ProfileDropdownProps> = ({ isOpen, onClos
                     setIsEditingUpi(false)
                     setUpiError('')
                   }}
-                  className="px-2 py-1 rounded-md text-[10px] font-bold text-stone-500 hover:text-stone-700 dark:text-stone-400 dark:hover:text-stone-200 cursor-pointer"
+                  className="btn-secondary text-[11px] py-1 px-2.5 rounded-lg"
                 >
                   Cancel
                 </button>
                 <button
                   type="button"
                   onClick={handleSaveUpi}
-                  className="px-2.5 py-1 rounded-md text-[10px] font-bold bg-amber-600 hover:bg-amber-700 text-white shadow-2xs cursor-pointer transition-colors"
+                  className="btn-primary text-[11px] py-1 px-3 rounded-lg"
                 >
                   Save
                 </button>
