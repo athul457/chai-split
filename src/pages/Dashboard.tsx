@@ -35,7 +35,8 @@ export const Dashboard: React.FC<DashboardProps> = () => {
     getActiveSessionForGroup,
     pastSessions,
     confirmMemberOrder,
-    addCustomMenuItem
+    addCustomMenuItem,
+    addNewSession
   } = useExpense()
 
   // Navigation tab state (Home is the default home tab)
@@ -515,6 +516,34 @@ export const Dashboard: React.FC<DashboardProps> = () => {
     setTimeout(() => setCopyNotice(null), 3000)
   }
 
+  // Handle quick start break for a group
+  const handleStartBreakForGroup = (targetGroup: Group) => {
+    const existing = getActiveSessionForGroup(targetGroup.id)
+    if (existing && existing.status === 'active') {
+      setViewingBreakGroupId(targetGroup.id)
+      return
+    }
+
+    const title = `${targetGroup.name} Tea Break`
+    const success = addNewSession(
+      title,
+      targetGroup.shopName || 'Chayakkada',
+      targetGroup.members,
+      targetGroup.id,
+      targetGroup.name,
+      targetGroup.payerId || user?.id,
+      targetGroup.shopId,
+      user?.id,
+      user?.name
+    )
+
+    if (success) {
+      setViewingBreakGroupId(targetGroup.id)
+    } else {
+      setShowCannotSettleModal(true)
+    }
+  }
+
 
 
   // Handle add custom item
@@ -974,27 +1003,64 @@ export const Dashboard: React.FC<DashboardProps> = () => {
         {/* -------------------- 1. MY ORDERS & OTHERS' ORDERS TABS -------------------- */}
         {(activeTab === 'my-orders' || activeTab === 'others-orders' || activeTab === 'details') && (
           (() => {
-            const currentBreakGroup =
-              (viewingBreakGroupId ? groups.find(g => g.id === viewingBreakGroupId) : null) ||
-              (activeSession?.groupId ? groups.find(g => g.id === activeSession.groupId) : null) ||
+            const isOthersTab = activeTab === 'others-orders'
+
+            // RULE 1: If user is NOT a part of any group -> Show Create Group & Join Group options
+            if (groups.length === 0) {
+              return (
+                <div className="p-8 text-center bg-white dark:bg-stone-900 rounded-3xl border border-stone-200/80 dark:border-stone-800 shadow-sm space-y-5 my-3 animate-in fade-in">
+                  <div className="w-16 h-16 rounded-3xl bg-amber-500/10 dark:bg-amber-500/20 text-amber-600 dark:text-amber-400 flex items-center justify-center mx-auto shadow-inner border border-amber-500/20">
+                    <Users className="w-8 h-8" />
+                  </div>
+                  <div className="space-y-1.5 max-w-sm mx-auto">
+                    <h3 className="font-heading font-black text-lg text-stone-900 dark:text-stone-100">
+                      {isOthersTab ? "Join a Group to View Orders" : "Join a Group to Order"}
+                    </h3>
+                    <p className="text-xs text-stone-500 dark:text-stone-400 leading-relaxed">
+                      {isOthersTab
+                        ? "You are not a part of any group yet. Create a group or join with a Group ID to see live orders from your colleagues."
+                        : "You are not a part of any group yet. Create or join a tea group first to start placing tea and snack orders."}
+                    </p>
+                  </div>
+                  <div className="flex flex-col sm:flex-row items-center justify-center gap-2.5 pt-2 max-w-xs mx-auto">
+                    <button
+                      type="button"
+                      onClick={() => setShowCreateGroupModal(true)}
+                      id="orders-create-group-btn"
+                      className="w-full sm:w-auto px-5 py-2.5 rounded-xl text-xs font-bold bg-amber-600 hover:bg-amber-700 text-white shadow-xs cursor-pointer active:scale-95 transition-all flex items-center justify-center gap-1.5"
+                    >
+                      <Plus className="w-4 h-4" />
+                      <span>Create Group</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setShowJoinGroupModal(true)}
+                      id="orders-join-group-btn"
+                      className="w-full sm:w-auto px-5 py-2.5 rounded-xl text-xs font-bold bg-stone-100 hover:bg-stone-200 dark:bg-stone-800 dark:hover:bg-stone-700 text-stone-800 dark:text-stone-200 border border-stone-300 dark:border-stone-700 cursor-pointer active:scale-95 transition-all flex items-center justify-center gap-1.5"
+                    >
+                      <KeyRound className="w-4 h-4 text-amber-600" />
+                      <span>Join Group</span>
+                    </button>
+                  </div>
+                </div>
+              )
+            }
+
+            // Find if any of the user's groups currently has a genuine live break
+            const liveGroupWithBreak =
+              (viewingBreakGroupId ? groups.find(g => g.id === viewingBreakGroupId && getActiveSessionForGroup(g.id)?.status === 'active') : null) ||
               groups.find(g => {
                 const s = getActiveSessionForGroup(g.id)
                 return s && s.status === 'active'
-              }) ||
-              activeGroup
+              })
 
-            const sessionForGroup = currentBreakGroup?.id ? getActiveSessionForGroup(currentBreakGroup.id) : undefined
-            const isBreakLive = Boolean(
-              (sessionForGroup && sessionForGroup.status === 'active') ||
-              (activeSession && activeSession.status === 'active')
-            )
-
-            if (currentBreakGroup && isBreakLive) {
+            // RULE 2: If there IS a real live break in one of user's groups -> Render TeaBreakPage
+            if (liveGroupWithBreak) {
               return (
                 <TeaBreakPage
-                  group={currentBreakGroup}
+                  group={liveGroupWithBreak}
                   currentUser={user}
-                  initialSubView={activeTab === 'others-orders' ? 'others-orders' : 'my-orders'}
+                  initialSubView={isOthersTab ? 'others-orders' : 'my-orders'}
                   onSubViewChange={(sub) => setActiveTab(sub)}
                   onBack={() => {
                     setViewingBreakGroupId(null)
@@ -1004,63 +1070,54 @@ export const Dashboard: React.FC<DashboardProps> = () => {
               )
             }
 
-            // Empty state when no live break is active
-            const isOthersTab = activeTab === 'others-orders'
+            // RULE 3: User IS part of group(s), but NOT in a break -> Show option for Create Break (No dummy break!)
             return (
-              <div className="p-8 text-center bg-white dark:bg-stone-900 rounded-2xl border border-stone-200 dark:border-stone-800 space-y-4 my-2">
-                <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-amber-500/10 to-orange-500/10 text-amber-700 dark:text-amber-300 flex items-center justify-center mx-auto text-2xl shadow-xs border border-amber-500/20">
-                  {isOthersTab ? <Users className="w-7 h-7 text-amber-600" /> : <Coffee className="w-7 h-7 text-amber-600" />}
+              <div className="p-8 text-center bg-white dark:bg-stone-900 rounded-3xl border border-stone-200/80 dark:border-stone-800 shadow-sm space-y-5 my-3 animate-in fade-in">
+                <div className="w-16 h-16 rounded-3xl bg-amber-500/10 dark:bg-amber-500/20 text-amber-600 dark:text-amber-400 flex items-center justify-center mx-auto shadow-inner border border-amber-500/20">
+                  <Coffee className="w-8 h-8" />
                 </div>
-                <div className="space-y-1.5">
-                  <h3 className="font-heading font-extrabold text-base text-stone-900 dark:text-stone-100">
-                    {isOthersTab ? "No Live Group Orders" : "No Active Orders"}
+                <div className="space-y-1.5 max-w-sm mx-auto">
+                  <h3 className="font-heading font-black text-lg text-stone-900 dark:text-stone-100">
+                    {isOthersTab ? "No Live Break Running" : "No Active Tea Break"}
                   </h3>
-                  <p className="text-xs text-stone-500 dark:text-stone-400 max-w-xs mx-auto leading-relaxed">
+                  <p className="text-xs text-stone-500 dark:text-stone-400 leading-relaxed">
                     {isOthersTab
-                      ? "Colleagues' orders and the group bill breakdown will appear here during an active tea break."
-                      : "You can add and manage your cup once a tea break is started in one of your groups."}
+                      ? "There is no live tea break running in your groups right now. Start a break with your team to collect everyone's orders!"
+                      : "You are not part of an ongoing tea break. Start a break with your group to order tea & snacks!"}
                   </p>
                 </div>
 
-                {groups.length > 0 ? (
-                  <div className="pt-2 space-y-2 max-w-sm mx-auto">
-                    <div className="text-[11px] font-bold text-stone-400 uppercase tracking-wider">
-                      Select a group to start a break:
-                    </div>
-                    <div className="space-y-1.5 text-left">
-                      {groups.slice(0, 3).map(g => (
-                        <button
-                          key={g.id}
-                          type="button"
-                          onClick={() => {
-                            setActiveGroupId(g.id)
-                            setViewingGroupId(g.id)
-                            setActiveTab('home')
-                          }}
-                          className="w-full p-2.5 rounded-xl border border-stone-200 dark:border-stone-800 hover:border-amber-500 bg-stone-50/50 dark:bg-stone-800/40 hover:bg-amber-50/40 dark:hover:bg-amber-950/20 flex items-center justify-between transition-all cursor-pointer text-xs"
-                        >
-                          <div className="truncate font-semibold text-stone-800 dark:text-stone-200">
-                            {g.name}
-                          </div>
-                          <span className="text-amber-600 text-[11px] font-bold shrink-0">
-                            Open Group →
-                          </span>
-                        </button>
-                      ))}
-                    </div>
+                <div className="pt-2 max-w-sm mx-auto space-y-3">
+                  <div className="text-[11px] font-bold text-stone-400 uppercase tracking-wider">
+                    Start a break for your group:
                   </div>
-                ) : (
-                  <button
-                    onClick={() => {
-                      setActiveTab('home')
-                      setShowCreateGroupModal(true)
-                    }}
-                    className="px-4 py-2.5 rounded-xl font-bold text-xs bg-amber-600 hover:bg-amber-700 text-white shadow-xs cursor-pointer inline-flex items-center gap-1.5 active:scale-95 transition-all"
-                  >
-                    <Plus className="w-3.5 h-3.5" />
-                    <span>Create a Group</span>
-                  </button>
-                )}
+                  <div className="space-y-2 text-left">
+                    {groups.map(g => (
+                      <div
+                        key={g.id}
+                        className="p-3 rounded-2xl border border-stone-200 dark:border-stone-800 bg-stone-50/60 dark:bg-stone-850 flex items-center justify-between gap-2.5 transition-all hover:border-amber-400"
+                      >
+                        <div className="min-w-0">
+                          <h4 className="font-bold text-xs text-stone-900 dark:text-stone-100 truncate">
+                            {g.name}
+                          </h4>
+                          <p className="text-[10px] text-stone-400 truncate">
+                            📍 {g.shopName || 'Chayakkada'} • {g.members?.length || 1} members
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleStartBreakForGroup(g)}
+                          id={`start-break-btn-${g.id}`}
+                          className="px-3.5 py-2 rounded-xl text-xs font-bold bg-amber-600 hover:bg-amber-700 text-white shadow-xs cursor-pointer active:scale-95 transition-all shrink-0 flex items-center gap-1.5"
+                        >
+                          <Coffee className="w-3.5 h-3.5" />
+                          <span>Create Break</span>
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
               </div>
             )
           })()
@@ -1123,9 +1180,6 @@ export const Dashboard: React.FC<DashboardProps> = () => {
                   {user?.avatar || user?.name?.slice(0, 2).toUpperCase() || 'U'}
                 </div>
                 <div className="min-w-0">
-                  <div className="text-[10px] uppercase font-bold tracking-wider text-amber-200">
-                    ChaiBreak Hub
-                  </div>
                   <h2 className="font-heading font-extrabold text-base text-white truncate">
                     Welcome, {user?.name || 'Friend'}!
                   </h2>
@@ -1829,13 +1883,13 @@ export const Dashboard: React.FC<DashboardProps> = () => {
                 Break is running cannot create at the moment
               </h3>
               <p className="text-xs text-stone-600 dark:text-stone-400 leading-relaxed">
-                Not everyone can close the break. Who created the break ({activeSession?.creatorName || 'the break creator'}) can only close or settle the break.
+                Not everyone can close the break. Who created the break ({activeSession?.creatorName || 'the break creator'}) or the group admin can close or settle the break.
               </p>
               <div className="p-2.5 rounded-xl bg-amber-50/80 dark:bg-amber-950/40 border border-amber-200/60 dark:border-amber-900/40 text-[11px] text-amber-800 dark:text-amber-300 font-medium text-left space-y-1">
                 <div>• Current Break: <strong>{activeSession?.title || 'Tea Break'}</strong></div>
                 <div>• Created by: <strong>{activeSession?.creatorName || 'Creator'}</strong></div>
                 <div className="text-[10px] text-stone-500 dark:text-stone-400 pt-0.5">
-                  Only one break can be created at a time. Please ask <strong>{activeSession?.creatorName || 'the creator'}</strong> to close or settle this session.
+                  Only one break can be created at a time. Please ask <strong>{activeSession?.creatorName || 'the creator'}</strong> or the group admin to close or settle this session.
                 </div>
               </div>
             </div>

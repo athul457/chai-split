@@ -46,9 +46,9 @@ interface ExpenseContextType {
     creatorId?: string,
     creatorName?: string
   ) => boolean
-  cancelActiveSession: (userId?: string, sessionId?: string) => boolean
-  deleteActiveSession: (userId?: string, sessionId?: string) => { success: boolean; message: string }
-  settleActiveSession: (sessionId?: string, userId?: string) => void
+  cancelActiveSession: (userId?: string, sessionId?: string, isAdmin?: boolean) => boolean
+  deleteActiveSession: (userId?: string, sessionId?: string, isAdmin?: boolean) => { success: boolean; message: string }
+  settleActiveSession: (sessionId?: string, userId?: string, isAdmin?: boolean) => void
   addMemberToSession: (user: User) => void
   getMenuItemsForShop: (shopId?: string) => MenuItem[]
   addCustomMenuItem: (
@@ -1274,14 +1274,14 @@ export const ExpenseProvider: React.FC<{ children: React.ReactNode }> = ({ child
     broadcastSessionUpdated(updatedSession)
   }
 
-  const deleteActiveSession = (userId?: string, sessionId?: string): { success: boolean; message: string } => {
+  const deleteActiveSession = (userId?: string, sessionId?: string, isAdmin?: boolean): { success: boolean; message: string } => {
     const targetSession = (sessionId ? activeSessions.find(s => s.id === sessionId) : null) || activeSession
     if (!targetSession) {
       return { success: false, message: 'No active tea break found.' }
     }
 
-    // Only the creator who created the break can delete / close the break
-    if (userId) {
+    // Break closing rule: Both the person who created the break AND the group admin can close or delete it
+    if (userId && !isAdmin) {
       const isCreator =
         (targetSession.creatorId && (
           targetSession.creatorId === userId ||
@@ -1295,7 +1295,7 @@ export const ExpenseProvider: React.FC<{ children: React.ReactNode }> = ({ child
       if (!isCreator) {
         return {
           success: false,
-          message: `Break is running cannot create at the moment. Only ${targetSession.creatorName || 'the creator'} who created the break can close it.`
+          message: `Break is running cannot create at the moment. Only ${targetSession.creatorName || 'the creator'} who created the break or the group admin can close it.`
         }
       }
     }
@@ -1315,8 +1315,8 @@ export const ExpenseProvider: React.FC<{ children: React.ReactNode }> = ({ child
     return { success: true, message: 'Tea break closed successfully. A new break can now be started!' }
   }
 
-  const cancelActiveSession = (userId?: string, sessionId?: string): boolean => {
-    const res = deleteActiveSession(userId, sessionId)
+  const cancelActiveSession = (userId?: string, sessionId?: string, isAdmin?: boolean): boolean => {
+    const res = deleteActiveSession(userId, sessionId, isAdmin)
     return res.success
   }
 
@@ -1455,11 +1455,12 @@ export const ExpenseProvider: React.FC<{ children: React.ReactNode }> = ({ child
     return true
   }
 
-  const settleActiveSession = (sessionId?: string, userId?: string) => {
+  const settleActiveSession = (sessionId?: string, userId?: string, isAdmin?: boolean) => {
     const targetSession = (sessionId ? activeSessions.find(s => s.id === sessionId) : null) || activeSession
     if (!targetSession) return
 
-    if (userId) {
+    // Break closing rule: Both the person who created the break AND the group admin can settle it
+    if (userId && !isAdmin) {
       const isCreator =
         (targetSession.creatorId && (
           targetSession.creatorId === userId ||
@@ -1470,7 +1471,7 @@ export const ExpenseProvider: React.FC<{ children: React.ReactNode }> = ({ child
           targetSession.creatorName?.toLowerCase() === userId.toLowerCase()
         ))
       if (!isCreator) {
-        console.warn('Break is running cannot create at the moment. Only the creator who created the break can settle it.')
+        console.warn('Break is running cannot create at the moment. Only the creator or the group admin can settle it.')
         return
       }
     }
