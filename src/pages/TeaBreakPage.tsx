@@ -27,6 +27,7 @@ import { useAuth } from '../context/AuthContext'
 import { useExpense } from '../context/ExpenseContext'
 import { ChaiLoader } from '../components/ChaiLoader'
 import { getItemIconConfig } from '../utils/itemIcons'
+import { OrderSuccessModal } from '../components/OrderSuccessModal'
 import type { Group, MenuItem, User, MemberExpense } from '../types'
 
 interface TeaBreakPageProps {
@@ -86,6 +87,7 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
   const [isSettling, setIsSettling] = useState(false)
   const [isDeletingBreak, setIsDeletingBreak] = useState(false)
   const [isConfirming, setIsConfirming] = useState(false)
+  const [showOrderSuccessModal, setShowOrderSuccessModal] = useState(false)
   const [isCupDrawerOpen, setIsCupDrawerOpen] = useState(false)
   const [showAllMembersList, setShowAllMembersList] = useState(false)
 
@@ -209,6 +211,7 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
     try {
       await confirmMemberOrder(targetUserId, activeSession?.id)
       showToast('Order confirmed! Your items are now locked.')
+      setShowOrderSuccessModal(true)
     } catch {
       showToast('Could not confirm order. Please try again.')
     } finally {
@@ -1067,6 +1070,9 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
                                 e.stopPropagation()
                                 await confirmMemberOrder(expense.memberId, activeSession?.id)
                                 showToast(`Confirmed items for ${expense.memberName}`)
+                                if (isUser) {
+                                  setShowOrderSuccessModal(true)
+                                }
                               }}
                               className="text-[10px] font-bold text-emerald-700 dark:text-emerald-300 hover:text-emerald-800 bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-300 dark:border-emerald-800 px-2 py-0.5 rounded-lg cursor-pointer hover:bg-emerald-100 dark:hover:bg-emerald-900 transition-colors flex items-center gap-1"
                             >
@@ -1744,10 +1750,16 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
               <div className="flex items-center gap-1.5">
                 {isMyOrderConfirmed ? (
                   <div className="flex items-center gap-1.5">
-                    <span className="px-3 py-1.5 rounded-full bg-emerald-100 dark:bg-emerald-950/80 text-emerald-800 dark:text-emerald-300 font-bold text-xs flex items-center gap-1.5 border border-emerald-300 dark:border-emerald-800 shadow-2xs">
+                    <button
+                      type="button"
+                      onClick={() => setShowOrderSuccessModal(true)}
+                      id="view-confirmed-summary-btn"
+                      className="px-3 py-1.5 rounded-full bg-emerald-100 hover:bg-emerald-200 dark:bg-emerald-950/80 dark:hover:bg-emerald-900 text-emerald-800 dark:text-emerald-300 font-bold text-xs flex items-center gap-1.5 border border-emerald-300 dark:border-emerald-800 shadow-2xs cursor-pointer transition-colors"
+                      title="View order summary & nutrition insights"
+                    >
                       <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
                       <span>Confirmed</span>
-                    </span>
+                    </button>
                   </div>
                 ) : (
                   <button
@@ -1767,6 +1779,15 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
           </div>
         </div>
       )}
+
+      {/* Order Confirmation Success Modal with Nutrition & Health Insights */}
+      <OrderSuccessModal
+        isOpen={showOrderSuccessModal}
+        onClose={() => setShowOrderSuccessModal(false)}
+        items={currentUserExpense?.items || []}
+        totalAmount={myTotal}
+        sessionTitle={activeSession?.title}
+      />
     </div>
   )
 }
