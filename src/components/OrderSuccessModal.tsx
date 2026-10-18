@@ -1,5 +1,5 @@
 import React from 'react'
-import { X, CheckCircle2 } from 'lucide-react'
+import { X, CheckCircle2, Star } from 'lucide-react'
 import { calculateOrderNutrition } from '../utils/nutrition'
 import { getItemIconConfig } from '../utils/itemIcons'
 import type { OrderItem } from '../types'
@@ -29,46 +29,45 @@ export const OrderSuccessModal: React.FC<OrderSuccessModalProps> = ({
     }))
   )
 
-  // Highlighted rating config with color and emoji
-  const getRatingHighlight = (rating: number) => {
-    if (rating >= 4.2) {
+  // Prominent health status & background based on health rating:
+  // Red for unhealthy (< 2.3), Yellow for average (2.3 - 3.4), Green for good (>= 3.5)
+  const getHealthStatusConfig = (rating: number) => {
+    if (rating >= 3.5) {
       return {
+        status: 'Good Health',
         emoji: '🥗',
-        label: 'Super Healthy',
-        bg: 'bg-emerald-100/80 dark:bg-emerald-950/70',
-        textColor: 'text-emerald-800 dark:text-emerald-300'
+        cardBg: 'bg-emerald-500/15 dark:bg-emerald-500/25 border border-emerald-500/30',
+        textColor: 'text-emerald-800 dark:text-emerald-200',
+        badgeBg: 'bg-emerald-600/20 text-emerald-900 dark:text-emerald-100',
+        starColor: 'text-emerald-600 dark:text-emerald-400'
       }
     }
-    if (rating >= 3.2) {
+    if (rating >= 2.3) {
       return {
-        emoji: '🥑',
-        label: 'Balanced Choice',
-        bg: 'bg-teal-100/80 dark:bg-teal-950/70',
-        textColor: 'text-teal-800 dark:text-teal-300'
-      }
-    }
-    if (rating >= 2.2) {
-      return {
+        status: 'Average Health',
         emoji: '⚡',
-        label: 'Moderate Energy',
-        bg: 'bg-amber-100/80 dark:bg-amber-950/70',
-        textColor: 'text-amber-800 dark:text-amber-300'
+        cardBg: 'bg-amber-500/15 dark:bg-amber-500/25 border border-amber-500/30',
+        textColor: 'text-amber-800 dark:text-amber-200',
+        badgeBg: 'bg-amber-600/20 text-amber-900 dark:text-amber-100',
+        starColor: 'text-amber-600 dark:text-amber-400'
       }
     }
     return {
-      emoji: '🍩',
-      label: 'Indulgent Treat',
-      bg: 'bg-orange-100/80 dark:bg-orange-950/70',
-      textColor: 'text-orange-800 dark:text-orange-300'
+      status: 'Unhealthy Choice',
+      emoji: '⚠️',
+      cardBg: 'bg-rose-500/15 dark:bg-rose-500/25 border border-rose-500/30',
+      textColor: 'text-rose-800 dark:text-rose-200',
+      badgeBg: 'bg-rose-600/20 text-rose-900 dark:text-rose-100',
+      starColor: 'text-rose-600 dark:text-rose-400'
     }
   }
 
-  const ratingHighlight = getRatingHighlight(nutrition.averageHealthRating)
+  const healthConfig = getHealthStatusConfig(nutrition.averageHealthRating)
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-150">
       <div
-        className="w-full max-w-[390px] bg-white dark:bg-[#1C1917] rounded-3xl shadow-2xl border border-stone-200/80 dark:border-stone-800 overflow-hidden flex flex-col max-h-[82vh] transition-all"
+        className="w-full max-w-[390px] bg-white dark:bg-[#1C1917] rounded-3xl shadow-2xl border border-stone-200/80 dark:border-stone-800 overflow-hidden flex flex-col max-h-[84vh] transition-all"
         role="dialog"
         aria-modal="true"
         aria-labelledby="success-modal-title"
@@ -103,38 +102,56 @@ export const OrderSuccessModal: React.FC<OrderSuccessModalProps> = ({
           </button>
         </div>
 
-        {/* Modal Body with clean spacing */}
-        <div className="p-4 overflow-y-auto space-y-4 text-xs">
-          {/* Top Summary Bar: Total & Highlighted Health Rating in one unified row */}
-          <div className="flex items-center justify-between gap-2 px-0.5">
+        {/* Modal Body */}
+        <div className="p-4 overflow-y-auto space-y-3.5 text-xs">
+          {/* Top Summary Bar: Total Amount & Item Count */}
+          <div className="flex items-center justify-between px-1">
             <div>
               <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wider block">
                 Total Amount
               </span>
-              <div className="flex items-baseline gap-1.5 mt-0.5">
-                <span className="font-heading font-black text-xl text-stone-900 dark:text-stone-100">
-                  ₹{totalAmount}
-                </span>
-                <span className="text-[11px] font-bold text-[#FF7043] dark:text-[#FF8A65]">
-                  ({nutrition.totalItems} {nutrition.totalItems === 1 ? 'item' : 'items'})
-                </span>
+              <div className="font-heading font-black text-2xl text-stone-900 dark:text-stone-100 mt-0.5">
+                ₹{totalAmount}
               </div>
             </div>
 
-            {/* Highlighted Rating with color & emoji */}
-            <div
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full ${ratingHighlight.bg} ${ratingHighlight.textColor} font-bold text-xs shrink-0`}
-            >
-              <span className="text-sm leading-none">{ratingHighlight.emoji}</span>
-              <span>{nutrition.averageHealthRating}</span>
-              <span className="text-[10px] opacity-70">/ 5</span>
-              <span className="text-[10px] font-semibold ml-0.5 opacity-90 hidden sm:inline">
-                • {ratingHighlight.label}
+            <div className="text-right">
+              <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wider block">
+                Items Ordered
+              </span>
+              <span className="font-heading font-bold text-sm text-[#FF7043] dark:text-[#FF8A65] mt-0.5 block">
+                {nutrition.totalItems} {nutrition.totalItems === 1 ? 'item' : 'items'}
               </span>
             </div>
           </div>
 
-          {/* Unified Nutrition Strip (Clean 4 metrics, no bulky nested cards) */}
+          {/* Prominent Health Rating Banner with background based on health status */}
+          <div
+            className={`p-3.5 rounded-2xl ${healthConfig.cardBg} flex items-center justify-between shadow-2xs transition-all`}
+          >
+            <div className="flex items-center gap-3">
+              <span className="text-2xl leading-none">{healthConfig.emoji}</span>
+              <div>
+                <span className="text-[10px] font-bold uppercase tracking-wider opacity-75 block leading-none">
+                  Health Status
+                </span>
+                <span className={`text-sm font-black ${healthConfig.textColor} mt-1 block`}>
+                  {healthConfig.status}
+                </span>
+              </div>
+            </div>
+
+            {/* Prominent Score Badge */}
+            <div
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl ${healthConfig.badgeBg} font-heading font-black text-sm shadow-2xs`}
+            >
+              <Star className={`w-3.5 h-3.5 fill-current ${healthConfig.starColor}`} />
+              <span className={healthConfig.textColor}>{nutrition.averageHealthRating}</span>
+              <span className="text-[10px] font-medium opacity-65">/ 5</span>
+            </div>
+          </div>
+
+          {/* Unified Nutrition Strip */}
           <div className="p-3 rounded-2xl bg-stone-50 dark:bg-stone-850/60 border border-stone-150 dark:border-stone-800">
             <div className="text-[10px] font-bold text-stone-400 uppercase tracking-wider mb-2 px-1">
               Nutrition Breakdown
@@ -174,7 +191,7 @@ export const OrderSuccessModal: React.FC<OrderSuccessModalProps> = ({
             </div>
           </div>
 
-          {/* Simple Items List (Clean rows, light styling) */}
+          {/* Simple Items List */}
           <div className="space-y-1.5 pt-0.5">
             <div className="flex items-center justify-between text-stone-400 dark:text-stone-500 font-bold text-[10px] uppercase tracking-wider px-1">
               <span>Items ({nutrition.totalItems})</span>
