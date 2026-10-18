@@ -933,7 +933,7 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
                           </span>
                         )}
                         {isConfirmed && (
-                          <span className="px-1.5 py-0.2 rounded text-[9px] bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 font-bold flex items-center gap-0.5 border border-emerald-300 dark:border-emerald-800">
+                          <span className="px-1.5 py-0.2 rounded text-[9px] bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 font-bold flex items-center gap-0.5 border-0">
                             <CheckCircle2 className="w-2.5 h-2.5 text-emerald-600" />
                             <span>Confirmed</span>
                           </span>
@@ -1074,7 +1074,7 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
                                   setShowOrderSuccessModal(true)
                                 }
                               }}
-                              className="text-[10px] font-bold text-emerald-700 dark:text-emerald-300 hover:text-emerald-800 bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-300 dark:border-emerald-800 px-2 py-0.5 rounded-lg cursor-pointer hover:bg-emerald-100 dark:hover:bg-emerald-900 transition-colors flex items-center gap-1"
+                              className="text-[10px] font-bold text-emerald-700 dark:text-emerald-300 hover:text-emerald-800 bg-emerald-100/90 dark:bg-emerald-950/80 px-2.5 py-0.5 rounded-lg cursor-pointer hover:bg-emerald-200 dark:hover:bg-emerald-900 transition-colors flex items-center gap-1 border-0 border-none outline-none"
                             >
                               <CheckCircle2 className="w-2.5 h-2.5 text-emerald-600" />
                               <span>Confirm Items</span>
@@ -1754,7 +1754,7 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
                       type="button"
                       onClick={() => setShowOrderSuccessModal(true)}
                       id="view-confirmed-summary-btn"
-                      className="px-3 py-1.5 rounded-full bg-emerald-100 hover:bg-emerald-200 dark:bg-emerald-950/80 dark:hover:bg-emerald-900 text-emerald-800 dark:text-emerald-300 font-bold text-xs flex items-center gap-1.5 border border-emerald-300 dark:border-emerald-800 shadow-2xs cursor-pointer transition-colors"
+                      className="px-3.5 py-1.5 rounded-full bg-emerald-100 hover:bg-emerald-200 dark:bg-emerald-950/80 dark:hover:bg-emerald-900 text-emerald-800 dark:text-emerald-300 font-bold text-xs flex items-center gap-1.5 border-0 border-none outline-none focus:outline-none focus:ring-0 shadow-2xs cursor-pointer transition-colors"
                       title="View order summary & nutrition insights"
                     >
                       <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
@@ -1767,7 +1767,7 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
                     onClick={handleConfirmMyOrder}
                     disabled={isConfirming || !currentUserExpense || currentUserExpense.items.length === 0}
                     id="confirm-my-order-popup-btn"
-                    className="py-2 px-4 rounded-full bg-[#1B9C56] hover:bg-[#158045] disabled:opacity-50 text-white font-bold text-xs shadow-xs cursor-pointer transition-all active:scale-95 flex items-center gap-1.5"
+                    className="py-2 px-4 rounded-full bg-[#1B9C56] hover:bg-[#158045] disabled:opacity-50 text-white font-bold text-xs shadow-xs cursor-pointer transition-all active:scale-95 flex items-center gap-1.5 border-0 border-none outline-none focus:outline-none focus:ring-0"
                     title="Confirm and lock your items"
                   >
                     <CheckCircle2 className="w-3.5 h-3.5" />

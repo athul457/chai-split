@@ -68,7 +68,7 @@ export const OrderSuccessModal: React.FC<OrderSuccessModalProps> = ({
                 >
                   Order Confirmed!
                 </h3>
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950/80 text-emerald-800 dark:text-emerald-300 border border-emerald-300/60 dark:border-emerald-800">
+                <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950/80 text-emerald-800 dark:text-emerald-300 border-0">
                   Locked
                 </span>
               </div>
