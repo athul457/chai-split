@@ -516,35 +516,35 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
         </div>
       )}
 
-      {/* Single Unified Top Order Card */}
-      <div className="bg-white dark:bg-stone-900 rounded-3xl p-5 shadow-sm space-y-4 border border-stone-200/60 dark:border-stone-800">
+      {/* Single Unified Top Order Card - Compact & Balanced */}
+      <div className="bg-white dark:bg-stone-900 rounded-2xl p-3.5 shadow-xs space-y-2.5 border border-stone-200/60 dark:border-stone-800">
         {/* Row 1: Group Name & Meta + Actions */}
-        <div className="flex items-start justify-between gap-3">
+        <div className="flex items-center justify-between gap-2">
           <div className="min-w-0">
-            <h2 className="font-heading font-black text-xl text-stone-900 dark:text-stone-100 truncate tracking-tight">
+            <h2 className="font-heading font-black text-base text-stone-900 dark:text-stone-100 truncate tracking-tight">
               {group?.name || activeSession.title}
             </h2>
-            <p className="text-xs text-stone-400 font-medium truncate mt-0.5">
+            <p className="text-[11px] text-stone-400 font-medium truncate">
               {activeSession.shopName} • ID: {group.code || group.id}
             </p>
           </div>
 
-          <div className="flex items-center gap-2 shrink-0">
+          <div className="flex items-center gap-1.5 shrink-0">
             <button
               type="button"
               onClick={handleShareWhatsApp}
               id="share-break-whatsapp-btn"
               title="Share order on WhatsApp"
-              className="bg-stone-900 hover:bg-black text-white px-3.5 py-1.5 rounded-full font-bold text-xs shadow-xs cursor-pointer active:scale-95 transition-all flex items-center gap-1.5"
+              className="bg-stone-900 hover:bg-black text-white px-3 py-1 rounded-full font-bold text-xs shadow-2xs cursor-pointer active:scale-95 transition-all flex items-center gap-1"
             >
-              <Share2 className="w-3.5 h-3.5" />
+              <Share2 className="w-3 h-3" />
               <span>Share</span>
             </button>
             {canCloseBreak && (
               <button
                 type="button"
                 onClick={() => setShowCancelConfirm(true)}
-                className="bg-[#FF7043] hover:bg-[#F4511E] text-white px-3.5 py-1.5 rounded-full font-bold text-xs shadow-xs cursor-pointer active:scale-95 transition-all"
+                className="bg-[#FF7043] hover:bg-[#F4511E] text-white px-3 py-1 rounded-full font-bold text-xs shadow-2xs cursor-pointer active:scale-95 transition-all"
               >
                 End Break
               </button>
@@ -552,39 +552,41 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
           </div>
         </div>
 
-        {/* Row 2: Bill Amount with strong font hierarchy */}
-        <div className="pt-2 border-t border-stone-100 dark:border-stone-800">
-          <div className="text-[11px] font-bold text-stone-400 uppercase tracking-wider">
-            {isDesignatedPayer || isAdmin ? 'Total break bill' : 'Your order total'}
-          </div>
-          <div className="font-heading font-black text-3xl text-[#1B9C56] tracking-tight mt-0.5">
-            ₹{isDesignatedPayer || isAdmin ? activeSession.totalAmount : myTotal}
-          </div>
-        </div>
-
-        {/* Row 3: Member breakdown summary ('Who owes whom?') */}
-        {membersWithItems.length > 0 && (
-          <div className="pt-2.5 border-t border-stone-100 dark:border-stone-800 space-y-2">
-            <div className="text-[11px] font-bold text-stone-400 uppercase tracking-wider">
-              Who owes whom?
+        {/* Row 2: Bill Amount + Who Owes Whom in a clean balanced 2-column layout */}
+        <div className="pt-2 border-t border-stone-100 dark:border-stone-800 flex items-center justify-between gap-3">
+          <div>
+            <div className="text-[10px] font-bold text-stone-400 uppercase tracking-wider">
+              {isDesignatedPayer || isAdmin ? 'Total break bill' : 'Your order total'}
             </div>
-            <div className="space-y-2 max-h-24 overflow-y-auto pr-1">
-              {membersWithItems.map(m => (
-                <div key={m.memberId} className="flex items-center justify-between text-xs">
-                  <div className="flex items-center gap-2 text-stone-700 dark:text-stone-300">
-                    <div className="w-6 h-6 rounded-full bg-stone-200 dark:bg-stone-700 text-[10px] font-bold flex items-center justify-center shrink-0">
+            <div className="font-heading font-black text-2xl text-[#1B9C56] tracking-tight leading-tight mt-0.5">
+              ₹{isDesignatedPayer || isAdmin ? activeSession.totalAmount : myTotal}
+            </div>
+          </div>
+
+          {/* Member debts breakdown right alongside */}
+          {membersWithItems.length > 0 && (
+            <div className="text-right min-w-0 max-w-[55%]">
+              <div className="text-[10px] font-bold text-stone-400 uppercase tracking-wider">
+                Who owes whom?
+              </div>
+              <div className="space-y-0.5 mt-0.5 max-h-12 overflow-y-auto">
+                {membersWithItems.map(m => (
+                  <div key={m.memberId} className="flex items-center justify-end gap-1.5 text-xs">
+                    <div className="w-4 h-4 rounded-full bg-stone-200 dark:bg-stone-700 text-[9px] font-bold flex items-center justify-center shrink-0">
                       {m.memberName?.slice(0, 1).toUpperCase()}
                     </div>
-                    <span className="truncate">{m.memberName} {m.memberId === effectiveUser?.id ? '(You)' : 'owes'}</span>
+                    <span className="truncate text-stone-600 dark:text-stone-300 text-[11px]">
+                      {m.memberName} {m.memberId === effectiveUser?.id ? '(You)' : ''}
+                    </span>
+                    <span className="font-bold text-stone-900 dark:text-stone-100 text-[11px] shrink-0">
+                      ₹{m.total}
+                    </span>
                   </div>
-                  <span className="font-bold text-stone-900 dark:text-stone-100 shrink-0">
-                    ₹{m.total}
-                  </span>
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
-          </div>
-        )}
+          )}
+        </div>
       </div>
 
       {/* ---------------- VIEW TOGGLE: MY ORDERS vs OTHERS' ORDERS ---------------- */}
