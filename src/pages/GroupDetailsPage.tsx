@@ -29,6 +29,7 @@ import type { Group, User, MenuItem } from '../types'
 import { TeaBreakPage } from './TeaBreakPage'
 import { HistoryPage } from './HistoryPage'
 import { getUserCode } from '../utils/userCode'
+import { getItemIconConfig } from '../utils/itemIcons'
 
 interface GroupDetailsPageProps {
   group: Group
@@ -1007,15 +1008,27 @@ export const GroupDetailsPage: React.FC<GroupDetailsPageProps> = ({
                   </div>
                 ) : (
                   <div className="space-y-2">
-                    {groupShopItems.map(item => (
-                      <div
-                        key={item.id}
-                        className="p-3 rounded-xl border border-stone-200/90 dark:border-stone-800 bg-stone-50/60 dark:bg-stone-800/40 flex items-center justify-between gap-3 hover:border-amber-400 dark:hover:border-amber-500/50 transition-all"
-                      >
-                        {/* Item Name Only (No images/emojis) */}
-                        <div className="font-semibold text-xs text-stone-900 dark:text-stone-100 truncate min-w-0">
-                          {item.name}
-                        </div>
+                    {groupShopItems.map(item => {
+                      const iconCfg = getItemIconConfig(item.name, item.category, item.emoji)
+                      return (
+                        <div
+                          key={item.id}
+                          className="p-3 rounded-2xl border border-stone-200/90 dark:border-stone-800 bg-stone-50/60 dark:bg-stone-800/40 flex items-center justify-between gap-3 hover:border-amber-400 dark:hover:border-amber-500/50 transition-all shadow-2xs"
+                        >
+                          {/* Item Icon & Name */}
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <div className={`w-9 h-9 rounded-xl ${iconCfg.bgLight} ${iconCfg.bgDark} flex items-center justify-center text-base shrink-0 shadow-2xs`}>
+                              {iconCfg.emoji}
+                            </div>
+                            <div className="min-w-0">
+                              <span className="font-bold text-xs text-stone-900 dark:text-stone-100 truncate block">
+                                {item.name}
+                              </span>
+                              <span className="text-[10px] text-stone-400 capitalize block">
+                                {item.category || 'Tapri Item'}
+                              </span>
+                            </div>
+                          </div>
 
                         {/* Price, Edit Price, Remove Item */}
                         <div className="flex items-center gap-2 shrink-0">
@@ -1047,7 +1060,8 @@ export const GroupDetailsPage: React.FC<GroupDetailsPageProps> = ({
                           </button>
                         </div>
                       </div>
-                    ))}
+                    )
+                  })}
                   </div>
                 )}
               </div>

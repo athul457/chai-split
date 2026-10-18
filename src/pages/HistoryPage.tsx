@@ -26,6 +26,7 @@ import React, { useMemo, useState, useEffect, useRef } from 'react'
 import { useExpense } from '../context/ExpenseContext'
 import type { Group, TeaSession, User } from '../types'
 import { downloadExpensePdf, downloadSingleSessionPdf, type MemberPdfBreakdown } from '../utils/pdfReport'
+import { getItemIconConfig } from '../utils/itemIcons'
 
 type TimeFilter = 'day' | 'week' | 'month' | 'year' | 'all' | 'custom'
 type SortOrder = 'date-desc' | 'date-asc' | 'amount-desc' | 'amount-asc' | 'items-desc'
@@ -1196,14 +1197,20 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({
                     {/* Collapsible eaten items list */}
                     {expandedBreakItemIds.has(rec.sessionId) && rec.items.length > 0 && (
                       <div className="flex flex-wrap items-center gap-1.5 pt-1.5 animate-in fade-in duration-150">
-                        {rec.items.map((it, idx) => (
-                          <span
-                            key={`${it.id || it.name}-${idx}`}
-                            className="px-2 py-0.5 rounded-md bg-stone-100 dark:bg-stone-800 text-[10px] text-stone-700 dark:text-stone-300 font-medium border border-stone-200/60 dark:border-stone-700/60"
-                          >
-                            {it.emoji || '☕'} {it.name} ×{it.quantity} (₹{(it.price || 0) * (it.quantity || 1)})
-                          </span>
-                        ))}
+                        {rec.items.map((it, idx) => {
+                          const iconCfg = getItemIconConfig(it.name, undefined, it.emoji)
+                          return (
+                            <span
+                              key={`${it.id || it.name}-${idx}`}
+                              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-stone-100 dark:bg-stone-800 text-[11px] text-stone-700 dark:text-stone-300 font-medium border border-stone-200/60 dark:border-stone-700/60"
+                            >
+                              <span>{iconCfg.emoji}</span>
+                              <span className="font-semibold">{it.name}</span>
+                              <span className="font-bold text-amber-700 dark:text-amber-400">×{it.quantity}</span>
+                              <span className="text-[10px] text-stone-400">(₹{(it.price || 0) * (it.quantity || 1)})</span>
+                            </span>
+                          )
+                        })}
                       </div>
                     )}
                   </div>
@@ -1261,19 +1268,26 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({
                   return (
                     <div
                       key={it.name}
-                      className="p-2.5 rounded-xl border border-stone-100 dark:border-stone-800 bg-stone-50/60 dark:bg-stone-850 space-y-1.5"
+                      className="p-3 rounded-2xl border border-stone-100 dark:border-stone-800 bg-stone-50/60 dark:bg-stone-850 space-y-1.5 shadow-2xs"
                     >
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-1.5 min-w-0">
-                          <span className="text-base">{it.emoji}</span>
-                          <span className="font-bold text-xs text-stone-900 dark:text-stone-100 truncate">
-                            {it.name}
-                          </span>
-                        </div>
-                        <span className="px-2 py-0.5 rounded-md bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 font-extrabold text-xs shrink-0">
-                          ×{it.count}
-                        </span>
-                      </div>
+                      {(() => {
+                        const iconCfg = getItemIconConfig(it.name, undefined, it.emoji)
+                        return (
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2 min-w-0">
+                              <div className={`w-8 h-8 rounded-xl ${iconCfg.bgLight} ${iconCfg.bgDark} flex items-center justify-center text-sm shrink-0`}>
+                                {iconCfg.emoji}
+                              </div>
+                              <span className="font-bold text-xs text-stone-900 dark:text-stone-100 truncate">
+                                {it.name}
+                              </span>
+                            </div>
+                            <span className="px-2 py-0.5 rounded-full bg-stone-200 dark:bg-stone-700 text-stone-800 dark:text-stone-200 font-extrabold text-xs shrink-0">
+                              ×{it.count}
+                            </span>
+                          </div>
+                        )
+                      })()}
 
                       <div className="flex items-center justify-between text-[11px] text-stone-500 dark:text-stone-400">
                         <span>

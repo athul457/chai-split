@@ -9,7 +9,6 @@ import {
     Coffee,
     Crown,
     CreditCard,
-    Flame,
     Minus,
     Plus,
     Receipt,
@@ -26,6 +25,7 @@ import React, { useMemo, useState, useEffect } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { useExpense } from '../context/ExpenseContext'
 import { ChaiLoader } from '../components/ChaiLoader'
+import { getItemIconConfig, getGroupIconConfig } from '../utils/itemIcons'
 import type { Group, MenuItem, User, MemberExpense } from '../types'
 
 interface TeaBreakPageProps {
@@ -75,6 +75,8 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
   // Retrieve the break session specifically for this group
   const activeSession = (group?.id ? getActiveSessionForGroup(group.id) : undefined) ||
     (globalActiveSession?.groupId === group?.id ? globalActiveSession : undefined)
+
+  const groupIconConfig = getGroupIconConfig(group?.name || 'Tea Break', activeSession?.shopName)
 
   const [toastNotice, setToastNotice] = useState<string | null>(null)
   const [showCancelConfirm, setShowCancelConfirm] = useState(false)
@@ -500,64 +502,89 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
         </div>
       )}
 
-      {/* Top Navigation Bar - Clean back to group */}
-      <div className="flex items-center justify-between p-3 rounded-2xl bg-white dark:bg-stone-900 border border-stone-200/80 dark:border-stone-800 shadow-2xs">
+      {/* Top Header: Splitty Screen 2 style */}
+      <div className="flex items-center justify-between px-1 py-1 text-white">
         <button
           onClick={onBack}
           id="back-to-group-from-break-btn"
-          className="flex items-center gap-1.5 text-xs font-semibold text-stone-600 dark:text-stone-300 hover:text-amber-700 dark:hover:text-amber-400 cursor-pointer active:scale-95 transition-all"
+          className="w-9 h-9 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center text-white cursor-pointer active:scale-95 transition-all shadow-2xs"
+          title="Back to group"
         >
-          <ArrowLeft className="w-4 h-4" />
-          <span>Back to Group</span>
+          <ArrowLeft className="w-5 h-5" />
         </button>
 
-        <div className="flex items-center gap-2">
-          {group && (
-            <span className="font-mono text-[11px] font-bold text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/60 px-2 py-0.5 rounded-md border border-amber-200/50 dark:border-amber-900/50">
-              ID: {group.code || group.id}
-            </span>
-          )}
-          <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
-            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping inline-block" />
-            <span>Live Tea Break</span>
-          </span>
+        <div className="text-center min-w-0 px-2">
+          <h2 className="font-heading font-extrabold text-base text-white truncate">
+            {group?.name || activeSession.title}
+          </h2>
+          <p className="text-[11px] text-white/80 truncate">
+            ☕ {activeSession.shopName} • ID: {group.code || group.id}
+          </p>
+        </div>
+
+        <div className={`w-9 h-9 rounded-2xl ${groupIconConfig.bgLight} ${groupIconConfig.bgDark} flex items-center justify-center text-lg shrink-0 shadow-2xs`}>
+          {groupIconConfig.emoji}
         </div>
       </div>
 
-      {/* Active Session Overview Banner (Clean & balanced, no duplicated shop name) */}
-      <div className="p-4 rounded-2xl bg-gradient-to-br from-amber-600 to-amber-700 text-white shadow-sm space-y-3 relative overflow-hidden">
+      {/* Screen 2 Top Card: Total Bill / Owed Card with black Settle / Share Pill */}
+      <div className="bg-white dark:bg-stone-900 rounded-3xl p-5 shadow-sm space-y-3.5 border border-stone-100 dark:border-stone-800">
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <span className="px-2.5 py-0.5 rounded-full bg-white/20 text-white text-[10px] font-bold tracking-wide uppercase backdrop-blur-xs flex items-center gap-1">
-              <Flame className="w-3 h-3 text-amber-200" />
-              <span>Live Break</span>
-            </span>
-            <span className="text-amber-100 text-xs font-semibold">
-              ☕ {activeSession.shopName}
-            </span>
+          <div className="space-y-0.5">
+            <div className="text-xs font-semibold text-stone-500 dark:text-stone-400">
+              {isDesignatedPayer || isAdmin ? 'Total break bill' : 'Your order total'}
+            </div>
+            <div className="font-heading font-extrabold text-2xl text-[#1B9C56] tracking-tight">
+              ₹{isDesignatedPayer || isAdmin ? activeSession.totalAmount : myTotal}
+            </div>
           </div>
 
-          <button
-            type="button"
-            onClick={handleShareWhatsApp}
-            id="share-break-whatsapp-btn"
-            title="Share order on WhatsApp"
-            className="px-2.5 py-1 rounded-xl bg-white/20 hover:bg-white/30 text-white text-xs font-semibold cursor-pointer active:scale-95 transition-all flex items-center gap-1.5"
-          >
-            <Share2 className="w-3.5 h-3.5" />
-            <span>Share Bill</span>
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={handleShareWhatsApp}
+              id="share-break-whatsapp-btn"
+              title="Share order on WhatsApp"
+              className="bg-stone-900 hover:bg-black text-white px-4 py-2 rounded-full font-bold text-xs shadow-xs cursor-pointer active:scale-95 transition-all flex items-center gap-1.5"
+            >
+              <Share2 className="w-3.5 h-3.5" />
+              <span>Share</span>
+            </button>
+            {canCloseBreak && (
+              <button
+                type="button"
+                onClick={() => setShowCancelConfirm(true)}
+                className="bg-[#FF7043] hover:bg-[#F4511E] text-white px-4 py-2 rounded-full font-bold text-xs shadow-xs cursor-pointer active:scale-95 transition-all"
+              >
+                End Break
+              </button>
+            )}
+          </div>
         </div>
 
-        <div className="flex items-baseline justify-between pt-0.5">
-          <h2 className="font-heading text-lg font-black tracking-tight text-white">
-            {activeSession.title}
-          </h2>
-          <span className="text-amber-100 text-[11px] flex items-center gap-1 font-medium">
-            <Clock className="w-3 h-3 text-amber-200" />
-            <span>{activeSession.createdAt}</span>
-          </span>
-        </div>
+        {/* Member breakdown summary (Screen 2 'Who owes whom?') */}
+        {membersWithItems.length > 0 && (
+          <div className="pt-2.5 border-t border-stone-100 dark:border-stone-800 space-y-2">
+            <div className="text-[11px] font-bold text-stone-400 uppercase tracking-wider">
+              Who owes whom?
+            </div>
+            <div className="space-y-2 max-h-24 overflow-y-auto pr-1">
+              {membersWithItems.map(m => (
+                <div key={m.memberId} className="flex items-center justify-between text-xs">
+                  <div className="flex items-center gap-2 text-stone-700 dark:text-stone-300">
+                    <div className="w-6 h-6 rounded-full bg-stone-200 dark:bg-stone-700 text-[10px] font-bold flex items-center justify-center shrink-0">
+                      {m.memberName?.slice(0, 1).toUpperCase()}
+                    </div>
+                    <span className="truncate">{m.memberName} {m.memberId === effectiveUser?.id ? '(You)' : 'owes'}</span>
+                  </div>
+                  <span className="font-bold text-stone-900 dark:text-stone-100 shrink-0">
+                    ₹{m.total}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* ---------------- VIEW TOGGLE: MY ORDERS vs OTHERS' ORDERS ---------------- */}
@@ -629,27 +656,40 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
                 No items available in {activeSession.shopName} menu yet.
               </div>
             ) : (
-              <div className="grid grid-cols-2 gap-2 max-h-56 overflow-y-auto pr-0.5">
-                {sortedMenuItems.map(item => (
-                  <button
-                    key={item.id}
-                    onClick={() => handleSelfAddItem(item)}
-                    className="p-2.5 rounded-xl border border-stone-200/80 dark:border-stone-800 bg-stone-50/70 dark:bg-stone-800/40 hover:border-amber-500 hover:bg-amber-50/50 dark:hover:bg-amber-950/20 text-left transition-all cursor-pointer active:scale-95 group flex items-center justify-between shadow-2xs"
-                  >
-                    <div className="truncate pr-1">
-                      <span className="font-semibold text-xs text-stone-900 dark:text-stone-100 truncate block group-hover:text-amber-700 dark:group-hover:text-amber-300">
-                        {item.name}
-                      </span>
-                      <div className="text-[11px] font-bold text-amber-700 dark:text-amber-400 mt-0.5">
-                        ₹{item.price}
+              <div className="space-y-2 max-h-64 overflow-y-auto pr-0.5">
+                {sortedMenuItems.map(item => {
+                  const iconCfg = getItemIconConfig(item.name, item.category, item.emoji)
+                  return (
+                    <button
+                      key={item.id}
+                      onClick={() => handleSelfAddItem(item)}
+                      className="w-full p-2.5 rounded-2xl border border-stone-100 dark:border-stone-800 bg-stone-50/70 dark:bg-stone-800/40 hover:border-[#FF7043]/40 hover:bg-white dark:hover:bg-stone-800 text-left transition-all cursor-pointer active:scale-[0.98] group flex items-center justify-between gap-2.5 shadow-2xs"
+                    >
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <div className={`w-10 h-10 rounded-2xl ${iconCfg.bgLight} ${iconCfg.bgDark} flex items-center justify-center text-lg shrink-0 shadow-2xs`}>
+                          {iconCfg.emoji}
+                        </div>
+                        <div className="min-w-0">
+                          <span className="font-bold text-xs text-stone-900 dark:text-stone-100 truncate block group-hover:text-[#CF4C16]">
+                            {item.name}
+                          </span>
+                          <span className="text-[10px] text-stone-400 capitalize block">
+                            {item.category || 'Tapri Special'}
+                          </span>
+                        </div>
                       </div>
-                    </div>
 
-                    <div className="w-5 h-5 rounded-lg bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300 flex items-center justify-center shrink-0 group-hover:bg-amber-600 group-hover:text-white transition-colors">
-                      <Plus className="w-3 h-3" />
-                    </div>
-                  </button>
-                ))}
+                      <div className="flex items-center gap-2 shrink-0">
+                        <div className="font-heading font-extrabold text-xs text-stone-900 dark:text-stone-100">
+                          ₹{item.price}
+                        </div>
+                        <div className="w-6 h-6 rounded-full bg-stone-200/70 dark:bg-stone-700 text-stone-700 dark:text-stone-200 group-hover:bg-[#FF7043] group-hover:text-white flex items-center justify-center transition-colors">
+                          <Plus className="w-3 h-3" />
+                        </div>
+                      </div>
+                    </button>
+                  )
+                })}
               </div>
             )}
           </div>
@@ -729,34 +769,42 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
 
           {aggregatedItems.length > 0 ? (
             <div className="rounded-xl border border-stone-200/70 dark:border-stone-800 divide-y divide-stone-100 dark:divide-stone-800/80 overflow-hidden bg-stone-50/50 dark:bg-stone-900/50">
-              {aggregatedItems.map(item => (
-                <div
-                  key={item.menuItemId}
-                  className="p-2.5 flex items-center justify-between hover:bg-stone-50 dark:hover:bg-stone-800/30 transition-colors"
-                >
-                  <div className="space-y-0.5">
-                    <div className="flex items-center gap-1.5">
-                      <span className="font-semibold text-xs text-stone-900 dark:text-stone-100">
-                        {item.name}
-                      </span>
-                      <span className="text-[10px] text-stone-400 font-medium">
-                        @ ₹{item.price} each
-                      </span>
+              {aggregatedItems.map(item => {
+                const iconCfg = getItemIconConfig(item.name)
+                return (
+                  <div
+                    key={item.menuItemId}
+                    className="p-2.5 flex items-center justify-between hover:bg-stone-50 dark:hover:bg-stone-800/30 transition-colors"
+                  >
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <div className={`w-8 h-8 rounded-xl ${iconCfg.bgLight} ${iconCfg.bgDark} flex items-center justify-center text-sm shrink-0`}>
+                        {iconCfg.emoji}
+                      </div>
+                      <div className="space-y-0.5 min-w-0">
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-semibold text-xs text-stone-900 dark:text-stone-100 truncate">
+                            {item.name}
+                          </span>
+                          <span className="text-[10px] text-stone-400 font-medium">
+                            @ ₹{item.price} each
+                          </span>
+                        </div>
+                      </div>
                     </div>
-                  </div>
 
-                  <div className="text-right shrink-0 pl-2">
-                    <div className="flex items-center gap-1.5 justify-end">
-                      <span className="px-1.5 py-0.5 rounded-md bg-amber-100 dark:bg-amber-950/80 text-amber-800 dark:text-amber-300 font-bold text-[11px]">
-                        ×{item.quantity}
-                      </span>
-                      <span className="font-heading font-black text-xs text-stone-900 dark:text-stone-100 min-w-10 text-right">
-                        ₹{item.totalPrice}
-                      </span>
+                    <div className="text-right shrink-0 pl-2">
+                      <div className="flex items-center gap-1.5 justify-end">
+                        <span className="px-2 py-0.5 rounded-full bg-stone-100 dark:bg-stone-800 text-stone-700 dark:text-stone-200 font-bold text-[11px]">
+                          ×{item.quantity}
+                        </span>
+                        <span className="font-heading font-black text-xs text-stone-900 dark:text-stone-100 min-w-10 text-right">
+                          ₹{item.totalPrice}
+                        </span>
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))}
+                )
+              })}
 
               {/* Aggregated Total Row */}
               <div className="p-2.5 bg-amber-50/60 dark:bg-amber-950/20 flex items-center justify-between text-xs font-bold border-t border-amber-200/50 dark:border-amber-900/40">
@@ -1562,24 +1610,31 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
 
                 {/* Item List */}
                 <div className="space-y-1.5">
-                  {currentUserExpense?.items.map(item => (
-                    <div
-                      key={item.id}
-                      className="flex items-center justify-between text-xs py-1.5 px-2.5 rounded-xl bg-stone-50 dark:bg-stone-800/60 border border-stone-200/60 dark:border-stone-700/50"
-                    >
-                      <div className="flex items-center gap-1.5 truncate">
-                        <span className="font-semibold text-stone-900 dark:text-stone-100 truncate">
-                          {item.name}
-                        </span>
-                        <span className="text-[10px] text-stone-400">
-                          ₹{item.price} each
-                        </span>
-                      </div>
+                  {currentUserExpense?.items.map(item => {
+                    const iconCfg = getItemIconConfig(item.name, undefined, item.emoji)
+                    return (
+                      <div
+                        key={item.id}
+                        className="flex items-center justify-between text-xs py-2 px-2.5 rounded-2xl bg-stone-50 dark:bg-stone-850 border border-stone-200/60 dark:border-stone-700/50"
+                      >
+                        <div className="flex items-center gap-2 truncate">
+                          <div className={`w-8 h-8 rounded-xl ${iconCfg.bgLight} ${iconCfg.bgDark} flex items-center justify-center text-sm shrink-0`}>
+                            {iconCfg.emoji}
+                          </div>
+                          <div className="truncate">
+                            <span className="font-semibold text-stone-900 dark:text-stone-100 truncate block">
+                              {item.name}
+                            </span>
+                            <span className="text-[10px] text-stone-400">
+                              ₹{item.price} each
+                            </span>
+                          </div>
+                        </div>
 
-                      <div className="flex items-center gap-2 shrink-0">
-                        <span className="font-bold text-stone-800 dark:text-stone-200 text-xs">
-                          ₹{item.price * item.quantity}
-                        </span>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <span className="font-bold text-stone-800 dark:text-stone-200 text-xs">
+                            ₹{item.price * item.quantity}
+                          </span>
                         <div className="flex items-center gap-1 bg-stone-200/70 dark:bg-stone-700 p-0.5 rounded-md">
                           {(!isMyOrderConfirmed || canEditConfirmed) ? (
                             <>
@@ -1621,7 +1676,8 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
                         </div>
                       </div>
                     </div>
-                  ))}
+                  )
+                })}
                 </div>
 
                 {/* Subtotal in drawer */}
