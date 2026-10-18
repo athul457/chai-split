@@ -430,9 +430,14 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
     return getMenuItemsForShop(breakShopId)
   }, [getMenuItemsForShop, breakShopId, menuItems])
 
-  // Menu items search and filter
+  // Menu items search and filter (alphabetical)
   const [menuSearchQuery, setMenuSearchQuery] = useState('')
-  const sortedMenuItems = shopMenuItems
+  const sortedMenuItems = useMemo(() => {
+    return [...shopMenuItems].sort((a, b) =>
+      a.name.localeCompare(b.name, undefined, { sensitivity: 'base' })
+    )
+  }, [shopMenuItems])
+
   const filteredMenuItems = useMemo(() => {
     if (!menuSearchQuery.trim()) return sortedMenuItems
     const q = menuSearchQuery.toLowerCase().trim()
@@ -640,7 +645,7 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
                 </div>
               </div>
 
-              {/* Searchbar on the right near heading */}
+              {/* Searchbar on the right near heading without border lines */}
               <div className="relative w-36 sm:w-48 shrink-0">
                 <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-stone-400 pointer-events-none" />
                 <input
@@ -649,7 +654,7 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
                   onChange={(e) => setMenuSearchQuery(e.target.value)}
                   placeholder="Search items..."
                   id="menu-item-search-input"
-                  className="w-full pl-7 pr-6 py-1.5 rounded-full text-xs bg-[#FAF8F5] dark:bg-stone-800 text-stone-900 dark:text-stone-100 placeholder-stone-400 border border-stone-200 dark:border-stone-700 focus:outline-none focus:border-[#FF7043] focus:ring-1 focus:ring-[#FF7043] transition-all"
+                  className="w-full pl-7 pr-6 py-1.5 rounded-full text-xs bg-stone-100 dark:bg-stone-800 text-stone-900 dark:text-stone-100 placeholder-stone-400 border-0 outline-none focus:outline-none focus:ring-0 transition-all shadow-none"
                 />
                 {menuSearchQuery && (
                   <button
@@ -673,35 +678,35 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
               </div>
             ) : (
               /* Extended to full screen: no max-height restriction, natural native scroll */
-              <div className="space-y-2.5">
+              <div className="space-y-2">
                 {filteredMenuItems.map(item => {
                   const iconCfg = getItemIconConfig(item.name, item.category, item.emoji)
                   return (
                     <button
                       key={item.id}
                       onClick={() => handleSelfAddItem(item)}
-                      className="w-full p-3 rounded-2xl border border-stone-100 dark:border-stone-800/90 bg-[#FAF8F5]/80 dark:bg-stone-850 hover:border-[#FF7043]/50 hover:bg-white dark:hover:bg-stone-800 text-left transition-all cursor-pointer active:scale-[0.98] group flex items-center justify-between gap-3 shadow-2xs"
+                      className="w-full py-2 px-3 rounded-2xl border border-stone-100 dark:border-stone-800/80 bg-[#FAF8F5]/90 dark:bg-stone-850 hover:border-[#FF7043]/40 hover:bg-white dark:hover:bg-stone-800 text-left transition-all cursor-pointer active:scale-[0.98] group flex items-center justify-between gap-2.5 shadow-2xs"
                     >
-                      <div className="flex items-center gap-3 min-w-0">
-                        <div className={`w-11 h-11 rounded-2xl ${iconCfg.bgLight} ${iconCfg.bgDark} flex items-center justify-center text-xl shrink-0 shadow-2xs`}>
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <div className={`w-9 h-9 rounded-xl ${iconCfg.bgLight} ${iconCfg.bgDark} flex items-center justify-center text-lg shrink-0 shadow-2xs`}>
                           {iconCfg.emoji}
                         </div>
                         <div className="min-w-0">
-                          <span className="font-bold text-sm text-stone-900 dark:text-stone-100 truncate block group-hover:text-[#CF4C16]">
+                          <span className="font-bold text-xs text-stone-900 dark:text-stone-100 truncate block group-hover:text-[#CF4C16]">
                             {item.name}
                           </span>
-                          <span className="text-[11px] text-stone-400 capitalize block">
+                          <span className="text-[10px] text-stone-400 capitalize block">
                             {item.category || 'Tapri Special'}
                           </span>
                         </div>
                       </div>
 
-                      <div className="flex items-center gap-2.5 shrink-0">
-                        <div className="font-heading font-extrabold text-sm text-stone-900 dark:text-stone-100">
+                      <div className="flex items-center gap-2 shrink-0">
+                        <div className="font-heading font-extrabold text-xs text-stone-900 dark:text-stone-100">
                           ₹{item.price}
                         </div>
-                        <div className="w-7 h-7 rounded-full bg-stone-200/70 dark:bg-stone-750 text-stone-700 dark:text-stone-200 group-hover:bg-[#FF7043] group-hover:text-white flex items-center justify-center transition-colors">
-                          <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
+                        <div className="w-6 h-6 rounded-full bg-stone-200/70 dark:bg-stone-750 text-stone-700 dark:text-stone-200 group-hover:bg-[#FF7043] group-hover:text-white flex items-center justify-center transition-colors">
+                          <Plus className="w-3 h-3 stroke-[2.5]" />
                         </div>
                       </div>
                     </button>
