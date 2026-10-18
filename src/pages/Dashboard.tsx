@@ -24,7 +24,6 @@ import { DEFAULT_SHOPS } from '../lib/mockData'
 import { supabase } from '../lib/supabase'
 import { GroupCardSkeleton } from '../components/ChaiSkeleton'
 import type { PageRoute, BottomTab, Shop, MenuItem, Group, User } from '../types'
-import { getUserCode } from '../utils/userCode'
 import { getGroupIconConfig } from '../utils/itemIcons'
 
 interface DashboardProps {
@@ -1237,11 +1236,11 @@ export const Dashboard: React.FC<DashboardProps> = () => {
             {/* 2. Groups Header & Action Buttons */}
             <div className="flex items-center justify-between pt-1 px-1">
               <div>
-                <h2 className="font-heading font-extrabold text-lg text-white">
+                <h2 className="font-heading font-extrabold text-lg text-stone-900 dark:text-stone-100">
                   Groups
                 </h2>
-                <p className="text-xs text-white/80 font-medium">
-                  You are in <span className="font-bold text-white">{groups.length}</span> {groups.length === 1 ? 'group' : 'groups'}.
+                <p className="text-xs text-stone-500 dark:text-stone-400 font-medium">
+                  You are in <span className="font-bold text-stone-800 dark:text-stone-200">{groups.length}</span> {groups.length === 1 ? 'group' : 'groups'}.
                 </p>
               </div>
 
@@ -1254,17 +1253,17 @@ export const Dashboard: React.FC<DashboardProps> = () => {
                     setShowJoinGroupModal(true)
                   }}
                   id="join-group-header-btn"
-                  className="px-3 py-1.5 rounded-full bg-white/20 hover:bg-white/30 text-white font-bold text-xs backdrop-blur-xs transition-colors cursor-pointer flex items-center gap-1 shadow-2xs"
+                  className="px-3 py-1.5 rounded-full bg-stone-100 hover:bg-stone-200 dark:bg-stone-800 dark:hover:bg-stone-750 text-stone-700 dark:text-stone-300 font-bold text-xs transition-colors cursor-pointer flex items-center gap-1 shadow-2xs"
                   title="Join Group with Group ID"
                 >
-                  <KeyRound className="w-3 h-3" />
+                  <KeyRound className="w-3 h-3 text-[#FF7043]" />
                   <span>Join</span>
                 </button>
                 <button
                   type="button"
                   onClick={() => setShowCreateGroupModal(true)}
                   id="create-group-header-btn"
-                  className="px-3 py-1.5 rounded-full bg-white text-[#CF4C16] font-bold text-xs hover:bg-white/90 transition-colors cursor-pointer flex items-center gap-1 shadow-2xs"
+                  className="px-3.5 py-1.5 rounded-full bg-[#FF7043] hover:bg-[#F4511E] text-white font-bold text-xs transition-colors cursor-pointer flex items-center gap-1 shadow-2xs"
                   title="Create New Group"
                 >
                   <Plus className="w-3.5 h-3.5" />
@@ -1281,7 +1280,7 @@ export const Dashboard: React.FC<DashboardProps> = () => {
                 value={groupSearchQuery}
                 onChange={e => setGroupSearchQuery(e.target.value)}
                 placeholder="Search groups by name, tapri, or ID..."
-                className="w-full pl-9 pr-8 py-2.5 bg-white/95 dark:bg-stone-900/95 backdrop-blur-xs rounded-2xl text-xs font-medium text-stone-900 dark:text-stone-100 placeholder:text-stone-400 focus:outline-none shadow-xs border border-white/40 dark:border-stone-800"
+                className="w-full pl-9 pr-8 py-2.5 bg-white dark:bg-stone-900 rounded-2xl text-xs font-medium text-stone-900 dark:text-stone-100 placeholder:text-stone-400 focus:outline-none shadow-2xs border border-stone-200/70 dark:border-stone-800"
               />
               {groupSearchQuery && (
                 <button
@@ -1402,7 +1401,7 @@ export const Dashboard: React.FC<DashboardProps> = () => {
                           setViewingGroupId(group.id)
                         }
                       }}
-                      className="bg-white dark:bg-stone-900 rounded-3xl p-5 shadow-sm space-y-3.5 cursor-pointer hover:shadow-md transition-all active:scale-[0.99] border border-stone-100/80 dark:border-stone-800"
+                      className="bg-white dark:bg-stone-900 rounded-3xl p-5 shadow-sm space-y-3.5 cursor-pointer hover:shadow-md transition-all active:scale-[0.99] border border-stone-200/60 dark:border-stone-800"
                     >
                       {/* Top Row: Group Icon Pastel Badge + Name/Subtitle + Amount/ID */}
                       <div className="flex items-start justify-between gap-3">
@@ -1490,60 +1489,6 @@ export const Dashboard: React.FC<DashboardProps> = () => {
                     </div>
                   )
                 })}
-              </div>
-            )}
-
-            {/* 5. Friends & Tea Mates Section (Splitty Screen 1 Bottom Sheet) */}
-            {allUsers && allUsers.length > 0 && (
-              <div className="bg-[#FAF8F5] dark:bg-stone-900/60 rounded-3xl p-5 space-y-3.5 border border-stone-200/50 dark:border-stone-800 shadow-sm mt-4">
-                <div className="flex items-center justify-between">
-                  <h3 className="font-heading font-extrabold text-base text-stone-900 dark:text-stone-100">
-                    Friends &amp; Tea Mates
-                  </h3>
-                  {user && (
-                    <button
-                      type="button"
-                      onClick={() => handleCopy(getUserCode(user), 'My Unique ID')}
-                      className="text-xs font-bold text-[#CF4C16] hover:underline inline-flex items-center gap-1 cursor-pointer"
-                      title="Copy my ID"
-                    >
-                      <span>My ID: {getUserCode(user)}</span>
-                      <Copy className="w-3 h-3" />
-                    </button>
-                  )}
-                </div>
-
-                <div className="space-y-2">
-                  {allUsers.filter(u => u.id !== user?.id).slice(0, 3).map(friend => (
-                    <div
-                      key={friend.id}
-                      className="flex items-center justify-between p-3 rounded-2xl bg-white dark:bg-stone-850 shadow-2xs border border-stone-100 dark:border-stone-800"
-                    >
-                      <div className="flex items-center gap-3 min-w-0">
-                        <div className="w-9 h-9 rounded-full bg-stone-200 dark:bg-stone-700 font-extrabold text-xs text-stone-700 dark:text-stone-200 flex items-center justify-center shrink-0">
-                          {friend.avatar || friend.name?.slice(0, 1).toUpperCase() || 'U'}
-                        </div>
-                        <div className="min-w-0">
-                          <div className="font-bold text-xs text-stone-900 dark:text-stone-100 truncate">
-                            {friend.name}
-                          </div>
-                          <div className="text-[11px] text-stone-400">
-                            ID: {getUserCode(friend)}
-                          </div>
-                        </div>
-                      </div>
-
-                      <button
-                        type="button"
-                        onClick={() => handleCopy(getUserCode(friend), `${friend.name}'s ID`)}
-                        className="px-2.5 py-1 rounded-lg text-xs font-semibold text-stone-500 hover:text-stone-700 dark:hover:text-stone-200 bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 cursor-pointer transition-colors"
-                        title="Copy colleague's ID"
-                      >
-                        Copy ID
-                      </button>
-                    </div>
-                  ))}
-                </div>
               </div>
             )}
           </div>

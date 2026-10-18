@@ -136,8 +136,8 @@ const MainApp: React.FC = () => {
   return (
     // Outer viewport: clean neutral in white/light mode, pitch black in dark mode
     <div className="min-h-screen w-full bg-stone-100 dark:bg-black text-stone-900 dark:text-stone-100 flex justify-center items-start transition-colors">
-      {/* Mobile view frame: always max 430px wide, centered, full height on Splitty coral canvas */}
-      <div className="w-full max-w-[430px] min-h-screen bg-[#FF7043] dark:bg-[#1A0E08] border-x border-[#FF7043]/40 dark:border-stone-800 shadow-2xl flex flex-col relative transition-colors overflow-x-hidden">
+      {/* Mobile view frame: always max 430px wide, centered, full height */}
+      <div className="w-full max-w-[430px] min-h-screen bg-[#FAF8F5] dark:bg-[#121110] text-stone-900 dark:text-stone-100 border-x border-stone-200/60 dark:border-stone-850 shadow-2xl flex flex-col relative transition-colors overflow-x-hidden">
         <Header currentPage={currentPage} onNavigate={handleNavigate} />
         <main className="flex-1 w-full flex flex-col">{renderCurrentPage()}</main>
         <AddToHomeScreenModal

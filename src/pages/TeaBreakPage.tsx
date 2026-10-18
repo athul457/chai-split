@@ -502,22 +502,22 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
         </div>
       )}
 
-      {/* Top Header: Splitty Screen 2 style */}
-      <div className="flex items-center justify-between px-1 py-1 text-white">
+      {/* Top Header */}
+      <div className="flex items-center justify-between px-1 py-1 text-stone-900 dark:text-stone-100">
         <button
           onClick={onBack}
           id="back-to-group-from-break-btn"
-          className="w-9 h-9 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center text-white cursor-pointer active:scale-95 transition-all shadow-2xs"
+          className="w-9 h-9 rounded-full bg-stone-100 hover:bg-stone-200 dark:bg-stone-850 dark:hover:bg-stone-800 text-stone-700 dark:text-stone-200 flex items-center justify-center cursor-pointer active:scale-95 transition-all border border-stone-200/60 dark:border-stone-800 shadow-2xs"
           title="Back to group"
         >
-          <ArrowLeft className="w-5 h-5" />
+          <ArrowLeft className="w-4 h-4" />
         </button>
 
         <div className="text-center min-w-0 px-2">
-          <h2 className="font-heading font-extrabold text-base text-white truncate">
+          <h2 className="font-heading font-extrabold text-base text-stone-900 dark:text-stone-100 truncate">
             {group?.name || activeSession.title}
           </h2>
-          <p className="text-[11px] text-white/80 truncate">
+          <p className="text-[11px] text-stone-500 dark:text-stone-400 truncate">
             ☕ {activeSession.shopName} • ID: {group.code || group.id}
           </p>
         </div>

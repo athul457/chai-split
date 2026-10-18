@@ -397,7 +397,10 @@
    ========================================================================== */
 
 .splitty-canvas {
-  background: linear-gradient(180deg, #FF7043 0%, #FA6432 100%);
+  background-color: #FAF8F5;
+}
+:where(.dark, .dark *) .splitty-canvas {
+  background-color: #121110;
 }
 
 .splitty-sheet {

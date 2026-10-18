@@ -14,55 +14,45 @@ export const Header: React.FC<HeaderProps> = ({ currentPage: _currentPage, onNav
   const [showProfile, setShowProfile] = useState(false)
 
   return (
-    <header className="sticky top-0 z-50 w-full bg-[#FF7043] dark:bg-[#1A0E08] text-white transition-colors pt-3">
-      <div className="w-full px-5 sm:px-6 h-14 flex items-center justify-between relative">
-        {/* Left: Splitty-style Logo + App Name */}
+    <header className="sticky top-0 z-50 w-full bg-[#FAF8F5]/90 dark:bg-[#121110]/90 backdrop-blur-md text-stone-900 dark:text-stone-100 border-b border-stone-200/50 dark:border-stone-800/50 transition-colors">
+      <div className="w-full px-4 sm:px-5 h-14 flex items-center justify-between relative">
+        {/* Left: Minimalist Logo + App Name */}
         <button
           onClick={() => onNavigate(isAuthenticated ? 'dashboard' : 'landing')}
-          className="flex items-center gap-2.5 group text-left cursor-pointer focus:outline-none"
+          className="flex items-center gap-2 group text-left cursor-pointer focus:outline-none"
           id="nav-logo-btn"
         >
-          {/* Minimalist White Pill Logo */}
-          <div className="flex items-center justify-center w-8 h-8 rounded-full bg-white text-[#FF7043] font-black shadow-sm group-hover:scale-105 transition-transform">
-            <span className="text-base font-black">☕</span>
+          <div className="flex items-center justify-center w-8 h-8 rounded-full bg-[#FF7043] text-white font-black shadow-xs group-hover:scale-105 transition-transform">
+            <span className="text-sm">☕</span>
           </div>
 
-          <div className="flex items-center gap-1">
-            <span className="font-heading text-xl font-black tracking-tight text-white group-hover:opacity-95 transition-opacity">
-              ChaiSplit
-            </span>
-          </div>
+          <span className="font-heading text-lg font-black tracking-tight text-stone-900 dark:text-white">
+            ChaiSplit
+          </span>
         </button>
 
-        {/* Right: Notification Bell + Avatar Ring (matching Splitty) */}
+        {/* Right: Only necessary actions (Notifications + Profile Avatar) */}
         {isAuthenticated && user && (
-          <div className="relative flex items-center gap-2.5">
-            {/* Notification Bell */}
+          <div className="relative flex items-center gap-2">
             <button
               type="button"
               id="header-notification-btn"
               title="Notifications"
               onClick={() => setShowProfile(prev => !prev)}
-              className="w-9 h-9 rounded-full bg-white/20 hover:bg-white/30 backdrop-blur-xs text-white flex items-center justify-center cursor-pointer transition-all active:scale-95"
+              className="w-8 h-8 rounded-full bg-stone-100 hover:bg-stone-200 dark:bg-stone-800 dark:hover:bg-stone-750 text-stone-600 dark:text-stone-300 flex items-center justify-center cursor-pointer transition-colors"
             >
-              <Bell className="w-4 h-4 fill-white/20" />
+              <Bell className="w-4 h-4" />
             </button>
 
-            {/* User Avatar with White Border Ring */}
             <button
               onClick={() => setShowProfile(prev => !prev)}
               id="header-profile-btn"
-              title={`${user.name} (Click to view profile)`}
-              className={`p-0.5 rounded-full ring-2 ring-white/90 transition-all cursor-pointer shadow-sm active:scale-95 ${
-                showProfile ? 'ring-white' : 'hover:opacity-90'
-              }`}
+              title={`${user.name}`}
+              className="w-8 h-8 rounded-full bg-[#FF7043]/15 text-[#FF7043] font-extrabold text-xs flex items-center justify-center ring-1 ring-[#FF7043]/30 cursor-pointer"
             >
-              <div className="w-8 h-8 rounded-full bg-white text-[#FF7043] font-extrabold text-xs flex items-center justify-center shadow-inner">
-                {user.avatar || user.name?.slice(0, 2).toUpperCase() || '👤'}
-              </div>
+              {user.avatar || user.name?.slice(0, 2).toUpperCase() || '👤'}
             </button>
 
-            {/* Profile Card Popup matching wireframe */}
             <ProfileDropdown
               isOpen={showProfile}
               onClose={() => setShowProfile(false)}
