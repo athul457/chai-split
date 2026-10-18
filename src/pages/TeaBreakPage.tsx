@@ -28,6 +28,7 @@ import { useExpense } from '../context/ExpenseContext'
 import { ChaiLoader } from '../components/ChaiLoader'
 import { getItemIconConfig } from '../utils/itemIcons'
 import { OrderSuccessModal } from '../components/OrderSuccessModal'
+import { FunnyMalayalamAlertModal } from '../components/FunnyMalayalamAlertModal'
 import type { Group, MenuItem, User, MemberExpense } from '../types'
 
 interface TeaBreakPageProps {
@@ -88,6 +89,8 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
   const [isDeletingBreak, setIsDeletingBreak] = useState(false)
   const [isConfirming, setIsConfirming] = useState(false)
   const [showOrderSuccessModal, setShowOrderSuccessModal] = useState(false)
+  const [showOrderConfirmAlertModal, setShowOrderConfirmAlertModal] = useState(false)
+  const [showSettleAlertModal, setShowSettleAlertModal] = useState(false)
   const [isCupDrawerOpen, setIsCupDrawerOpen] = useState(false)
   const [showAllMembersList, setShowAllMembersList] = useState(false)
 
@@ -190,8 +193,8 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
 
   const allMembersConfirmed = membersWithItems.length > 0 && unconfirmedMembers.length === 0
 
-  // User confirms their own order/items
-  const handleConfirmMyOrder = async () => {
+  // User initiates confirming their own order/items - shows 3s countdown funny alert modal
+  const handleInitiateConfirmMyOrder = () => {
     const targetUserId =
       currentUserExpense?.memberId ||
       effectiveUserId ||
@@ -204,6 +207,22 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
 
     if (!currentUserExpense || currentUserExpense.items.length === 0) {
       showToast('Please add at least 1 item to your cup before confirming.')
+      return
+    }
+
+    // Show popup alert first with cancel and confirm button (unlocked after 3s countdown)
+    setShowOrderConfirmAlertModal(true)
+  }
+
+  // Executed when user confirms after countdown in the alert modal
+  const handleExecuteConfirmMyOrder = async () => {
+    setShowOrderConfirmAlertModal(false)
+    const targetUserId =
+      currentUserExpense?.memberId ||
+      effectiveUserId ||
+      effectiveUser?.id
+
+    if (!targetUserId || !currentUserExpense || currentUserExpense.items.length === 0) {
       return
     }
 
@@ -285,8 +304,8 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
     showToast(`Assigned ${item.name} to ${selectedAssignee?.name || 'teammate'}!`)
   }
 
-  // Settle break (strictly only creator can close/settle the break, AND every member with items must confirm)
-  const handleSettleBreak = () => {
+  // Settle break: show funny Malayalam alert modal with 3s countdown before settling
+  const handleInitiateSettleBreak = () => {
     if (!canCloseBreak) {
       setShowCannotCloseModal(true)
       return
@@ -302,6 +321,11 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
       return
     }
 
+    setShowSettleAlertModal(true)
+  }
+
+  const handleExecuteSettleBreak = () => {
+    setShowSettleAlertModal(false)
     if (isSettling) return
     setIsSettling(true)
     setTimeout(() => {
@@ -505,7 +529,7 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
   }
 
   return (
-    <div className="space-y-4 animate-in fade-in pb-40">
+    <div className="space-y-4 animate-in fade-in pb-4">
       {/* Toast Notice */}
       {toastNotice && (
         <div className="p-2.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/80 border border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-200 text-xs flex items-center justify-between shadow-xs">
@@ -1068,10 +1092,11 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
                               type="button"
                               onClick={async (e) => {
                                 e.stopPropagation()
-                                await confirmMemberOrder(expense.memberId, activeSession?.id)
-                                showToast(`Confirmed items for ${expense.memberName}`)
                                 if (isUser) {
-                                  setShowOrderSuccessModal(true)
+                                  handleInitiateConfirmMyOrder()
+                                } else {
+                                  await confirmMemberOrder(expense.memberId, activeSession?.id)
+                                  showToast(`Confirmed items for ${expense.memberName}`)
                                 }
                               }}
                               className="text-[10px] font-bold text-emerald-700 dark:text-emerald-300 hover:text-emerald-800 bg-emerald-100/90 dark:bg-emerald-950/80 px-2.5 py-0.5 rounded-lg cursor-pointer hover:bg-emerald-200 dark:hover:bg-emerald-900 transition-colors flex items-center gap-1 border-0 border-none outline-none"
@@ -1163,7 +1188,7 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
 
               <button
                 type="button"
-                onClick={handleSettleBreak}
+                onClick={handleInitiateSettleBreak}
                 disabled={isSettling}
                 id="settle-and-end-task-btn"
                 className={`flex-1 py-2.5 px-3 rounded-xl ${
@@ -1594,7 +1619,12 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
 
       {/* ---------------- FLOATING BOTTOM POPUP BAR FOR ADDED ITEMS ---------------- */}
       {myItemCount > 0 && (
-        <div className="fixed bottom-[82px] left-1/2 -translate-x-1/2 w-full max-w-[430px] px-3 z-40 pointer-events-none animate-in slide-in-from-bottom-4 duration-200">
+        <div
+          className="fixed left-1/2 -translate-x-1/2 w-full max-w-[430px] px-3 z-40 pointer-events-none animate-in slide-in-from-bottom-4 duration-200"
+          style={{
+            bottom: 'calc(4.85rem + env(safe-area-inset-bottom, 0px))'
+          }}
+        >
           <div className="pointer-events-auto flex flex-col items-center">
             {/* Expandable popup drawer above the bar */}
             {isCupDrawerOpen && (
@@ -1764,7 +1794,7 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
                 ) : (
                   <button
                     type="button"
-                    onClick={handleConfirmMyOrder}
+                    onClick={handleInitiateConfirmMyOrder}
                     disabled={isConfirming || !currentUserExpense || currentUserExpense.items.length === 0}
                     id="confirm-my-order-popup-btn"
                     className="py-2 px-4 rounded-full bg-[#1B9C56] hover:bg-[#158045] disabled:opacity-50 text-white font-bold text-xs shadow-xs cursor-pointer transition-all active:scale-95 flex items-center gap-1.5 border-0 border-none outline-none focus:outline-none focus:ring-0"
@@ -1787,6 +1817,35 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
         items={currentUserExpense?.items || []}
         totalAmount={myTotal}
         sessionTitle={activeSession?.title}
+      />
+
+      {/* Funny Malayalam Alert Modal on Confirming Items (3-second countdown) */}
+      <FunnyMalayalamAlertModal
+        isOpen={showOrderConfirmAlertModal}
+        onClose={() => setShowOrderConfirmAlertModal(false)}
+        onConfirm={handleExecuteConfirmMyOrder}
+        items={currentUserExpense?.items || []}
+        totalAmount={myTotal}
+        context="confirm_order"
+        isConfirming={isConfirming}
+        confirmLabel="Confirm Order"
+      />
+
+      {/* Funny Malayalam Alert Modal on Settle & Split Bill (3-second countdown) */}
+      <FunnyMalayalamAlertModal
+        isOpen={showSettleAlertModal}
+        onClose={() => setShowSettleAlertModal(false)}
+        onConfirm={handleExecuteSettleBreak}
+        items={activeSession?.expenses.flatMap(e => e.items) || []}
+        totalAmount={activeSession?.totalAmount || 0}
+        perPersonAmount={
+          membersWithItems.length > 0
+            ? Math.round((activeSession?.totalAmount || 0) / membersWithItems.length)
+            : activeSession?.totalAmount || 0
+        }
+        context="split_bill"
+        isConfirming={isSettling}
+        confirmLabel="Settle & Close"
       />
     </div>
   )

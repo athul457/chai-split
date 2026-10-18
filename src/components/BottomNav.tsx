@@ -22,7 +22,12 @@ export const BottomNav: React.FC<BottomNavProps> = ({
 
   return (
     // Floating wrapper: permanently fixed at the viewport bottom on all pages
-    <div className="fixed bottom-3 left-1/2 -translate-x-1/2 w-full max-w-[430px] z-50 px-3 pointer-events-none">
+    <div
+      className="fixed left-1/2 -translate-x-1/2 w-full max-w-[430px] z-50 px-3 pointer-events-none transition-all"
+      style={{
+        bottom: 'calc(0.75rem + env(safe-area-inset-bottom, 0px))'
+      }}
+    >
       <nav
         id="floating-bottom-navigation"
         aria-label="Floating Bottom Navigation"

@@ -985,10 +985,10 @@ export const Dashboard: React.FC<DashboardProps> = () => {
   }, [pastSessions, groups, user])
 
   return (
-    <div className="flex flex-col min-h-[calc(100vh-4rem)] justify-between">
+    <div className="flex flex-col min-h-[calc(100dvh-4rem)] min-h-[calc(100vh-4rem)] justify-between">
       
       {/* Scrollable Main Content */}
-      <div className="w-full px-3.5 py-4 pb-24 space-y-4 flex-1">
+      <div className="w-full px-3.5 py-4 space-y-4 flex-1" style={{ paddingBottom: 'calc(6.5rem + env(safe-area-inset-bottom, 0px))' }}>
         
         {/* Notice Banner */}
         {copyNotice && (
