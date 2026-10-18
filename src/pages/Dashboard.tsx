@@ -1472,6 +1472,20 @@ export const Dashboard: React.FC<DashboardProps> = () => {
           }
           setActiveTab(tab)
         }}
+        onPlusClick={() => {
+          const target =
+            (activeSession?.groupId ? groups.find(g => g.id === activeSession.groupId) : null) ||
+            groups.find(g => {
+              const s = getActiveSessionForGroup(g.id)
+              return s && s.status === 'active'
+            }) ||
+            activeGroup ||
+            groups[0]
+          if (target) {
+            setViewingBreakGroupId(target.id)
+          }
+          setActiveTab('my-orders')
+        }}
         historyCount={userPastSessionsCount}
       />
 

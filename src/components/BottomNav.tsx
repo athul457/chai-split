@@ -68,7 +68,7 @@ export const BottomNav: React.FC<BottomNavProps> = ({
               if (onPlusClick) {
                 onPlusClick()
               } else {
-                onChangeTab('home')
+                onChangeTab('my-orders')
               }
             }}
             id="bottom-nav-plus-action"
