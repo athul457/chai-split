@@ -524,44 +524,39 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
         </div>
       </div>
 
-      {/* Active Session Overview Banner (PURE BREAK DATA - NO GROUP DETAILS) */}
-      <div className="p-4 rounded-2xl bg-gradient-to-br from-amber-600 via-orange-600 to-amber-700 text-white shadow-md space-y-3 relative overflow-hidden">
+      {/* Active Session Overview Banner (Clean & balanced, no duplicated shop name) */}
+      <div className="p-4 rounded-2xl bg-gradient-to-br from-amber-600 to-amber-700 text-white shadow-sm space-y-3 relative overflow-hidden">
         <div className="flex items-center justify-between">
-          <span className="px-2 py-0.5 rounded-full bg-white/20 text-white text-[10px] font-bold tracking-wide uppercase backdrop-blur-xs flex items-center gap-1">
-            <Flame className="w-3 h-3 text-amber-200" />
-            <span>Live Session</span>
-          </span>
-
-          <span className="text-amber-100 text-[11px] flex items-center gap-1">
-            <Clock className="w-3 h-3" />
-            <span>{activeSession.createdAt}</span>
-          </span>
-        </div>
-
-        <div>
-          <h2 className="font-heading text-xl font-black tracking-tight">
-            {activeSession.title}
-          </h2>
-          <p className="text-amber-100 text-xs font-medium mt-0.5">
-            {activeSession.shopName}
-          </p>
-        </div>
-
-        <div className="flex items-center justify-between gap-2 pt-2 border-t border-white/20">
-          <div className="flex items-baseline gap-1">
-            <span className="text-[11px] text-amber-200 font-medium">Shop:</span>
-            <span className="font-heading text-sm font-bold">{activeSession.shopName}</span>
+          <div className="flex items-center gap-2">
+            <span className="px-2.5 py-0.5 rounded-full bg-white/20 text-white text-[10px] font-bold tracking-wide uppercase backdrop-blur-xs flex items-center gap-1">
+              <Flame className="w-3 h-3 text-amber-200" />
+              <span>Live Break</span>
+            </span>
+            <span className="text-amber-100 text-xs font-semibold">
+              ☕ {activeSession.shopName}
+            </span>
           </div>
 
           <button
+            type="button"
             onClick={handleShareWhatsApp}
             id="share-break-whatsapp-btn"
             title="Share order on WhatsApp"
-            className="px-2.5 py-1.5 rounded-xl bg-white/20 hover:bg-white/30 text-white text-xs font-semibold cursor-pointer transition-colors flex items-center gap-1.5"
+            className="px-2.5 py-1 rounded-xl bg-white/20 hover:bg-white/30 text-white text-xs font-semibold cursor-pointer active:scale-95 transition-all flex items-center gap-1.5"
           >
             <Share2 className="w-3.5 h-3.5" />
             <span>Share Bill</span>
           </button>
+        </div>
+
+        <div className="flex items-baseline justify-between pt-0.5">
+          <h2 className="font-heading text-lg font-black tracking-tight text-white">
+            {activeSession.title}
+          </h2>
+          <span className="text-amber-100 text-[11px] flex items-center gap-1 font-medium">
+            <Clock className="w-3 h-3 text-amber-200" />
+            <span>{activeSession.createdAt}</span>
+          </span>
         </div>
       </div>
 
@@ -639,20 +634,18 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
                   <button
                     key={item.id}
                     onClick={() => handleSelfAddItem(item)}
-                    className="p-2 rounded-xl border border-stone-200/80 dark:border-stone-800 bg-stone-50/60 dark:bg-stone-800/40 hover:border-amber-500 hover:bg-amber-50/50 dark:hover:bg-amber-950/20 text-left transition-all cursor-pointer active:scale-95 group flex items-center justify-between"
+                    className="p-2.5 rounded-xl border border-stone-200/80 dark:border-stone-800 bg-stone-50/70 dark:bg-stone-800/40 hover:border-amber-500 hover:bg-amber-50/50 dark:hover:bg-amber-950/20 text-left transition-all cursor-pointer active:scale-95 group flex items-center justify-between shadow-2xs"
                   >
                     <div className="truncate pr-1">
-                      <div className="flex items-center gap-1.5 truncate">
-                        <span className="font-semibold text-xs text-stone-900 dark:text-stone-100 truncate group-hover:text-amber-700 dark:group-hover:text-amber-300">
-                          {item.name}
-                        </span>
-                      </div>
-                      <div className="text-[11px] font-bold text-amber-700 dark:text-amber-400 pl-5">
+                      <span className="font-semibold text-xs text-stone-900 dark:text-stone-100 truncate block group-hover:text-amber-700 dark:group-hover:text-amber-300">
+                        {item.name}
+                      </span>
+                      <div className="text-[11px] font-bold text-amber-700 dark:text-amber-400 mt-0.5">
                         ₹{item.price}
                       </div>
                     </div>
 
-                    <div className="w-5 h-5 rounded-full bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300 flex items-center justify-center shrink-0 group-hover:bg-amber-600 group-hover:text-white transition-colors">
+                    <div className="w-5 h-5 rounded-lg bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300 flex items-center justify-center shrink-0 group-hover:bg-amber-600 group-hover:text-white transition-colors">
                       <Plus className="w-3 h-3" />
                     </div>
                   </button>

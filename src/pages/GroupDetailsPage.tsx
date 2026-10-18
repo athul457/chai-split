@@ -746,9 +746,8 @@ export const GroupDetailsPage: React.FC<GroupDetailsPageProps> = ({
             <div className="flex items-center justify-between pt-2 border-t border-white/20 text-xs text-amber-100 flex-wrap gap-2">
               <div className="flex items-center gap-2 flex-wrap">
                 {group.shopName && (
-                  <span className="inline-flex items-center gap-1 bg-white/15 px-2 py-0.5 rounded-md text-[11px]">
-                    <Store className="w-3.5 h-3.5 text-amber-200" />
-                    <span>Shop: {group.shopName}</span>
+                  <span className="inline-flex items-center gap-1 bg-white/15 px-2 py-0.5 rounded-md text-[11px] font-medium">
+                    <span>☕ {group.shopName}</span>
                   </span>
                 )}
                 <span>•</span>
