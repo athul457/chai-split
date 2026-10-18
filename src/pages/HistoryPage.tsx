@@ -720,46 +720,48 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({
   }
 
   return (
-    <div className="space-y-4 animate-in fade-in duration-200 pb-20">
+    <div className="space-y-4 animate-in fade-in duration-200 pb-28">
       {/* -------------------- SWITCHING OPTION: PERSONAL EXPENSE VS TEAM EXPENSE -------------------- */}
-      <div className="p-3 rounded-2xl bg-white dark:bg-stone-900 border border-stone-200/90 dark:border-stone-800 shadow-2xs space-y-2.5">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            {onBack && (
-              <button
-                type="button"
-                onClick={onBack}
-                className="p-1 rounded-lg bg-stone-100 hover:bg-stone-200 dark:bg-stone-800 dark:hover:bg-stone-700 text-stone-700 dark:text-stone-300 transition-colors cursor-pointer mr-0.5"
-                title="Back to Dashboard"
-              >
-                <ChevronDown className="w-4 h-4 rotate-90" />
-              </button>
+      <div className="p-3 rounded-3xl bg-white dark:bg-stone-900 border border-stone-200/90 dark:border-stone-800 shadow-2xs space-y-2.5">
+        {(onBack || isGroupAdmin) && (
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              {onBack && (
+                <button
+                  type="button"
+                  onClick={onBack}
+                  className="p-1 rounded-lg bg-stone-100 hover:bg-stone-200 dark:bg-stone-800 dark:hover:bg-stone-700 text-stone-700 dark:text-stone-300 transition-colors cursor-pointer mr-0.5"
+                  title="Back to Dashboard"
+                >
+                  <ChevronDown className="w-4 h-4 rotate-90" />
+                </button>
+              )}
+            </div>
+            {isGroupAdmin && (
+              <div className="flex items-center gap-1.5 ml-auto">
+                <button
+                  type="button"
+                  onClick={handleDownloadReport}
+                  className="px-3.5 py-1.5 rounded-full border border-stone-200 dark:border-stone-700 text-stone-700 dark:text-stone-200 hover:bg-stone-100 dark:hover:bg-stone-800 text-[11px] font-bold flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs"
+                  title="Download PDF Report"
+                >
+                  <Download className="w-3.5 h-3.5 text-[#FF7043]" />
+                  <span>Download PDF</span>
+                </button>
+              </div>
             )}
           </div>
-          {isGroupAdmin && (
-            <div className="flex items-center gap-1.5">
-              <button
-                type="button"
-                onClick={handleDownloadReport}
-                className="btn-outlined text-[11px] py-1.5 px-3 rounded-lg"
-                title="Download PDF Report"
-              >
-                <Download className="w-3.5 h-3.5 text-[#AB3600]" />
-                <span>Download PDF</span>
-              </button>
-            </div>
-          )}
-        </div>
+        )}
 
         {/* 2 Main Switching Options: Personal Expense and Team Expense */}
-        <div className="grid grid-cols-2 p-1.5 bg-stone-100 dark:bg-stone-800/90 rounded-2xl border border-stone-200/80 dark:border-stone-700/80 gap-1.5 shadow-inner">
+        <div className="grid grid-cols-2 p-1.5 bg-[#FAF8F5] dark:bg-stone-850 rounded-2xl border border-stone-200/80 dark:border-stone-800 gap-1.5 shadow-inner">
           <button
             type="button"
             onClick={() => setSectionView('personal')}
             className={`py-2.5 px-3 rounded-xl font-heading font-black text-xs flex items-center justify-center gap-2 transition-all cursor-pointer ${
               sectionView === 'personal'
-                ? 'bg-amber-600 text-white shadow-md scale-[1.01]'
-                : 'text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-stone-200 hover:bg-stone-200/50 dark:hover:bg-stone-700/50'
+                ? 'bg-[#FF7043] text-white shadow-md scale-[1.01]'
+                : 'text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-stone-200 hover:bg-stone-200/50 dark:hover:bg-stone-800/50'
             }`}
           >
             <UserCheck className="w-4 h-4 shrink-0" />
@@ -771,8 +773,8 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({
             onClick={() => setSectionView('team')}
             className={`py-2.5 px-3 rounded-xl font-heading font-black text-xs flex items-center justify-center gap-2 transition-all cursor-pointer ${
               sectionView === 'team'
-                ? 'bg-amber-600 text-white shadow-md scale-[1.01]'
-                : 'text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-stone-200 hover:bg-stone-200/50 dark:hover:bg-stone-700/50'
+                ? 'bg-[#FF7043] text-white shadow-md scale-[1.01]'
+                : 'text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-stone-200 hover:bg-stone-200/50 dark:hover:bg-stone-800/50'
             }`}
           >
             <Users className="w-4 h-4 shrink-0" />
@@ -833,7 +835,7 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({
               onClick={() => setTimeFilter(tab.id as TimeFilter)}
               className={`py-1.5 text-center text-xs font-bold rounded-lg transition-all cursor-pointer ${
                 timeFilter === tab.id
-                  ? 'bg-amber-600 text-white shadow-xs'
+                  ? 'bg-[#FF7043] text-white shadow-xs'
                   : 'text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-stone-200'
               }`}
             >

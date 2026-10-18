@@ -21,12 +21,12 @@ export const BottomNav: React.FC<BottomNavProps> = ({
   const isHistoryActive = activeTab === 'history'
 
   return (
-    // Floating wrapper: suspended cleanly above the bottom edge with margins
-    <div className="sticky bottom-3 z-40 w-full px-4 pointer-events-none mt-auto">
+    // Floating wrapper: permanently fixed at the viewport bottom on all pages
+    <div className="fixed bottom-3 left-1/2 -translate-x-1/2 w-full max-w-[430px] z-50 px-3 pointer-events-none">
       <nav
         id="floating-bottom-navigation"
         aria-label="Floating Bottom Navigation"
-        className="pointer-events-auto w-full max-w-[400px] mx-auto h-[64px] rounded-full backdrop-blur-xl bg-[#1C1917]/95 dark:bg-[#121110]/95 border border-stone-800/80 shadow-2xl shadow-stone-950/40 flex items-center justify-around px-2 transition-all"
+        className="pointer-events-auto w-full max-w-[400px] mx-auto h-[62px] rounded-full backdrop-blur-xl bg-[#1C1917]/95 dark:bg-[#121110]/95 border border-stone-800/80 shadow-2xl shadow-stone-950/40 flex items-center justify-around px-2 transition-all"
       >
         {/* 1. Home Tab */}
         <button

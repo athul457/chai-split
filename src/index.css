@@ -411,30 +411,63 @@
 }
 
 .splitty-pill-owed {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.5rem 0.875rem;
+  border-radius: 9999px;
   background-color: #E8F8EE;
   color: #1B9C56;
+  font-size: 0.75rem;
+  font-weight: 700;
+  border: 1px solid rgba(27, 156, 86, 0.2);
+  transition: all 0.2s ease;
 }
 :where(.dark, .dark *) .splitty-pill-owed {
   background-color: rgba(27, 156, 86, 0.2);
   color: #6EE7B7;
+  border-color: rgba(27, 156, 86, 0.3);
 }
 
 .splitty-pill-owe {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.5rem 0.875rem;
+  border-radius: 9999px;
   background-color: #FEECEB;
   color: #E04F4F;
+  font-size: 0.75rem;
+  font-weight: 700;
+  border: 1px solid rgba(224, 79, 79, 0.2);
+  transition: all 0.2s ease;
 }
 :where(.dark, .dark *) .splitty-pill-owe {
   background-color: rgba(224, 79, 79, 0.2);
   color: #FDA4AF;
+  border-color: rgba(224, 79, 79, 0.3);
 }
 
 .splitty-pill-settled {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.5rem 0.875rem;
+  border-radius: 9999px;
   background-color: #F3EFEA;
   color: #7C766E;
+  font-size: 0.75rem;
+  font-weight: 700;
+  border: 1px solid rgba(124, 118, 110, 0.15);
+  transition: all 0.2s ease;
 }
 :where(.dark, .dark *) .splitty-pill-settled {
   background-color: rgba(124, 118, 110, 0.25);
   color: #D6D3D1;
+  border-color: rgba(124, 118, 110, 0.2);
 }
 
 .splitty-dark-card {

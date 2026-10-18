@@ -12,7 +12,8 @@ import {
   Search,
   AlertTriangle,
   ArrowUpRight,
-  ArrowDownLeft
+  ArrowDownLeft,
+  ArrowRight
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { useExpense } from '../context/ExpenseContext'
@@ -1013,7 +1014,7 @@ export const Dashboard: React.FC<DashboardProps> = () => {
     <div className="flex flex-col min-h-[calc(100vh-4rem)] justify-between">
       
       {/* Scrollable Main Content */}
-      <div className="w-full px-3.5 py-4 pb-20 space-y-4 flex-1">
+      <div className="w-full px-3.5 py-4 pb-24 space-y-4 flex-1">
         
         {/* Notice Banner */}
         {copyNotice && (
@@ -1466,9 +1467,12 @@ export const Dashboard: React.FC<DashboardProps> = () => {
                       {/* Bottom Status Pill (Splitty Pill) */}
                       <div className="pt-0.5">
                         {isGroupBreakActive ? (
-                          <div className="splitty-pill-owed">
-                            <span className="w-2 h-2 rounded-full bg-[#1B9C56] animate-ping" />
-                            <span>Live Break Active • Tap to Order</span>
+                          <div className="splitty-pill-owed cursor-pointer hover:opacity-90">
+                            <div className="flex items-center gap-2">
+                              <span className="w-2 h-2 rounded-full bg-[#1B9C56] animate-pulse shrink-0" />
+                              <span>Live Break Active • Tap to Order</span>
+                            </div>
+                            <ArrowRight className="w-3.5 h-3.5 text-[#1B9C56] shrink-0" />
                           </div>
                         ) : youAreOwedInGroup ? (
                           <div className="splitty-pill-owed">

@@ -488,7 +488,7 @@ export const GroupDetailsPage: React.FC<GroupDetailsPageProps> = ({
   }
 
   return (
-    <div className="space-y-4 animate-in fade-in pb-16">
+    <div className="space-y-4 animate-in fade-in pb-28">
       {/* Toast Notice */}
       {toastNotice && (
         <div className="p-2.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/80 border border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-200 text-xs flex items-center justify-between shadow-xs">
