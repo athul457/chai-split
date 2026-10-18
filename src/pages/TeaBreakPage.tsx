@@ -12,6 +12,7 @@ import {
     Minus,
     Plus,
     Receipt,
+    Search,
     Share2,
     ShoppingBag,
     Sparkles,
@@ -25,7 +26,7 @@ import React, { useMemo, useState, useEffect } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { useExpense } from '../context/ExpenseContext'
 import { ChaiLoader } from '../components/ChaiLoader'
-import { getItemIconConfig, getGroupIconConfig } from '../utils/itemIcons'
+import { getItemIconConfig } from '../utils/itemIcons'
 import type { Group, MenuItem, User, MemberExpense } from '../types'
 
 interface TeaBreakPageProps {
@@ -76,7 +77,6 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
   const activeSession = (group?.id ? getActiveSessionForGroup(group.id) : undefined) ||
     (globalActiveSession?.groupId === group?.id ? globalActiveSession : undefined)
 
-  const groupIconConfig = getGroupIconConfig(group?.name || 'Tea Break', activeSession?.shopName)
 
   const [toastNotice, setToastNotice] = useState<string | null>(null)
   const [showCancelConfirm, setShowCancelConfirm] = useState(false)
@@ -430,8 +430,17 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
     return getMenuItemsForShop(breakShopId)
   }, [getMenuItemsForShop, breakShopId, menuItems])
 
-  // Menu items for this break
+  // Menu items search and filter
+  const [menuSearchQuery, setMenuSearchQuery] = useState('')
   const sortedMenuItems = shopMenuItems
+  const filteredMenuItems = useMemo(() => {
+    if (!menuSearchQuery.trim()) return sortedMenuItems
+    const q = menuSearchQuery.toLowerCase().trim()
+    return sortedMenuItems.filter(item =>
+      item.name.toLowerCase().includes(q) ||
+      (item.category && item.category.toLowerCase().includes(q))
+    )
+  }, [sortedMenuItems, menuSearchQuery])
 
   if (!activeSession) {
     return (
@@ -502,50 +511,26 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
         </div>
       )}
 
-      {/* Top Header */}
-      <div className="flex items-center justify-between px-1 py-1 text-stone-900 dark:text-stone-100">
-        <button
-          onClick={onBack}
-          id="back-to-group-from-break-btn"
-          className="w-9 h-9 rounded-full bg-stone-100 hover:bg-stone-200 dark:bg-stone-850 dark:hover:bg-stone-800 text-stone-700 dark:text-stone-200 flex items-center justify-center cursor-pointer active:scale-95 transition-all border border-stone-200/60 dark:border-stone-800 shadow-2xs"
-          title="Back to group"
-        >
-          <ArrowLeft className="w-4 h-4" />
-        </button>
-
-        <div className="text-center min-w-0 px-2">
-          <h2 className="font-heading font-extrabold text-base text-stone-900 dark:text-stone-100 truncate">
-            {group?.name || activeSession.title}
-          </h2>
-          <p className="text-[11px] text-stone-500 dark:text-stone-400 truncate">
-            ☕ {activeSession.shopName} • ID: {group.code || group.id}
-          </p>
-        </div>
-
-        <div className={`w-9 h-9 rounded-2xl ${groupIconConfig.bgLight} ${groupIconConfig.bgDark} flex items-center justify-center text-lg shrink-0 shadow-2xs`}>
-          {groupIconConfig.emoji}
-        </div>
-      </div>
-
-      {/* Screen 2 Top Card: Total Bill / Owed Card with black Settle / Share Pill */}
-      <div className="bg-white dark:bg-stone-900 rounded-3xl p-5 shadow-sm space-y-3.5 border border-stone-100 dark:border-stone-800">
-        <div className="flex items-center justify-between">
-          <div className="space-y-0.5">
-            <div className="text-xs font-semibold text-stone-500 dark:text-stone-400">
-              {isDesignatedPayer || isAdmin ? 'Total break bill' : 'Your order total'}
-            </div>
-            <div className="font-heading font-extrabold text-2xl text-[#1B9C56] tracking-tight">
-              ₹{isDesignatedPayer || isAdmin ? activeSession.totalAmount : myTotal}
-            </div>
+      {/* Single Unified Top Order Card */}
+      <div className="bg-white dark:bg-stone-900 rounded-3xl p-5 shadow-sm space-y-4 border border-stone-200/60 dark:border-stone-800">
+        {/* Row 1: Group Name & Meta + Actions */}
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <h2 className="font-heading font-black text-xl text-stone-900 dark:text-stone-100 truncate tracking-tight">
+              {group?.name || activeSession.title}
+            </h2>
+            <p className="text-xs text-stone-400 font-medium truncate mt-0.5">
+              {activeSession.shopName} • ID: {group.code || group.id}
+            </p>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 shrink-0">
             <button
               type="button"
               onClick={handleShareWhatsApp}
               id="share-break-whatsapp-btn"
               title="Share order on WhatsApp"
-              className="bg-stone-900 hover:bg-black text-white px-4 py-2 rounded-full font-bold text-xs shadow-xs cursor-pointer active:scale-95 transition-all flex items-center gap-1.5"
+              className="bg-stone-900 hover:bg-black text-white px-3.5 py-1.5 rounded-full font-bold text-xs shadow-xs cursor-pointer active:scale-95 transition-all flex items-center gap-1.5"
             >
               <Share2 className="w-3.5 h-3.5" />
               <span>Share</span>
@@ -554,7 +539,7 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
               <button
                 type="button"
                 onClick={() => setShowCancelConfirm(true)}
-                className="bg-[#FF7043] hover:bg-[#F4511E] text-white px-4 py-2 rounded-full font-bold text-xs shadow-xs cursor-pointer active:scale-95 transition-all"
+                className="bg-[#FF7043] hover:bg-[#F4511E] text-white px-3.5 py-1.5 rounded-full font-bold text-xs shadow-xs cursor-pointer active:scale-95 transition-all"
               >
                 End Break
               </button>
@@ -562,7 +547,17 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
           </div>
         </div>
 
-        {/* Member breakdown summary (Screen 2 'Who owes whom?') */}
+        {/* Row 2: Bill Amount with strong font hierarchy */}
+        <div className="pt-2 border-t border-stone-100 dark:border-stone-800">
+          <div className="text-[11px] font-bold text-stone-400 uppercase tracking-wider">
+            {isDesignatedPayer || isAdmin ? 'Total break bill' : 'Your order total'}
+          </div>
+          <div className="font-heading font-black text-3xl text-[#1B9C56] tracking-tight mt-0.5">
+            ₹{isDesignatedPayer || isAdmin ? activeSession.totalAmount : myTotal}
+          </div>
+        </div>
+
+        {/* Row 3: Member breakdown summary ('Who owes whom?') */}
         {membersWithItems.length > 0 && (
           <div className="pt-2.5 border-t border-stone-100 dark:border-stone-800 space-y-2">
             <div className="text-[11px] font-bold text-stone-400 uppercase tracking-wider">
@@ -633,8 +628,8 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
         <div className="space-y-4 animate-in fade-in">
           {/* 1. ITEMS SELECTION OPTION - FULL SCREEN EXTENDED */}
           <div className="p-4 rounded-3xl bg-white dark:bg-stone-900 border border-stone-200/80 dark:border-stone-800 shadow-2xs space-y-3.5">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2 shrink-0">
                 <div className="p-1.5 rounded-xl bg-orange-100 dark:bg-orange-950/70 text-[#FF7043]">
                   <ShoppingBag className="w-4 h-4" />
                 </div>
@@ -644,6 +639,27 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
                   </h3>
                 </div>
               </div>
+
+              {/* Searchbar on the right near heading */}
+              <div className="relative w-36 sm:w-48 shrink-0">
+                <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-stone-400 pointer-events-none" />
+                <input
+                  type="text"
+                  value={menuSearchQuery}
+                  onChange={(e) => setMenuSearchQuery(e.target.value)}
+                  placeholder="Search items..."
+                  id="menu-item-search-input"
+                  className="w-full pl-7 pr-6 py-1.5 rounded-full text-xs bg-[#FAF8F5] dark:bg-stone-800 text-stone-900 dark:text-stone-100 placeholder-stone-400 border border-stone-200 dark:border-stone-700 focus:outline-none focus:border-[#FF7043] focus:ring-1 focus:ring-[#FF7043] transition-all"
+                />
+                {menuSearchQuery && (
+                  <button
+                    onClick={() => setMenuSearchQuery('')}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-stone-400 hover:text-stone-600 dark:hover:text-stone-200 cursor-pointer"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                )}
+              </div>
             </div>
 
             {isMyOrderConfirmed && !canEditConfirmed ? (
@@ -651,14 +667,14 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
                 <Lock className="w-3.5 h-3.5 text-amber-600" />
                 <span>Ordering is locked</span>
               </div>
-            ) : shopMenuItems.length === 0 ? (
+            ) : filteredMenuItems.length === 0 ? (
               <div className="p-4 text-center text-xs text-stone-400 bg-stone-50 dark:bg-stone-800/40 rounded-2xl border border-dashed border-stone-200 dark:border-stone-800">
-                No items available in {activeSession.shopName} menu yet.
+                {menuSearchQuery ? `No items found matching "${menuSearchQuery}"` : `No items available in ${activeSession.shopName} menu yet.`}
               </div>
             ) : (
               /* Extended to full screen: no max-height restriction, natural native scroll */
               <div className="space-y-2.5">
-                {sortedMenuItems.map(item => {
+                {filteredMenuItems.map(item => {
                   const iconCfg = getItemIconConfig(item.name, item.category, item.emoji)
                   return (
                     <button

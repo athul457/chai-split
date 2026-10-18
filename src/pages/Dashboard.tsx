@@ -11,8 +11,6 @@ import {
   KeyRound,
   Search,
   AlertTriangle,
-  ArrowUpRight,
-  ArrowDownLeft,
   ArrowRight
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
@@ -119,31 +117,7 @@ export const Dashboard: React.FC<DashboardProps> = () => {
     )
   }, [groups, groupSearchQuery])
 
-  // User balance summary (You Owe vs Owes you) matching Splitty Screen 1
-  const { youOweAmount, owesYouAmount } = useMemo(() => {
-    let owe = 0
-    let owed = 0
-    if (!user) return { youOweAmount: '0.00', owesYouAmount: '0.00' }
 
-    groups.forEach(g => {
-      const s = getActiveSessionForGroup(g.id)
-      if (s && s.status === 'active') {
-        const myExp = s.expenses?.find(m => m.memberId === user.id)
-        const myTotal = myExp?.items?.reduce((sum: number, it) => sum + (it.price * it.quantity), 0) || 0
-        if (s.payerId === user.id) {
-          const othersTotal = Math.max(0, (s.totalAmount || 0) - myTotal)
-          owed += othersTotal
-        } else {
-          owe += myTotal
-        }
-      }
-    })
-
-    return {
-      youOweAmount: owe > 0 ? owe.toFixed(2) : '0.00',
-      owesYouAmount: owed > 0 ? owed.toFixed(2) : '0.00'
-    }
-  }, [groups, user, getActiveSessionForGroup])
 
   // Re-sync groups state when logged-in user changes (or upon initial login/logout)
   useEffect(() => {
@@ -1201,40 +1175,7 @@ export const Dashboard: React.FC<DashboardProps> = () => {
             />
           ) : (
           <div className="space-y-4 animate-in fade-in">
-            {/* 1. Splitty Two Balance Cards */}
-            <div className="grid grid-cols-2 gap-3 pt-0.5">
-              {/* You Owe Card */}
-              <div className="bg-[#1C1917] rounded-3xl p-4 text-white shadow-xl flex flex-col justify-between h-28 border border-white/5">
-                <div className="space-y-0.5">
-                  <div className="font-heading font-extrabold text-2xl tracking-tight text-white">
-                    ₹{youOweAmount}
-                  </div>
-                  <div className="text-xs text-stone-400 font-medium">You Owe</div>
-                </div>
-                <div className="flex justify-end">
-                  <div className="w-7 h-7 rounded-full bg-white/10 flex items-center justify-center">
-                    <ArrowUpRight className="w-4 h-4 text-stone-300" />
-                  </div>
-                </div>
-              </div>
-
-              {/* Owes You Card */}
-              <div className="bg-[#1C1917] rounded-3xl p-4 text-white shadow-xl flex flex-col justify-between h-28 border border-white/5">
-                <div className="space-y-0.5">
-                  <div className="font-heading font-extrabold text-2xl tracking-tight text-white">
-                    ₹{owesYouAmount}
-                  </div>
-                  <div className="text-xs text-stone-400 font-medium">Owes you</div>
-                </div>
-                <div className="flex justify-end">
-                  <div className="w-7 h-7 rounded-full bg-white/10 flex items-center justify-center">
-                    <ArrowDownLeft className="w-4 h-4 text-stone-300" />
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* 2. Groups Header & Action Buttons */}
+            {/* 1. Groups Header & Action Buttons */}
             <div className="flex items-center justify-between pt-1 px-1">
               <div>
                 <h2 className="font-heading font-extrabold text-lg text-stone-900 dark:text-stone-100">
@@ -1464,29 +1405,33 @@ export const Dashboard: React.FC<DashboardProps> = () => {
                         </div>
                       )}
 
-                      {/* Bottom Status Pill (Splitty Pill) */}
-                      <div className="pt-0.5">
+                      {/* Bottom Action Button / Status */}
+                      <div className="pt-1">
                         {isGroupBreakActive ? (
-                          <div className="splitty-pill-owed cursor-pointer hover:opacity-90">
+                          <div className="w-full py-2.5 px-4 rounded-2xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200/90 dark:border-emerald-800/80 text-emerald-800 dark:text-emerald-300 flex items-center justify-between transition-all group-hover:bg-emerald-100/70 shadow-2xs">
                             <div className="flex items-center gap-2">
-                              <span className="w-2 h-2 rounded-full bg-[#1B9C56] animate-pulse shrink-0" />
-                              <span>Live Break Active • Tap to Order</span>
+                              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shrink-0" />
+                              <span className="text-xs font-bold tracking-tight">Live Break Active</span>
+                              <span className="text-emerald-600/70 dark:text-emerald-400/70 text-[11px] font-medium">• Tap to Order</span>
                             </div>
-                            <ArrowRight className="w-3.5 h-3.5 text-[#1B9C56] shrink-0" />
+                            <div className="w-6 h-6 rounded-full bg-emerald-600 text-white flex items-center justify-center shadow-2xs shrink-0">
+                              <ArrowRight className="w-3.5 h-3.5 stroke-[2.5]" />
+                            </div>
                           </div>
                         ) : youAreOwedInGroup ? (
-                          <div className="splitty-pill-owed">
-                            <span>You are owed</span>
-                            <span className="font-bold">₹{youAreOwedInGroup}</span>
+                          <div className="w-full py-2.5 px-4 rounded-2xl bg-emerald-50/70 dark:bg-emerald-950/30 border border-emerald-200/60 dark:border-emerald-800/40 text-emerald-800 dark:text-emerald-300 flex items-center justify-between text-xs">
+                            <span className="font-semibold text-stone-600 dark:text-stone-400">You are owed</span>
+                            <span className="font-extrabold text-emerald-700 dark:text-emerald-400">₹{youAreOwedInGroup}</span>
                           </div>
                         ) : youOweInGroup ? (
-                          <div className="splitty-pill-owe">
-                            <span>You owe</span>
-                            <span className="font-bold">₹{youOweInGroup}</span>
+                          <div className="w-full py-2.5 px-4 rounded-2xl bg-orange-50/70 dark:bg-orange-950/30 border border-orange-200/60 dark:border-orange-800/40 text-orange-800 dark:text-orange-300 flex items-center justify-between text-xs">
+                            <span className="font-semibold text-stone-600 dark:text-stone-400">You owe</span>
+                            <span className="font-extrabold text-orange-700 dark:text-orange-400">₹{youOweInGroup}</span>
                           </div>
                         ) : (
-                          <div className="splitty-pill-settled">
-                            <span>Settled up</span>
+                          <div className="w-full py-2 px-3.5 rounded-2xl bg-stone-100/80 dark:bg-stone-800/50 border border-stone-200/60 dark:border-stone-800 text-stone-500 dark:text-stone-400 flex items-center justify-between text-xs">
+                            <span className="font-semibold">Settled up</span>
+                            <span className="text-[11px] font-medium text-stone-400">All clear</span>
                           </div>
                         )}
                       </div>

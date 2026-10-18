@@ -1,5 +1,4 @@
 import React, { useState } from 'react'
-import { Bell } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { ProfileDropdown } from './ProfileDropdown'
 import type { PageRoute } from '../types'
@@ -31,24 +30,14 @@ export const Header: React.FC<HeaderProps> = ({ currentPage: _currentPage, onNav
           </span>
         </button>
 
-        {/* Right: Only necessary actions (Notifications + Profile Avatar) */}
+        {/* Right: Profile Avatar */}
         {isAuthenticated && user && (
           <div className="relative flex items-center gap-2">
-            <button
-              type="button"
-              id="header-notification-btn"
-              title="Notifications"
-              onClick={() => setShowProfile(prev => !prev)}
-              className="w-8 h-8 rounded-full bg-stone-100 hover:bg-stone-200 dark:bg-stone-800 dark:hover:bg-stone-750 text-stone-600 dark:text-stone-300 flex items-center justify-center cursor-pointer transition-colors"
-            >
-              <Bell className="w-4 h-4" />
-            </button>
-
             <button
               onClick={() => setShowProfile(prev => !prev)}
               id="header-profile-btn"
               title={`${user.name}`}
-              className="w-8 h-8 rounded-full bg-[#FF7043]/15 text-[#FF7043] font-extrabold text-xs flex items-center justify-center ring-1 ring-[#FF7043]/30 cursor-pointer"
+              className="w-8 h-8 rounded-full bg-[#FF7043]/15 text-[#FF7043] font-extrabold text-xs flex items-center justify-center ring-1 ring-[#FF7043]/30 cursor-pointer hover:scale-105 transition-transform"
             >
               {user.avatar || user.name?.slice(0, 2).toUpperCase() || '👤'}
             </button>
