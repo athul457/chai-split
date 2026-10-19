@@ -463,15 +463,7 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
     showToast(`🔔 Alert sent to ${targetNames}: "${MALAYALAM_CONFIRM_ALERT_MSG}"`)
   }
 
-  // WhatsApp Nudge to unconfirmed members
-  const handleShareWhatsAppNudge = (targets?: MemberExpense[]) => {
-    const pending = targets || unconfirmedMembers
-    if (pending.length === 0) return
-    const names = pending.map(m => m.memberName).join(', ')
-    const text = `☕ *${group.name} Tea Break Alert!* ☕\n\n📢 *${MALAYALAM_CONFIRM_ALERT_MSG}*\n\n⏳ Pending: *${names}*\n\nPlease confirm your items in Chai-Split so the bill can be settled & closed!`
-    const url = `https://wa.me/?text=${encodeURIComponent(text)}`
-    window.open(url, '_blank')
-  }
+
 
   // Listen for realtime incoming alerts for unconfirmed members
   useEffect(() => {
@@ -1618,26 +1610,15 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
             {/* Bottom Actions for Admin & Owner */}
             <div className="pt-2 border-t border-stone-100 dark:border-stone-800 space-y-2">
               {canAddItemsForOthers && (
-                <div className="space-y-1.5">
-                  <button
-                    type="button"
-                    id="unconfirmed-modal-send-alert-btn"
-                    onClick={() => handleSendNudgeAlert()}
-                    className="w-full py-2.5 px-4 rounded-xl text-xs font-black bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-stone-950 shadow-md cursor-pointer active:scale-95 transition-all flex items-center justify-center gap-2"
-                  >
-                    <BellRing className="w-4 h-4 text-stone-950 animate-bounce" />
-                    <span>Send Alert: "{MALAYALAM_CONFIRM_ALERT_MSG}"</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => handleShareWhatsAppNudge()}
-                    className="w-full py-2 px-3 rounded-xl text-xs font-bold bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/40 dark:hover:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 cursor-pointer active:scale-95 transition-all flex items-center justify-center gap-1.5"
-                  >
-                    <Share2 className="w-3.5 h-3.5 text-emerald-600" />
-                    <span>WhatsApp Nudge to Unconfirmed ({unconfirmedMembers.length})</span>
-                  </button>
-                </div>
+                <button
+                  type="button"
+                  id="unconfirmed-modal-send-alert-btn"
+                  onClick={() => handleSendNudgeAlert()}
+                  className="w-full py-2.5 px-4 rounded-xl text-xs font-black bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-stone-950 shadow-md cursor-pointer active:scale-95 transition-all flex items-center justify-center gap-2"
+                >
+                  <BellRing className="w-4 h-4 text-stone-950 animate-bounce" />
+                  <span>Send Alert: "{MALAYALAM_CONFIRM_ALERT_MSG}"</span>
+                </button>
               )}
 
               <button
