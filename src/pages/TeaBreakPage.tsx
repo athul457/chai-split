@@ -1,36 +1,36 @@
 import {
-    ArrowLeft,
-    ArrowRight,
-    AlertTriangle,
-    BellRing,
-    CheckCircle2,
-    ChevronDown,
-    ChevronUp,
-    Clock,
-    Coffee,
-    Crown,
-    CreditCard,
-    Minus,
-    Plus,
-    Receipt,
-    Search,
-    Share2,
-    ShoppingBag,
-    Sparkles,
-    UserPlus,
-    Users,
-    X,
-    Lock,
-    Trash2
+  AlertTriangle,
+  ArrowLeft,
+  ArrowRight,
+  BellRing,
+  CheckCircle2,
+  ChevronDown,
+  ChevronUp,
+  Clock,
+  Coffee,
+  CreditCard,
+  Crown,
+  Lock,
+  Minus,
+  Plus,
+  Receipt,
+  Search,
+  Share2,
+  ShoppingBag,
+  Sparkles,
+  Trash2,
+  UserPlus,
+  Users,
+  X
 } from 'lucide-react'
-import React, { useMemo, useState, useEffect } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
+import { ChaiLoader } from '../components/ChaiLoader'
+import { FunnyMalayalamAlertModal } from '../components/FunnyMalayalamAlertModal'
+import { OrderSuccessModal } from '../components/OrderSuccessModal'
 import { useAuth } from '../context/AuthContext'
 import { useExpense } from '../context/ExpenseContext'
-import { ChaiLoader } from '../components/ChaiLoader'
+import type { Group, MemberExpense, MenuItem, TeaBreakAlert, User } from '../types'
 import { getItemIconConfig } from '../utils/itemIcons'
-import { OrderSuccessModal } from '../components/OrderSuccessModal'
-import { FunnyMalayalamAlertModal } from '../components/FunnyMalayalamAlertModal'
-import type { Group, MenuItem, User, MemberExpense, TeaBreakAlert } from '../types'
 
 interface TeaBreakPageProps {
   group: Group
@@ -424,7 +424,7 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
   }
 
   // Malayalam Confirm Alert Message for Unconfirmed Members
-  const MALAYALAM_CONFIRM_ALERT_MSG = 'ഒന്ന് കൺഫേം അടിച്ചിട്ട് എഴുന്നേറ്റ് പോടെയ്.'
+  const MALAYALAM_CONFIRM_ALERT_MSG = 'ഒന്ന് CONFIRM അടിച്ചിട്ട് എഴുന്നേറ്റ് പോടെയ്.'
 
   // Admin & Break Owner can send alert to unconfirmed members
   const handleSendNudgeAlert = (targetMemberIds?: string[]) => {
@@ -2081,7 +2081,7 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
         confirmLabel="Settle & Close"
       />
 
-      {/* Realtime Alert Modal for Unconfirmed Members: "ഒന്ന് കൺഫേം അടിച്ചിട്ട് എഴുന്നേറ്റ് പോടെയ്." */}
+      {/* Realtime Alert Modal for Unconfirmed Members: "." */}
       {activeNudge && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-950/75 backdrop-blur-sm animate-in fade-in duration-200">
           <div
