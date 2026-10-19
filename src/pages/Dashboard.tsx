@@ -11,7 +11,8 @@ import {
   KeyRound,
   Search,
   AlertTriangle,
-  ArrowRight
+  ArrowRight,
+  BellRing
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { useExpense } from '../context/ExpenseContext'
@@ -22,7 +23,7 @@ import { HistoryPage } from './HistoryPage'
 import { DEFAULT_SHOPS } from '../lib/mockData'
 import { supabase } from '../lib/supabase'
 import { GroupCardSkeleton } from '../components/ChaiSkeleton'
-import type { PageRoute, BottomTab, Shop, MenuItem, Group, User } from '../types'
+import type { PageRoute, BottomTab, Shop, MenuItem, Group, User, TeaBreakAlert } from '../types'
 import { getGroupIconConfig } from '../utils/itemIcons'
 
 interface DashboardProps {
@@ -104,6 +105,41 @@ export const Dashboard: React.FC<DashboardProps> = () => {
   const [viewingBreakGroupId, setViewingBreakGroupId] = useState<string | null>(null)
   const viewingBreakGroup = viewingBreakGroupId ? (groups.find(g => g.id === viewingBreakGroupId) || null) : null
   const [isLoadingGroups, setIsLoadingGroups] = useState(true)
+  const [dashboardNudge, setDashboardNudge] = useState<TeaBreakAlert | null>(null)
+
+  // Listen for realtime incoming alerts for unconfirmed members on dashboard
+  useEffect(() => {
+    const handleNudge = (e: any) => {
+      const payload: TeaBreakAlert = e?.detail
+      if (!payload || !user) return
+      if (payload.senderId && (payload.senderId === user.id || (user.userCode && payload.senderId === user.userCode))) return
+
+      const isTargeted = !payload.targetMemberIds || payload.targetMemberIds.length === 0 ||
+        payload.targetMemberIds.includes(user.id) ||
+        (user.userCode && payload.targetMemberIds.includes(user.userCode))
+
+      if (isTargeted) {
+        setDashboardNudge(payload)
+      }
+    }
+
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === 'chaisplit_latest_nudge' && e.newValue) {
+        try {
+          const payload = JSON.parse(e.newValue)
+          window.dispatchEvent(new CustomEvent('chaisplit_nudge_alert', { detail: payload }))
+        } catch {}
+      }
+    }
+
+    window.addEventListener('chaisplit_nudge_alert', handleNudge as EventListener)
+    window.addEventListener('storage', onStorage)
+
+    return () => {
+      window.removeEventListener('chaisplit_nudge_alert', handleNudge as EventListener)
+      window.removeEventListener('storage', onStorage)
+    }
+  }, [user])
 
   // Filtered groups based on Home search input
   const filteredGroups = useMemo(() => {
@@ -1003,6 +1039,47 @@ export const Dashboard: React.FC<DashboardProps> = () => {
           </div>
         )}
 
+        {/* Realtime Nudge Alert Banner for Unconfirmed Orders */}
+        {dashboardNudge && (
+          <div className="p-3.5 rounded-2xl bg-gradient-to-r from-amber-500 to-amber-600 text-stone-950 font-bold shadow-lg shadow-amber-500/20 border-2 border-amber-300 flex items-center justify-between gap-3 animate-in fade-in slide-in-from-top-2">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className="w-9 h-9 rounded-xl bg-stone-950 text-amber-400 flex items-center justify-center shrink-0">
+                <BellRing className="w-5 h-5 animate-bounce" />
+              </div>
+              <div className="min-w-0">
+                <div className="text-[10px] font-black uppercase tracking-wider text-stone-950/80">
+                  Alert from {dashboardNudge.senderName} ({dashboardNudge.senderRole || 'Admin'})
+                </div>
+                <div className="text-xs sm:text-sm font-black truncate">
+                  “{dashboardNudge.message}”
+                </div>
+              </div>
+            </div>
+            <div className="flex items-center gap-1.5 shrink-0">
+              <button
+                type="button"
+                onClick={() => {
+                  if (dashboardNudge.groupId) {
+                    setViewingBreakGroupId(dashboardNudge.groupId)
+                  }
+                  setActiveTab('my-orders')
+                  setDashboardNudge(null)
+                }}
+                className="px-3 py-1.5 rounded-xl text-xs font-black bg-stone-950 text-white hover:bg-stone-900 cursor-pointer active:scale-95 transition-all shadow-xs"
+              >
+                Confirm Now
+              </button>
+              <button
+                type="button"
+                onClick={() => setDashboardNudge(null)}
+                className="p-1 rounded-lg text-stone-900 hover:bg-amber-600/30 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* -------------------- 1. MY ORDERS & OTHERS' ORDERS TABS -------------------- */}
         {(activeTab === 'my-orders' || activeTab === 'others-orders' || activeTab === 'details') && (
           (() => {
@@ -1067,6 +1144,7 @@ export const Dashboard: React.FC<DashboardProps> = () => {
                   onSubViewChange={(sub) => setActiveTab(sub)}
                   onBack={() => {
                     setViewingBreakGroupId(null)
+                    setViewingGroupId(liveGroupWithBreak.id)
                     setActiveTab('home')
                   }}
                 />

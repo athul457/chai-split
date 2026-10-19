@@ -2,6 +2,7 @@ import {
     ArrowLeft,
     ArrowRight,
     AlertTriangle,
+    BellRing,
     CheckCircle2,
     ChevronDown,
     ChevronUp,
@@ -29,7 +30,7 @@ import { ChaiLoader } from '../components/ChaiLoader'
 import { getItemIconConfig } from '../utils/itemIcons'
 import { OrderSuccessModal } from '../components/OrderSuccessModal'
 import { FunnyMalayalamAlertModal } from '../components/FunnyMalayalamAlertModal'
-import type { Group, MenuItem, User, MemberExpense } from '../types'
+import type { Group, MenuItem, User, MemberExpense, TeaBreakAlert } from '../types'
 
 interface TeaBreakPageProps {
   group: Group
@@ -72,7 +73,8 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
     confirmMemberOrder,
     menuItems,
     getMenuItemsForShop,
-    generateWhatsAppSummary
+    generateWhatsAppSummary,
+    broadcastUnconfirmedAlert
   } = useExpense()
 
   // Retrieve the break session specifically for this group
@@ -93,6 +95,41 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
   const [showSettleAlertModal, setShowSettleAlertModal] = useState(false)
   const [isCupDrawerOpen, setIsCupDrawerOpen] = useState(false)
   const [showAllMembersList, setShowAllMembersList] = useState(false)
+  const [activeNudge, setActiveNudge] = useState<TeaBreakAlert | null>(null)
+
+  // Gentle tea-chime tone for incoming alert
+  const playTeaAlertChime = () => {
+    try {
+      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext
+      if (!AudioCtx) return
+      const ctx = new AudioCtx()
+      if (ctx.state === 'suspended') {
+        ctx.resume().catch(() => {})
+      }
+      const now = ctx.currentTime
+      const o1 = ctx.createOscillator()
+      const g1 = ctx.createGain()
+      o1.type = 'triangle'
+      o1.frequency.setValueAtTime(659.25, now) // E5
+      g1.gain.setValueAtTime(0.25, now)
+      g1.gain.exponentialRampToValueAtTime(0.001, now + 0.35)
+      o1.connect(g1)
+      g1.connect(ctx.destination)
+      o1.start(now)
+      o1.stop(now + 0.35)
+
+      const o2 = ctx.createOscillator()
+      const g2 = ctx.createGain()
+      o2.type = 'triangle'
+      o2.frequency.setValueAtTime(880, now + 0.12) // A5
+      g2.gain.setValueAtTime(0.3, now + 0.12)
+      g2.gain.exponentialRampToValueAtTime(0.001, now + 0.6)
+      o2.connect(g2)
+      g2.connect(ctx.destination)
+      o2.start(now + 0.12)
+      o2.stop(now + 0.6)
+    } catch {}
+  }
 
   // Accordion state: other users' items only appear when clicked
   const [expandedMemberIds, setExpandedMemberIds] = useState<Set<string>>(() => {
@@ -119,7 +156,20 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
 
   // Admin detection
   const effectiveAdminId = group.adminId || group.members[0]?.id || effectiveUser?.id
-  const isAdmin = effectiveUser?.id === effectiveAdminId
+  const isAdmin = Boolean(
+    effectiveUser?.id && (
+      effectiveUser.id === effectiveAdminId ||
+      currentUser?.id === effectiveAdminId ||
+      (effectiveUser.userCode && effectiveAdminId === effectiveUser.userCode) ||
+      (currentUser?.userCode && effectiveAdminId === currentUser.userCode) ||
+      (group.adminId && (
+        effectiveUser.id === group.adminId ||
+        currentUser?.id === group.adminId ||
+        (effectiveUser.userCode && group.adminId === effectiveUser.userCode) ||
+        (currentUser?.userCode && group.adminId === currentUser.userCode)
+      ))
+    )
+  )
 
   // Designated Bill Payer detection: set in group or session
   const designatedPayerId = group.payerId || activeSession?.payerId
@@ -135,23 +185,31 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
     )
   )
 
-  // Both Admin and the designated Bill Payer can edit confirmed items and assign items for others
-  const canEditConfirmed = Boolean(isAdmin || isDesignatedPayer)
-
   // Break Creator detection: user who created the break
   const isBreakCreator = Boolean(
     activeSession && (
       (activeSession.creatorId && (
         effectiveUser?.id === activeSession.creatorId ||
+        currentUser?.id === activeSession.creatorId ||
         (effectiveUser?.userCode && activeSession.creatorId === effectiveUser.userCode) ||
-        (effectiveUser?.email && activeSession.creatorId.toLowerCase() === effectiveUser.email.toLowerCase())
+        (currentUser?.userCode && activeSession.creatorId === currentUser.userCode) ||
+        (effectiveUser?.email && activeSession.creatorId.toLowerCase() === effectiveUser.email.toLowerCase()) ||
+        (currentUser?.email && activeSession.creatorId.toLowerCase() === currentUser.email.toLowerCase())
       )) ||
       (!activeSession.creatorId && (
         (effectiveUser?.id && activeSession.payerId === effectiveUser.id) ||
-        (effectiveUser?.name && activeSession.creatorName && activeSession.creatorName.toLowerCase() === effectiveUser.name.toLowerCase())
+        (currentUser?.id && activeSession.payerId === currentUser.id) ||
+        (effectiveUser?.name && activeSession.creatorName && activeSession.creatorName.toLowerCase() === effectiveUser.name.toLowerCase()) ||
+        (currentUser?.name && activeSession.creatorName && activeSession.creatorName.toLowerCase() === currentUser.name.toLowerCase())
       ))
     )
   )
+
+  // Only Group Admin and Break Owner who created the break can add items for others
+  const canAddItemsForOthers = Boolean(isAdmin || isBreakCreator)
+
+  // Admin, Break Creator, and Designated Bill Payer can edit confirmed items
+  const canEditConfirmed = Boolean(isAdmin || isBreakCreator || isDesignatedPayer)
 
   // Break closing rule: Both the person who created the break AND the group admin can close or settle it
   const canCloseBreak = Boolean(activeSession && (isBreakCreator || isAdmin))
@@ -296,10 +354,10 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
     await removeItemFromMember(targetUserId, menuItemId, activeSession?.id, adminEditorName)
   }
 
-  // Admin & Payer assigns item to selected colleague
+  // Admin & Break Creator assigns item to selected colleague
   const handleAdminAssignItem = (item: MenuItem) => {
-    if (!canEditConfirmed || !selectedAssigneeId) return
-    const adminName = effectiveUser?.name || (isAdmin ? 'Admin' : 'Payer')
+    if (!canAddItemsForOthers || !selectedAssigneeId) return
+    const adminName = effectiveUser?.name || (isAdmin ? 'Admin' : (isBreakCreator ? 'Break Creator' : 'Payer'))
     addItemToMember(selectedAssigneeId, item, activeSession?.id, adminName)
     showToast(`Assigned ${item.name} to ${selectedAssignee?.name || 'teammate'}!`)
   }
@@ -364,6 +422,99 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
     const url = `https://wa.me/?text=${encodeURIComponent(text)}`
     window.open(url, '_blank')
   }
+
+  // Malayalam Confirm Alert Message for Unconfirmed Members
+  const MALAYALAM_CONFIRM_ALERT_MSG = 'ഒന്ന് കൺഫേം അടിച്ചിട്ട് എഴുന്നേറ്റ് പോടെയ്.'
+
+  // Admin & Break Owner can send alert to unconfirmed members
+  const handleSendNudgeAlert = (targetMemberIds?: string[]) => {
+    if (!canAddItemsForOthers) {
+      showToast('Only Group Admin or Break Owner can send alerts.')
+      return
+    }
+    if (!activeSession) return
+
+    const targets = targetMemberIds && targetMemberIds.length > 0
+      ? targetMemberIds
+      : unconfirmedMembers.map(m => m.memberId)
+
+    if (targets.length === 0) {
+      showToast('All members have already confirmed their orders!')
+      return
+    }
+
+    const targetNames = unconfirmedMembers
+      .filter(m => targets.includes(m.memberId))
+      .map(m => m.memberName)
+      .join(', ') || 'unconfirmed members'
+
+    const payload: TeaBreakAlert = {
+      sessionId: activeSession.id,
+      groupId: group.id,
+      senderId: effectiveUserId,
+      senderName: effectiveUser?.name || currentUser?.name || 'Admin',
+      senderRole: isAdmin ? 'Group Admin' : 'Break Owner',
+      message: MALAYALAM_CONFIRM_ALERT_MSG,
+      targetMemberIds: targets,
+      timestamp: Date.now()
+    }
+
+    broadcastUnconfirmedAlert(payload)
+    showToast(`🔔 Alert sent to ${targetNames}: "${MALAYALAM_CONFIRM_ALERT_MSG}"`)
+  }
+
+  // WhatsApp Nudge to unconfirmed members
+  const handleShareWhatsAppNudge = (targets?: MemberExpense[]) => {
+    const pending = targets || unconfirmedMembers
+    if (pending.length === 0) return
+    const names = pending.map(m => m.memberName).join(', ')
+    const text = `☕ *${group.name} Tea Break Alert!* ☕\n\n📢 *${MALAYALAM_CONFIRM_ALERT_MSG}*\n\n⏳ Pending: *${names}*\n\nPlease confirm your items in Chai-Split so the bill can be settled & closed!`
+    const url = `https://wa.me/?text=${encodeURIComponent(text)}`
+    window.open(url, '_blank')
+  }
+
+  // Listen for realtime incoming alerts for unconfirmed members
+  useEffect(() => {
+    const handleNudgeEvent = (e: any) => {
+      const payload: TeaBreakAlert = e?.detail
+      if (!payload) return
+      if (payload.sessionId && activeSession?.id && payload.sessionId !== activeSession.id) return
+      if (payload.groupId && group?.id && payload.groupId !== group.id) return
+      if (payload.senderId && (payload.senderId === effectiveUserId || payload.senderId === currentUser?.id)) return
+
+      const isTargeted = !payload.targetMemberIds || payload.targetMemberIds.length === 0 ||
+        payload.targetMemberIds.includes(effectiveUserId) ||
+        (effectiveUser?.userCode && payload.targetMemberIds.includes(effectiveUser.userCode)) ||
+        (currentUserExpense?.memberId && payload.targetMemberIds.includes(currentUserExpense.memberId))
+
+      const hasUnconfirmedOrder = Boolean(currentUserExpense && currentUserExpense.items && currentUserExpense.items.length > 0 && !currentUserExpense.isConfirmed)
+
+      if (isTargeted && hasUnconfirmedOrder) {
+        setActiveNudge(payload)
+        playTeaAlertChime()
+        if (navigator.vibrate) {
+          navigator.vibrate([200, 100, 200, 100, 300])
+        }
+      }
+    }
+
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === 'chaisplit_latest_nudge' && e.newValue) {
+        try {
+          const payload = JSON.parse(e.newValue)
+          window.dispatchEvent(new CustomEvent('chaisplit_nudge_alert', { detail: payload }))
+        } catch {}
+      }
+    }
+
+    window.addEventListener('chaisplit_nudge_alert', handleNudgeEvent as EventListener)
+    window.addEventListener('storage', onStorage)
+
+    return () => {
+      window.removeEventListener('chaisplit_nudge_alert', handleNudgeEvent as EventListener)
+      window.removeEventListener('storage', onStorage)
+    }
+  }, [activeSession?.id, group?.id, effectiveUserId, currentUserExpense, effectiveUser?.userCode, currentUser?.id])
 
   // Total items in break
   const totalSessionItemCount = activeSession?.expenses.reduce(
@@ -543,17 +694,53 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
         </div>
       )}
 
+      {/* Top Navigation Bar - Back to Group */}
+      <div className="flex items-center justify-between p-3 rounded-2xl bg-white dark:bg-stone-900 border border-stone-200/80 dark:border-stone-800 shadow-2xs">
+        <button
+          type="button"
+          onClick={onBack}
+          id="back-to-group-from-break-btn"
+          className="flex items-center gap-1.5 text-xs font-semibold text-stone-600 dark:text-stone-300 hover:text-amber-700 dark:hover:text-amber-400 cursor-pointer active:scale-95 transition-all"
+        >
+          <ArrowLeft className="w-4 h-4" />
+          <span>Back to Group</span>
+        </button>
+
+        <div className="flex items-center gap-2">
+          {group && (
+            <span className="font-mono text-[11px] font-bold text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/60 px-2 py-0.5 rounded-md border border-amber-200/50 dark:border-amber-900/50">
+              ID: {group.code || group.id}
+            </span>
+          )}
+          <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping inline-block" />
+            <span>Live Break</span>
+          </span>
+        </div>
+      </div>
+
       {/* Single Unified Top Order Card - Compact & Balanced */}
       <div className="bg-white dark:bg-stone-900 rounded-2xl p-3.5 shadow-xs space-y-2.5 border border-stone-200/60 dark:border-stone-800">
         {/* Row 1: Group Name & Meta + Actions */}
         <div className="flex items-center justify-between gap-2">
-          <div className="min-w-0">
-            <h2 className="font-heading font-black text-base text-stone-900 dark:text-stone-100 truncate tracking-tight">
-              {group?.name || activeSession.title}
-            </h2>
-            <p className="text-[11px] text-stone-400 font-medium truncate">
-              {activeSession.shopName} • ID: {group.code || group.id}
-            </p>
+          <div className="flex items-center gap-2 min-w-0">
+            <button
+              type="button"
+              onClick={onBack}
+              id="header-back-to-group-btn"
+              title="Back to Group"
+              className="p-1 -ml-1 rounded-xl text-stone-500 hover:text-amber-700 dark:hover:text-amber-400 hover:bg-stone-100 dark:hover:bg-stone-800 cursor-pointer active:scale-95 transition-all shrink-0"
+            >
+              <ArrowLeft className="w-4 h-4" />
+            </button>
+            <div className="min-w-0">
+              <h2 className="font-heading font-black text-base text-stone-900 dark:text-stone-100 truncate tracking-tight">
+                {group?.name || activeSession.title}
+              </h2>
+              <p className="text-[11px] text-stone-400 font-medium truncate">
+                {activeSession.shopName} • ID: {group.code || group.id}
+              </p>
+            </div>
           </div>
 
           <div className="flex items-center gap-1.5 shrink-0">
@@ -579,8 +766,8 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
           </div>
         </div>
 
-        {/* Row 2: Bill Amount + Who Owes Whom in a clean balanced 2-column layout */}
-        <div className="pt-2 border-t border-stone-100 dark:border-stone-800 flex items-center justify-between gap-3">
+        {/* Row 2: Bill Amount */}
+        <div className="pt-2 border-t border-stone-100 dark:border-stone-800 flex items-center justify-between">
           <div>
             <div className="text-[10px] font-bold text-stone-400 uppercase tracking-wider">
               {isDesignatedPayer || isAdmin ? 'Total break bill' : 'Your order total'}
@@ -589,30 +776,6 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
               ₹{isDesignatedPayer || isAdmin ? activeSession.totalAmount : myTotal}
             </div>
           </div>
-
-          {/* Member debts breakdown right alongside */}
-          {membersWithItems.length > 0 && (
-            <div className="text-right min-w-0 max-w-[55%]">
-              <div className="text-[10px] font-bold text-stone-400 uppercase tracking-wider">
-                Who owes whom?
-              </div>
-              <div className="space-y-0.5 mt-0.5 max-h-12 overflow-y-auto">
-                {membersWithItems.map(m => (
-                  <div key={m.memberId} className="flex items-center justify-end gap-1.5 text-xs">
-                    <div className="w-4 h-4 rounded-full bg-stone-200 dark:bg-stone-700 text-[9px] font-bold flex items-center justify-center shrink-0">
-                      {m.memberName?.slice(0, 1).toUpperCase()}
-                    </div>
-                    <span className="truncate text-stone-600 dark:text-stone-300 text-[11px]">
-                      {m.memberName} {m.memberId === effectiveUser?.id ? '(You)' : ''}
-                    </span>
-                    <span className="font-bold text-stone-900 dark:text-stone-100 text-[11px] shrink-0">
-                      ₹{m.total}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
         </div>
       </div>
 
@@ -776,20 +939,20 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
       {/* ---------------- 2. OTHERS' ORDERS VIEW ---------------- */}
       {activeSubView === 'others-orders' && (
         <div className="space-y-4 animate-in fade-in">
-          {/* ADMIN & PAYER: BUTTON FOR ADDING ITEMS FOR OTHERS */}
-          {canEditConfirmed && (
-        <div className="pt-0.5">
-          <button
-            type="button"
-            onClick={() => setShowAssignModal(true)}
-            id="add-items-for-others-btn"
-            className="w-full py-2.5 px-3 rounded-xl border border-stone-300 dark:border-stone-700 hover:border-amber-500 bg-white dark:bg-stone-900 text-stone-700 dark:text-stone-300 hover:text-amber-700 dark:hover:text-amber-400 font-bold text-xs flex items-center justify-center gap-2 shadow-2xs active:scale-[0.98] transition-all cursor-pointer"
-          >
-            <UserPlus className="w-4 h-4 text-amber-600" />
-            <span>Add items for others</span>
-          </button>
-        </div>
-      )}
+          {/* ONLY GROUP ADMIN AND BREAK OWNER WHO CREATED THE BREAK CAN ADD ITEMS FOR OTHERS */}
+          {canAddItemsForOthers && (
+            <div className="pt-0.5">
+              <button
+                type="button"
+                onClick={() => setShowAssignModal(true)}
+                id="add-items-for-others-btn"
+                className="w-full py-2.5 px-3 rounded-xl border border-stone-300 dark:border-stone-700 hover:border-amber-500 bg-white dark:bg-stone-900 text-stone-700 dark:text-stone-300 hover:text-amber-700 dark:hover:text-amber-400 font-bold text-xs flex items-center justify-center gap-2 shadow-2xs active:scale-[0.98] transition-all cursor-pointer"
+              >
+                <UserPlus className="w-4 h-4 text-amber-600" />
+                <span>Add items for others</span>
+              </button>
+            </div>
+          )}
 
       {/* ---------------- WHO ORDERED WHAT & BILL BREAKDOWN (VISIBLE TO EACH USER) ---------------- */}
       <div className="p-4 rounded-2xl bg-white dark:bg-stone-900 border border-stone-200/80 dark:border-stone-800 shadow-2xs space-y-4">
@@ -1087,30 +1250,47 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
                             )}
                           </span>
 
-                          {!isConfirmed && (isUser || isBreakCreator || canEditConfirmed) && (
-                            <button
-                              type="button"
-                              onClick={async (e) => {
-                                e.stopPropagation()
-                                if (isUser) {
-                                  handleInitiateConfirmMyOrder()
-                                } else {
-                                  await confirmMemberOrder(expense.memberId, activeSession?.id)
-                                  showToast(`Confirmed items for ${expense.memberName}`)
-                                }
-                              }}
-                              className="text-[10px] font-bold text-emerald-700 dark:text-emerald-300 hover:text-emerald-800 bg-emerald-100/90 dark:bg-emerald-950/80 px-2.5 py-0.5 rounded-lg cursor-pointer hover:bg-emerald-200 dark:hover:bg-emerald-900 transition-colors flex items-center gap-1 border-0 border-none outline-none"
-                            >
-                              <CheckCircle2 className="w-2.5 h-2.5 text-emerald-600" />
-                              <span>Confirm Items</span>
-                            </button>
-                          )}
+                          <div className="flex items-center gap-1.5">
+                            {!isConfirmed && canAddItemsForOthers && !isUser && (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  handleSendNudgeAlert([expense.memberId])
+                                }}
+                                className="text-[10px] font-bold text-amber-800 dark:text-amber-200 bg-amber-100 hover:bg-amber-200 dark:bg-amber-900/60 px-2 py-0.5 rounded-lg cursor-pointer flex items-center gap-1 active:scale-95 transition-all"
+                                title={`Send alert: "${MALAYALAM_CONFIRM_ALERT_MSG}"`}
+                              >
+                                <BellRing className="w-2.5 h-2.5 text-amber-700 dark:text-amber-300" />
+                                <span>Nudge</span>
+                              </button>
+                            )}
+
+                            {!isConfirmed && (isUser || isBreakCreator || canEditConfirmed) && (
+                              <button
+                                type="button"
+                                onClick={async (e) => {
+                                  e.stopPropagation()
+                                  if (isUser) {
+                                    handleInitiateConfirmMyOrder()
+                                  } else {
+                                    await confirmMemberOrder(expense.memberId, activeSession?.id)
+                                    showToast(`Confirmed items for ${expense.memberName}`)
+                                  }
+                                }}
+                                className="text-[10px] font-bold text-emerald-700 dark:text-emerald-300 hover:text-emerald-800 bg-emerald-100/90 dark:bg-emerald-950/80 px-2.5 py-0.5 rounded-lg cursor-pointer hover:bg-emerald-200 dark:hover:bg-emerald-900 transition-colors flex items-center gap-1 border-0 border-none outline-none"
+                              >
+                                <CheckCircle2 className="w-2.5 h-2.5 text-emerald-600" />
+                                <span>Confirm Items</span>
+                              </button>
+                            )}
+                          </div>
                         </div>
                         </>
                       ) : (
                         <div className="flex items-center justify-between pl-8 text-[10px] text-stone-400">
                           <span className="italic">No items added yet</span>
-                          {canEditConfirmed && !isUser && (
+                          {canAddItemsForOthers && !isUser && (
                             <button
                               type="button"
                               onClick={(e) => {
@@ -1230,13 +1410,27 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
                     Waiting for <strong>{unconfirmedMembers.map(m => m.memberName).join(', ')}</strong> to confirm items.
                   </span>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setShowUnconfirmedModal(true)}
-                  className="text-[10px] font-bold text-amber-700 dark:text-amber-400 underline cursor-pointer shrink-0 ml-1"
-                >
-                  View ({unconfirmedMembers.length})
-                </button>
+                <div className="flex items-center gap-1.5 shrink-0 ml-1">
+                  {canAddItemsForOthers && (
+                    <button
+                      type="button"
+                      id="send-unconfirmed-quick-alert-btn"
+                      onClick={() => handleSendNudgeAlert()}
+                      className="px-2 py-1 rounded-lg text-[10px] font-black bg-amber-500 hover:bg-amber-600 text-stone-950 shadow-2xs cursor-pointer active:scale-95 transition-all flex items-center gap-1"
+                      title={`Send alert: "${MALAYALAM_CONFIRM_ALERT_MSG}"`}
+                    >
+                      <BellRing className="w-3 h-3 text-stone-950 animate-bounce" />
+                      <span>Alert ({unconfirmedMembers.length})</span>
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setShowUnconfirmedModal(true)}
+                    className="text-[10px] font-bold text-amber-700 dark:text-amber-400 underline cursor-pointer"
+                  >
+                    View ({unconfirmedMembers.length})
+                  </button>
+                </div>
               </div>
             )}
 
@@ -1389,30 +1583,69 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
                     </div>
                   </div>
 
-                  {(isBreakCreator || canEditConfirmed || effectiveUser?.id === member.memberId) && (
-                    <button
-                      type="button"
-                      onClick={async () => {
-                        await confirmMemberOrder(member.memberId, activeSession?.id)
-                        showToast(`Confirmed items for ${member.memberName}`)
-                      }}
-                      className="shrink-0 px-2.5 py-1 rounded-lg text-[10px] font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-2xs cursor-pointer active:scale-95 transition-all flex items-center gap-1"
-                    >
-                      <CheckCircle2 className="w-3 h-3" />
-                      <span>Confirm</span>
-                    </button>
-                  )}
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    {/* If Admin or Owner, can nudge this specific member */}
+                    {canAddItemsForOthers && (
+                      <button
+                        type="button"
+                        onClick={() => handleSendNudgeAlert([member.memberId])}
+                        title={`Send alert: "${MALAYALAM_CONFIRM_ALERT_MSG}"`}
+                        className="px-2 py-1 rounded-lg text-[10px] font-bold bg-amber-100 hover:bg-amber-200 dark:bg-amber-900/60 dark:hover:bg-amber-800 text-amber-900 dark:text-amber-200 cursor-pointer active:scale-95 transition-all flex items-center gap-1"
+                      >
+                        <BellRing className="w-3 h-3 text-amber-700 dark:text-amber-300" />
+                        <span>Alert</span>
+                      </button>
+                    )}
+
+                    {(isBreakCreator || canEditConfirmed || effectiveUser?.id === member.memberId) && (
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          await confirmMemberOrder(member.memberId, activeSession?.id)
+                          showToast(`Confirmed items for ${member.memberName}`)
+                        }}
+                        className="shrink-0 px-2.5 py-1 rounded-lg text-[10px] font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-2xs cursor-pointer active:scale-95 transition-all flex items-center gap-1"
+                      >
+                        <CheckCircle2 className="w-3 h-3" />
+                        <span>Confirm</span>
+                      </button>
+                    )}
+                  </div>
                 </div>
               ))}
             </div>
 
-            <div className="pt-2 border-t border-stone-100 dark:border-stone-800 flex items-center gap-2">
+            {/* Bottom Actions for Admin & Owner */}
+            <div className="pt-2 border-t border-stone-100 dark:border-stone-800 space-y-2">
+              {canAddItemsForOthers && (
+                <div className="space-y-1.5">
+                  <button
+                    type="button"
+                    id="unconfirmed-modal-send-alert-btn"
+                    onClick={() => handleSendNudgeAlert()}
+                    className="w-full py-2.5 px-4 rounded-xl text-xs font-black bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-stone-950 shadow-md cursor-pointer active:scale-95 transition-all flex items-center justify-center gap-2"
+                  >
+                    <BellRing className="w-4 h-4 text-stone-950 animate-bounce" />
+                    <span>Send Alert: "{MALAYALAM_CONFIRM_ALERT_MSG}"</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => handleShareWhatsAppNudge()}
+                    className="w-full py-2 px-3 rounded-xl text-xs font-bold bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/40 dark:hover:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 cursor-pointer active:scale-95 transition-all flex items-center justify-center gap-1.5"
+                  >
+                    <Share2 className="w-3.5 h-3.5 text-emerald-600" />
+                    <span>WhatsApp Nudge to Unconfirmed ({unconfirmedMembers.length})</span>
+                  </button>
+                </div>
+              )}
+
               <button
                 type="button"
                 onClick={() => setShowUnconfirmedModal(false)}
-                className="w-full py-2.5 px-4 rounded-xl text-xs font-bold bg-stone-100 hover:bg-stone-200 dark:bg-stone-800 dark:hover:bg-stone-700 text-stone-800 dark:text-stone-200 shadow-2xs cursor-pointer active:scale-95 transition-all text-center"
+                className="w-full py-2 px-4 rounded-xl text-xs font-semibold text-stone-600 dark:text-stone-400 hover:bg-stone-100 dark:hover:bg-stone-800 cursor-pointer active:scale-95 transition-all text-center"
               >
-                Okay, Remind Members
+                Close
               </button>
             </div>
           </div>
@@ -1847,6 +2080,95 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
         isConfirming={isSettling}
         confirmLabel="Settle & Close"
       />
+
+      {/* Realtime Alert Modal for Unconfirmed Members: "ഒന്ന് കൺഫേം അടിച്ചിട്ട് എഴുന്നേറ്റ് പോടെയ്." */}
+      {activeNudge && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-950/75 backdrop-blur-sm animate-in fade-in duration-200">
+          <div
+            className="w-full max-w-sm bg-white dark:bg-stone-900 rounded-3xl shadow-2xl border-2 border-amber-400 dark:border-amber-500 p-5 space-y-4 text-center relative overflow-hidden animate-in zoom-in-95 duration-200"
+            role="dialog"
+            aria-modal="true"
+          >
+            {/* Ambient amber glow */}
+            <div className="absolute -top-12 -right-12 w-32 h-32 bg-amber-400/20 rounded-full blur-2xl pointer-events-none" />
+            <div className="absolute -bottom-12 -left-12 w-32 h-32 bg-orange-500/20 rounded-full blur-2xl pointer-events-none" />
+
+            {/* Close Button */}
+            <button
+              type="button"
+              onClick={() => setActiveNudge(null)}
+              className="absolute top-3 right-3 p-1.5 rounded-full text-stone-400 hover:text-stone-600 dark:hover:text-stone-200 hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors cursor-pointer"
+            >
+              <X className="w-4 h-4" />
+            </button>
+
+            {/* Animated Bell Icon */}
+            <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-amber-500 to-orange-500 text-stone-950 flex items-center justify-center mx-auto text-2xl shadow-lg shadow-amber-500/25 ring-4 ring-amber-400/30">
+              <BellRing className="w-7 h-7 text-stone-950 animate-bounce" />
+            </div>
+
+            {/* Badge & Sender */}
+            <div className="space-y-1">
+              <span className="inline-block px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-amber-100 dark:bg-amber-950 text-amber-900 dark:text-amber-200 border border-amber-300 dark:border-amber-800">
+                🚨 ചായ ബ്രേക്ക് അലർട്ട് (TEA BREAK ALERT)
+              </span>
+              <p className="text-xs text-stone-500 dark:text-stone-400">
+                From <strong className="text-stone-800 dark:text-stone-200 font-bold">{activeNudge.senderName}</strong> ({activeNudge.senderRole || 'Admin'})
+              </p>
+            </div>
+
+            {/* The Funny Malayalam Alert Message */}
+            <div className="p-3.5 rounded-2xl bg-gradient-to-br from-amber-50 to-orange-50 dark:from-amber-950/60 dark:to-orange-950/40 border border-amber-300 dark:border-amber-700/60 shadow-inner space-y-1">
+              <p className="font-heading font-black text-lg text-stone-900 dark:text-amber-100 tracking-tight leading-snug">
+                “{activeNudge.message || 'ഒന്ന് കൺഫേം അടിച്ചിട്ട് എഴുന്നേറ്റ് പോടെയ്.'}”
+              </p>
+              <p className="text-[11px] text-stone-600 dark:text-stone-300 italic font-medium">
+                (Confirm your items now so the bill can be settled &amp; closed!)
+              </p>
+            </div>
+
+            {/* Member's unconfirmed items summary */}
+            {currentUserExpense && currentUserExpense.items.length > 0 && (
+              <div className="p-2.5 rounded-xl bg-stone-50 dark:bg-stone-800/70 border border-stone-200/80 dark:border-stone-700/60 text-left text-xs space-y-1">
+                <div className="flex items-center justify-between font-bold text-stone-800 dark:text-stone-200">
+                  <span>Your Unconfirmed Order:</span>
+                  <span className="text-amber-700 dark:text-amber-400 font-black">₹{currentUserExpense.total}</span>
+                </div>
+                <div className="text-[11px] text-stone-500 dark:text-stone-400 truncate">
+                  {currentUserExpense.items.map(i => `${i.name} x${i.quantity}`).join(', ')}
+                </div>
+              </div>
+            )}
+
+            {/* Quick Actions */}
+            <div className="space-y-2 pt-1">
+              <button
+                type="button"
+                id="nudge-confirm-now-btn"
+                onClick={async () => {
+                  setActiveNudge(null)
+                  await handleExecuteConfirmMyOrder()
+                }}
+                className="w-full py-3 px-4 rounded-xl text-xs font-black bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white shadow-lg shadow-emerald-600/25 cursor-pointer active:scale-95 transition-all flex items-center justify-center gap-2"
+              >
+                <CheckCircle2 className="w-4 h-4" />
+                <span>Confirm My Order Now (₹{myTotal})</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveNudge(null)
+                  handleSubViewChange('my-orders')
+                }}
+                className="w-full py-2 px-3 rounded-xl text-xs font-semibold text-stone-600 dark:text-stone-400 hover:bg-stone-100 dark:hover:bg-stone-800 cursor-pointer active:scale-95 transition-all text-center"
+              >
+                Review Items in My Cup
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

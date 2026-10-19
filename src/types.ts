@@ -96,3 +96,14 @@ export interface Shop {
 export type BottomTab = 'shops' | 'groups' | 'details' | 'history' | 'home' | 'my-orders' | 'others-orders'
 
 export type PageRoute = 'landing' | 'login' | 'register' | 'dashboard'
+
+export interface TeaBreakAlert {
+  sessionId: string
+  groupId?: string
+  senderId: string
+  senderName: string
+  senderRole?: string
+  message: string
+  targetMemberIds: string[]
+  timestamp: number
+}

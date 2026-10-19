@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react'
 import confetti from 'canvas-confetti'
-import type { TeaSession, MenuItem, OrderItem, MemberExpense, User, AdminEditRecord } from '../types'
+import type { TeaSession, MenuItem, OrderItem, MemberExpense, User, AdminEditRecord, TeaBreakAlert } from '../types'
 import { DEFAULT_MENU } from '../lib/mockData'
 import { useAuth } from './AuthContext'
 import { supabase } from '../lib/supabase'
@@ -63,6 +63,7 @@ interface ExpenseContextType {
   removeMenuItemsForShop?: (shopId: string) => void
   getShopItemSummary: () => { name: string; emoji: string; count: number; totalCost: number }[]
   generateWhatsAppSummary: () => string
+  broadcastUnconfirmedAlert: (payload: TeaBreakAlert) => void
 }
 
 const ExpenseContext = createContext<ExpenseContextType | undefined>(undefined)
@@ -463,6 +464,21 @@ export const ExpenseProvider: React.FC<{ children: React.ReactNode }> = ({ child
     }
   }, [])
 
+  const broadcastUnconfirmedAlert = useCallback((payload: TeaBreakAlert) => {
+    lastLocalActionTimeRef.current = Date.now()
+    if (broadcastChannelRef.current) {
+      broadcastChannelRef.current.send({
+        type: 'broadcast',
+        event: 'UNCONFIRMED_NUDGE_ALERT',
+        payload
+      }).catch((e: any) => console.warn('Broadcast nudge error:', e))
+    }
+    try {
+      window.dispatchEvent(new CustomEvent('chaisplit_nudge_alert', { detail: payload }))
+      localStorage.setItem('chaisplit_latest_nudge', JSON.stringify(payload))
+    } catch {}
+  }, [])
+
   // Realtime subscription & Broadcast channel
   useEffect(() => {
     if (!supabase) return
@@ -527,6 +543,12 @@ export const ExpenseProvider: React.FC<{ children: React.ReactNode }> = ({ child
           setActiveSessions([])
           setActiveSession(null)
         }
+      })
+      .on('broadcast', { event: 'UNCONFIRMED_NUDGE_ALERT' }, ({ payload }) => {
+        if (!payload) return
+        try {
+          window.dispatchEvent(new CustomEvent('chaisplit_nudge_alert', { detail: payload }))
+        } catch {}
       })
       .on('broadcast', { event: 'MENU_ITEM_DELETED' }, ({ payload }) => {
         if (payload?.itemId) {
@@ -1739,7 +1761,8 @@ export const ExpenseProvider: React.FC<{ children: React.ReactNode }> = ({ child
         deleteMenuItem,
         removeMenuItemsForShop,
         getShopItemSummary,
-        generateWhatsAppSummary
+        generateWhatsAppSummary,
+        broadcastUnconfirmedAlert
       }}
     >
       {children}
