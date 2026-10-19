@@ -7,11 +7,11 @@ import {
   Copy,
   X,
   Users,
-  Store,
   Trash2,
   KeyRound,
   Search,
-  AlertTriangle
+  AlertTriangle,
+  ArrowRight
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { useExpense } from '../context/ExpenseContext'
@@ -23,7 +23,7 @@ import { DEFAULT_SHOPS } from '../lib/mockData'
 import { supabase } from '../lib/supabase'
 import { GroupCardSkeleton } from '../components/ChaiSkeleton'
 import type { PageRoute, BottomTab, Shop, MenuItem, Group, User } from '../types'
-import { getUserCode } from '../utils/userCode'
+import { getGroupIconConfig } from '../utils/itemIcons'
 
 interface DashboardProps {
   onNavigate?: (page: PageRoute) => void
@@ -116,6 +116,8 @@ export const Dashboard: React.FC<DashboardProps> = () => {
       (g.department && g.department.toLowerCase().includes(query))
     )
   }, [groups, groupSearchQuery])
+
+
 
   // Re-sync groups state when logged-in user changes (or upon initial login/logout)
   useEffect(() => {
@@ -983,10 +985,10 @@ export const Dashboard: React.FC<DashboardProps> = () => {
   }, [pastSessions, groups, user])
 
   return (
-    <div className="flex flex-col min-h-[calc(100vh-4rem)] justify-between">
+    <div className="flex flex-col min-h-[calc(100dvh-4rem)] min-h-[calc(100vh-4rem)] justify-between">
       
       {/* Scrollable Main Content */}
-      <div className="w-full px-3.5 py-4 pb-20 space-y-4 flex-1">
+      <div className="w-full px-3.5 py-4 space-y-4 flex-1" style={{ paddingBottom: 'calc(6.5rem + env(safe-area-inset-bottom, 0px))' }}>
         
         {/* Notice Banner */}
         {copyNotice && (
@@ -1173,56 +1175,18 @@ export const Dashboard: React.FC<DashboardProps> = () => {
             />
           ) : (
           <div className="space-y-4 animate-in fade-in">
-            {/* Welcome User Profile Banner */}
-            <div className="p-4 rounded-2xl bg-gradient-to-r from-amber-600 via-orange-600 to-amber-700 text-white shadow-md flex items-center justify-between gap-3">
-              <div className="flex items-center gap-3 min-w-0">
-                <div className="w-10 h-10 rounded-2xl bg-white/20 backdrop-blur-xs text-white font-extrabold text-base flex items-center justify-center shrink-0 border border-white/30 shadow-2xs">
-                  {user?.avatar || user?.name?.slice(0, 2).toUpperCase() || 'U'}
-                </div>
-                <div className="min-w-0">
-                  <h2 className="font-heading font-extrabold text-base text-white truncate">
-                    Welcome, {user?.name || 'Friend'}!
-                  </h2>
-                </div>
+            {/* 1. Groups Header & Action Buttons */}
+            <div className="flex items-center justify-between pt-1 px-1">
+              <div>
+                <h2 className="font-heading font-extrabold text-lg text-stone-900 dark:text-stone-100">
+                  Groups
+                </h2>
+                <p className="text-xs text-stone-500 dark:text-stone-400 font-medium">
+                  You are in <span className="font-bold text-stone-800 dark:text-stone-200">{groups.length}</span> {groups.length === 1 ? 'group' : 'groups'}.
+                </p>
               </div>
 
-              {user && (
-                <button
-                  type="button"
-                  onClick={() => handleCopy(getUserCode(user), 'My Unique ID')}
-                  className="px-2.5 py-1.5 rounded-xl bg-white/20 hover:bg-white/30 text-white text-[11px] font-bold flex items-center gap-1.5 backdrop-blur-xs cursor-pointer active:scale-95 transition-all shrink-0"
-                  title="Click to copy your unique ID for colleagues to add you"
-                >
-                  <KeyRound className="w-3.5 h-3.5 text-amber-200" />
-                  <span>ID: {getUserCode(user)}</span>
-                </button>
-              )}
-            </div>
-
-
-            {/* Search Bar & Action Buttons */}
-            <div className="space-y-2">
               <div className="flex items-center gap-2">
-                <div className="relative flex-1">
-                  <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-[#979087] dark:text-[#7C766E] pointer-events-none" />
-                  <input
-                    type="text"
-                    value={groupSearchQuery}
-                    onChange={e => setGroupSearchQuery(e.target.value)}
-                    placeholder="Search groups by name, tapri or ID..."
-                    className="search-input"
-                  />
-                  {groupSearchQuery && (
-                    <button
-                      type="button"
-                      onClick={() => setGroupSearchQuery('')}
-                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[#979087] hover:text-[#343029] dark:hover:text-[#E9E1DF] p-0.5 cursor-pointer"
-                    >
-                      <X className="w-3.5 h-3.5" />
-                    </button>
-                  )}
-                </div>
-
                 <button
                   type="button"
                   onClick={() => {
@@ -1230,19 +1194,19 @@ export const Dashboard: React.FC<DashboardProps> = () => {
                     setJoinGroupError(null)
                     setShowJoinGroupModal(true)
                   }}
-                  id="join-group-search-btn"
-                  className="btn-outlined text-xs py-2 px-3 rounded-lg shrink-0"
+                  id="join-group-header-btn"
+                  className="px-3 py-1.5 rounded-full bg-stone-100 hover:bg-stone-200 dark:bg-stone-800 dark:hover:bg-stone-750 text-stone-700 dark:text-stone-300 font-bold text-xs transition-colors cursor-pointer flex items-center gap-1 shadow-2xs"
                   title="Join Group with Group ID"
                 >
-                  <KeyRound className="w-3.5 h-3.5 text-[#AB3600]" />
+                  <KeyRound className="w-3 h-3 text-[#FF7043]" />
                   <span>Join</span>
                 </button>
-
                 <button
                   type="button"
                   onClick={() => setShowCreateGroupModal(true)}
-                  id="create-group-search-btn"
-                  className="btn-primary text-xs py-2 px-3.5 rounded-lg shrink-0"
+                  id="create-group-header-btn"
+                  className="px-3.5 py-1.5 rounded-full bg-[#FF7043] hover:bg-[#F4511E] text-white font-bold text-xs transition-colors cursor-pointer flex items-center gap-1 shadow-2xs"
+                  title="Create New Group"
                 >
                   <Plus className="w-3.5 h-3.5" />
                   <span>Create</span>
@@ -1250,31 +1214,34 @@ export const Dashboard: React.FC<DashboardProps> = () => {
               </div>
             </div>
 
-            {/* Groups Header */}
-            {groups.length > 0 && (
-              <div className="flex items-center justify-between text-xs font-bold text-stone-700 dark:text-stone-300 px-0.5 pt-1">
-                <span className="flex items-center gap-1.5">
-                  <Users className="w-3.5 h-3.5 text-amber-600" />
-                  <span>My Tea Groups</span>
-                  <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300">
-                    {filteredGroups.length}
-                  </span>
-                </span>
-                {groupSearchQuery && (
-                  <span className="text-[11px] font-normal text-stone-400">
-                    Matching "{groupSearchQuery}"
-                  </span>
-                )}
-              </div>
-            )}
+            {/* 3. Search Bar */}
+            <div className="relative">
+              <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-stone-400 pointer-events-none" />
+              <input
+                type="text"
+                value={groupSearchQuery}
+                onChange={e => setGroupSearchQuery(e.target.value)}
+                placeholder="Search groups by name, tapri, or ID..."
+                className="w-full pl-9 pr-8 py-2.5 bg-white dark:bg-stone-900 rounded-2xl text-xs font-medium text-stone-900 dark:text-stone-100 placeholder:text-stone-400 focus:outline-none shadow-2xs border border-stone-200/70 dark:border-stone-800"
+              />
+              {groupSearchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setGroupSearchQuery('')}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-stone-400 hover:text-stone-600 p-0.5"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
 
-            {/* Loading / Empty / Filtered List */}
+            {/* 4. Loading / Empty / Filtered List */}
             {isLoadingGroups && groups.length === 0 ? (
               <GroupCardSkeleton count={3} />
             ) : groups.length === 0 ? (
-              <div className="p-8 rounded-2xl bg-white dark:bg-stone-900 border border-dashed border-stone-300 dark:border-stone-800 text-center space-y-4 my-2">
-                <div className="w-16 h-16 mx-auto rounded-2xl bg-gradient-to-tr from-amber-500/10 to-orange-500/10 text-amber-600 dark:text-amber-500 flex items-center justify-center border border-amber-500/20 shadow-xs">
-                  <Users className="w-8 h-8" />
+              <div className="p-8 rounded-3xl bg-white dark:bg-stone-900 border border-dashed border-stone-200 dark:border-stone-800 text-center space-y-4 my-2 shadow-sm">
+                <div className="w-16 h-16 mx-auto rounded-2xl bg-amber-100 dark:bg-amber-950/50 text-amber-800 dark:text-amber-300 flex items-center justify-center text-2xl shadow-xs">
+                  ☕
                 </div>
                 <div className="space-y-1.5">
                   <h3 className="font-heading font-extrabold text-base text-stone-900 dark:text-stone-100">
@@ -1288,7 +1255,7 @@ export const Dashboard: React.FC<DashboardProps> = () => {
                   <button
                     onClick={() => setShowCreateGroupModal(true)}
                     id="create-new-group-empty-btn"
-                    className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl font-bold text-xs bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-700 hover:to-orange-700 text-white shadow-md active:scale-95 transition-all cursor-pointer"
+                    className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-full font-bold text-xs bg-[#FF7043] hover:bg-[#F4511E] text-white shadow-md active:scale-95 transition-all cursor-pointer"
                   >
                     <Plus className="w-4 h-4" />
                     <span>Create New Group</span>
@@ -1301,7 +1268,7 @@ export const Dashboard: React.FC<DashboardProps> = () => {
                       setShowJoinGroupModal(true)
                     }}
                     id="join-group-empty-btn"
-                    className="w-full sm:w-auto inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl font-bold text-xs border border-stone-300 dark:border-stone-700 hover:border-amber-500 text-stone-700 dark:text-stone-300 hover:text-amber-700 dark:hover:text-amber-400 bg-stone-50 dark:bg-stone-800 shadow-2xs active:scale-95 transition-all cursor-pointer"
+                    className="w-full sm:w-auto inline-flex items-center justify-center gap-1.5 px-5 py-2.5 rounded-full font-bold text-xs border border-stone-300 dark:border-stone-700 hover:border-amber-500 text-stone-700 dark:text-stone-300 bg-stone-50 dark:bg-stone-800 shadow-2xs active:scale-95 transition-all cursor-pointer"
                   >
                     <KeyRound className="w-4 h-4 text-amber-600" />
                     <span>Join with Group ID</span>
@@ -1309,7 +1276,7 @@ export const Dashboard: React.FC<DashboardProps> = () => {
                 </div>
               </div>
             ) : filteredGroups.length === 0 ? (
-              <div className="p-6 text-center rounded-2xl bg-white dark:bg-stone-900 border border-dashed border-stone-200 dark:border-stone-800 space-y-2">
+              <div className="p-6 text-center rounded-3xl bg-white dark:bg-stone-900 border border-dashed border-stone-200 dark:border-stone-800 space-y-2 shadow-sm">
                 <p className="text-xs text-stone-500 dark:text-stone-400">
                   No groups found matching "{groupSearchQuery}".
                 </p>
@@ -1320,19 +1287,50 @@ export const Dashboard: React.FC<DashboardProps> = () => {
                     setJoinGroupError(null)
                     setShowJoinGroupModal(true)
                   }}
-                  className="text-xs font-bold text-amber-600 hover:underline cursor-pointer inline-flex items-center gap-1"
+                  className="text-xs font-bold text-[#CF4C16] hover:underline cursor-pointer inline-flex items-center gap-1"
                 >
                   <KeyRound className="w-3 h-3" />
                   <span>Try joining "{groupSearchQuery.toUpperCase()}" with Group ID →</span>
                 </button>
               </div>
             ) : (
-              /* Groups Cards */
-              <div className="space-y-3">
+              /* Groups Cards (Splitty Screens 1 & 3) */
+              <div className="space-y-3.5">
                 {filteredGroups.map(group => {
-                  const isActive = group.id === activeGroupId || (!activeGroupId && group === groups[0])
                   const groupActiveBreak = (group.id ? getActiveSessionForGroup(group.id) : null) || (activeSession?.groupId === group.id ? activeSession : null)
                   const isGroupBreakActive = Boolean(groupActiveBreak && groupActiveBreak.status === 'active')
+                  const groupIconConfig = getGroupIconConfig(group.name, group.shopName)
+
+                  // Determine debts breakdown in this group
+                  let youAreOwedInGroup: string | null = null
+                  let youOweInGroup: string | null = null
+                  const memberDebts: { name: string; amount: string; avatar?: string }[] = []
+
+                  if (groupActiveBreak && groupActiveBreak.status === 'active' && user) {
+                    const myExp = groupActiveBreak.expenses?.find(m => m.memberId === user.id)
+                    const myTotal = myExp?.items?.reduce((sum: number, it) => sum + (it.price * it.quantity), 0) || 0
+                    if (groupActiveBreak.payerId === user.id) {
+                      const othersTotal = Math.max(0, (groupActiveBreak.totalAmount || 0) - myTotal)
+                      if (othersTotal > 0) youAreOwedInGroup = othersTotal.toFixed(2)
+                      groupActiveBreak.expenses?.filter(m => m.memberId !== user.id).forEach(m => {
+                        const amt = m.items?.reduce((sum: number, it) => sum + (it.price * it.quantity), 0) || 0
+                        if (amt > 0) {
+                          memberDebts.push({
+                            name: m.memberName || 'Member',
+                            amount: amt.toFixed(2),
+                            avatar: m.memberName?.slice(0, 1).toUpperCase()
+                          })
+                        }
+                      })
+                    } else {
+                      if (myTotal > 0) youOweInGroup = myTotal.toFixed(2)
+                    }
+                  }
+
+                  const totalDisplay = groupActiveBreak?.totalAmount
+                    ? `₹${groupActiveBreak.totalAmount.toFixed(2)}`
+                    : null
+
                   return (
                     <div
                       key={group.id}
@@ -1345,133 +1343,101 @@ export const Dashboard: React.FC<DashboardProps> = () => {
                           setViewingGroupId(group.id)
                         }
                       }}
-                      className={`p-4 rounded-2xl transition-all cursor-pointer border ${
-                        isGroupBreakActive
-                          ? 'bg-gradient-to-br from-emerald-500/10 via-amber-500/5 to-transparent border-emerald-500/60 ring-1 ring-emerald-500/30'
-                          : isActive
-                          ? 'bg-[#FFEDE8]/25 dark:bg-[#1E1B1A] border-[#FFB59C] dark:border-[#822700]/80 shadow-2xs'
-                          : 'bg-white dark:bg-stone-900 border-[#EAE1D7] dark:border-stone-800 hover:border-[#FFB59C]/60 dark:hover:border-stone-700 shadow-2xs'
-                      } space-y-3`}
+                      className="bg-white dark:bg-stone-900 rounded-3xl p-5 shadow-sm space-y-3.5 cursor-pointer hover:shadow-md transition-all active:scale-[0.99] border border-stone-200/60 dark:border-stone-800"
                     >
-                      <div className="space-y-2">
-                        {/* Top row: Group name + Active badge on the left */}
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <h3 className="font-heading font-extrabold text-base sm:text-lg text-[#1E1B1A] dark:text-stone-100 truncate">
-                            {group.name}
-                          </h3>
-                          {isGroupBreakActive && (
-                            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-600 text-white animate-pulse flex items-center gap-1">
-                              <span className="w-1.5 h-1.5 rounded-full bg-white animate-ping" />
-                              <span>Live Break</span>
-                            </span>
-                          )}
-                          {isActive && !isGroupBreakActive && (
-                            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-[#CF4C16] text-white">
-                              Active
-                            </span>
-                          )}
+                      {/* Top Row: Group Icon Pastel Badge + Name/Subtitle + Amount/ID */}
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div className={`w-12 h-12 rounded-2xl ${groupIconConfig.bgLight} ${groupIconConfig.bgDark} flex items-center justify-center text-2xl shrink-0 shadow-2xs`}>
+                            {groupIconConfig.emoji}
+                          </div>
+                          <div className="min-w-0">
+                            <h3 className="font-heading font-extrabold text-base text-stone-900 dark:text-stone-100 truncate">
+                              {group.name}
+                            </h3>
+                            <p className="text-xs text-stone-400 truncate">
+                              {group.shopName || 'Tea Stall'} • {group.members?.length || 1} {group.members?.length === 1 ? 'member' : 'members'}
+                            </p>
+                          </div>
                         </div>
 
-                        {/* Shop tag & members count together on the left */}
-                        <div className="flex items-center gap-2 flex-wrap">
-                          {group.shopName && (
-                            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md bg-[#FFEDE8] dark:bg-[#390C00]/50 text-[#822700] dark:text-[#FFB59C] font-semibold text-xs border border-[#FFDBCF]/60 dark:border-[#822700]/40">
-                              <Store className="w-3.5 h-3.5 text-[#CF4C16] dark:text-[#FF8B63]" />
-                              <span>{group.shopName}</span>
-                            </span>
+                        <div className="text-right shrink-0">
+                          {totalDisplay ? (
+                            <>
+                              <div className="font-heading font-extrabold text-base text-stone-900 dark:text-stone-100">
+                                {totalDisplay}
+                              </div>
+                              <div className="text-[10px] text-stone-400 font-medium">
+                                Total bill
+                              </div>
+                            </>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                handleCopy(group.code || group.id, `${group.name} Group ID`)
+                              }}
+                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg font-mono text-[11px] font-bold text-stone-600 dark:text-stone-300 bg-stone-100 dark:bg-stone-800 hover:bg-stone-200 dark:hover:bg-stone-750 transition-colors"
+                              title="Click to copy Group ID"
+                            >
+                              <span>{group.code || group.id}</span>
+                              <Copy className="w-3 h-3 opacity-60" />
+                            </button>
                           )}
-                          <span className="text-xs text-[#7C766E] dark:text-stone-400 font-normal">
-                            {group.members?.length || 1}{' '}
-                            {group.members?.length === 1 ? 'member' : 'members'}
-                          </span>
                         </div>
                       </div>
 
-                      {/* Direct button to separate Tea Break page when active */}
-                      {isGroupBreakActive && (
-                        <div className="pt-1">
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              setActiveGroupId(group.id)
-                              setViewingBreakGroupId(group.id)
-                            }}
-                            id={`enter-break-btn-${group.id}`}
-                            className="w-full py-2.5 px-3 rounded-xl font-bold text-xs sm:text-sm bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white shadow-xs cursor-pointer flex items-center justify-center gap-1.5 active:scale-98 transition-all"
-                          >
-                            <Coffee className="w-4 h-4" />
-                            <span>Enter Tea Break →</span>
-                          </button>
+                      {/* Middle: Member Debts Breakdown if active break with debts */}
+                      {memberDebts.length > 0 && (
+                        <div className="space-y-1.5 pt-1 border-t border-stone-100 dark:border-stone-800">
+                          {memberDebts.slice(0, 2).map((debt, idx) => (
+                            <div key={idx} className="flex items-center justify-between text-xs text-stone-600 dark:text-stone-300">
+                              <div className="flex items-center gap-2">
+                                <div className="w-5 h-5 rounded-full bg-stone-200 dark:bg-stone-700 text-[10px] font-bold flex items-center justify-center">
+                                  {debt.avatar || 'M'}
+                                </div>
+                                <span>{debt.name} owes you</span>
+                              </div>
+                              <span className="font-bold text-stone-900 dark:text-stone-100">₹{debt.amount}</span>
+                            </div>
+                          ))}
                         </div>
                       )}
 
-                      {/* Divider */}
-                      <div className="pt-2.5 border-t border-[#F4EBE1] dark:border-stone-800 space-y-3">
-                        {/* Group ID row */}
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs text-[#979087] dark:text-stone-500 font-semibold uppercase tracking-wider shrink-0">
-                            GROUP ID:
-                          </span>
-                          <span className="font-mono font-bold text-[#CF4C16] dark:text-[#FF8B63] bg-[#FFF6F3] dark:bg-[#390C00]/60 px-3 py-1 rounded-lg border border-[#FFB59C] dark:border-[#822700]/60 text-xs sm:text-sm">
-                            {group.code || group.id}
-                          </span>
-                        </div>
-
-                        {/* Action buttons row: View Group & Menu and Copy ID on the left */}
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              setActiveGroupId(group.id)
-                              setViewingGroupId(group.id)
-                            }}
-                            className="px-2.5 py-1 rounded-lg bg-white hover:bg-[#F8EFE5] dark:bg-stone-800 dark:hover:bg-stone-700 text-[#292524] dark:text-stone-100 font-semibold text-[11px] flex items-center gap-1.5 border border-[#CDC5BC] dark:border-stone-700 cursor-pointer transition-colors shadow-2xs shrink-0"
-                          >
-                            <Store className="w-3 h-3 text-[#CF4C16] dark:text-[#FF8B63]" />
-                            <span>View Group &amp; Menu</span>
-                            <span className="text-[#7C766E] dark:text-stone-400 text-[10px]">→</span>
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              handleCopy(group.code || group.id, `${group.name} Group ID`)
-                            }}
-                            className="px-2 py-1 rounded-lg bg-[#F0ECE6] hover:bg-[#EAE1D7] dark:bg-stone-800 dark:hover:bg-stone-700 text-[#4B463F] dark:text-stone-300 font-medium text-[11px] flex items-center gap-1 border border-[#CDC5BC]/60 dark:border-stone-700 cursor-pointer transition-colors shadow-2xs shrink-0"
-                            title="Copy Group ID"
-                          >
-                            <Copy className="w-3 h-3 text-[#4B463F] dark:text-stone-400" />
-                            <span>Copy ID</span>
-                          </button>
-                        </div>
+                      {/* Bottom Action Button / Status */}
+                      <div className="pt-1">
+                        {isGroupBreakActive ? (
+                          <div className="w-full py-2.5 px-4 rounded-2xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200/90 dark:border-emerald-800/80 text-emerald-800 dark:text-emerald-300 flex items-center justify-between transition-all group-hover:bg-emerald-100/70 shadow-2xs">
+                            <div className="flex items-center gap-2">
+                              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shrink-0" />
+                              <span className="text-xs font-bold tracking-tight">Live Break Active</span>
+                              <span className="text-emerald-600/70 dark:text-emerald-400/70 text-[11px] font-medium">• Tap to Order</span>
+                            </div>
+                            <div className="w-6 h-6 rounded-full bg-emerald-600 text-white flex items-center justify-center shadow-2xs shrink-0">
+                              <ArrowRight className="w-3.5 h-3.5 stroke-[2.5]" />
+                            </div>
+                          </div>
+                        ) : youAreOwedInGroup ? (
+                          <div className="w-full py-2.5 px-4 rounded-2xl bg-emerald-50/70 dark:bg-emerald-950/30 border border-emerald-200/60 dark:border-emerald-800/40 text-emerald-800 dark:text-emerald-300 flex items-center justify-between text-xs">
+                            <span className="font-semibold text-stone-600 dark:text-stone-400">You are owed</span>
+                            <span className="font-extrabold text-emerald-700 dark:text-emerald-400">₹{youAreOwedInGroup}</span>
+                          </div>
+                        ) : youOweInGroup ? (
+                          <div className="w-full py-2.5 px-4 rounded-2xl bg-orange-50/70 dark:bg-orange-950/30 border border-orange-200/60 dark:border-orange-800/40 text-orange-800 dark:text-orange-300 flex items-center justify-between text-xs">
+                            <span className="font-semibold text-stone-600 dark:text-stone-400">You owe</span>
+                            <span className="font-extrabold text-orange-700 dark:text-orange-400">₹{youOweInGroup}</span>
+                          </div>
+                        ) : (
+                          <div className="w-full py-2 px-3.5 rounded-2xl bg-stone-100/80 dark:bg-stone-800/50 border border-stone-200/60 dark:border-stone-800 text-stone-500 dark:text-stone-400 flex items-center justify-between text-xs">
+                            <span className="font-semibold">Settled up</span>
+                            <span className="text-[11px] font-medium text-stone-400">All clear</span>
+                          </div>
+                        )}
                       </div>
                     </div>
                   )
                 })}
-
-                <div className="grid grid-cols-2 gap-2 pt-1">
-                  <button
-                    onClick={() => setShowCreateGroupModal(true)}
-                    className="py-2.5 px-3 rounded-xl border border-dashed border-stone-300 dark:border-stone-700 hover:border-amber-500 dark:hover:border-amber-500 text-stone-600 dark:text-stone-400 hover:text-amber-700 dark:hover:text-amber-400 font-semibold text-xs flex items-center justify-center gap-1.5 bg-stone-50/50 dark:bg-stone-800/30 hover:bg-amber-50/50 dark:hover:bg-amber-950/20 transition-all cursor-pointer"
-                  >
-                    <Plus className="w-3.5 h-3.5" />
-                    <span>Create Group</span>
-                  </button>
-                  <button
-                    onClick={() => {
-                      setJoinGroupIdInput('')
-                      setJoinGroupError(null)
-                      setShowJoinGroupModal(true)
-                    }}
-                    className="py-2.5 px-3 rounded-xl border border-dashed border-stone-300 dark:border-stone-700 hover:border-amber-500 dark:hover:border-amber-500 text-stone-600 dark:text-stone-400 hover:text-amber-700 dark:hover:text-amber-400 font-semibold text-xs flex items-center justify-center gap-1.5 bg-stone-50/50 dark:bg-stone-800/30 hover:bg-amber-50/50 dark:hover:bg-amber-950/20 transition-all cursor-pointer"
-                  >
-                    <KeyRound className="w-3.5 h-3.5" />
-                    <span>Join Group</span>
-                  </button>
-                </div>
               </div>
             )}
           </div>
@@ -1505,6 +1471,20 @@ export const Dashboard: React.FC<DashboardProps> = () => {
             }
           }
           setActiveTab(tab)
+        }}
+        onPlusClick={() => {
+          const target =
+            (activeSession?.groupId ? groups.find(g => g.id === activeSession.groupId) : null) ||
+            groups.find(g => {
+              const s = getActiveSessionForGroup(g.id)
+              return s && s.status === 'active'
+            }) ||
+            activeGroup ||
+            groups[0]
+          if (target) {
+            setViewingBreakGroupId(target.id)
+          }
+          setActiveTab('my-orders')
         }}
         historyCount={userPastSessionsCount}
       />

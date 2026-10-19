@@ -1,0 +1,17 @@
+{
+  "name": "ChaiSplit",
+  "short_name": "ChaiSplit",
+  "description": "Smart Tea Break & Office Bill Splitting Tracker ☕",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#FFFFFF",
+  "theme_color": "#D9531E",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "192x192 512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

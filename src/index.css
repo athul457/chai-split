@@ -2,22 +2,28 @@
 
 @custom-variant dark (&:where(.dark, .dark *));
 
+html, body {
+  min-height: 100%;
+  min-height: 100dvh;
+  overscroll-behavior-y: none;
+}
+
 @theme {
   --font-sans: 'Plus Jakarta Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   --font-heading: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
 
-  /* Primary Palette (#D9531E) */
-  --color-primary: #D9531E;
-  --color-primary-50: #FFEDE8;
-  --color-primary-100: #FFDBCF;
-  --color-primary-200: #FFB59C;
-  --color-primary-300: #FF8B63;
-  --color-primary-400: #CF4C16;
-  --color-primary-500: #D9531E;
-  --color-primary-600: #AB3600;
-  --color-primary-700: #822700;
-  --color-primary-800: #5C1900;
-  --color-primary-900: #390C00;
+  /* Primary Palette (Vibrant Coral Orange #FF7043 matching Splitty) */
+  --color-primary: #FF7043;
+  --color-primary-50: #FFF1EC;
+  --color-primary-100: #FFE1D6;
+  --color-primary-200: #FFC4B0;
+  --color-primary-300: #FFA486;
+  --color-primary-400: #FF855D;
+  --color-primary-500: #FF7043;
+  --color-primary-600: #FA6432;
+  --color-primary-700: #E64C19;
+  --color-primary-800: #B83609;
+  --color-primary-900: #7A2103;
   --color-primary-950: #000000;
 
   /* Secondary Palette (#F4EBE1) */
@@ -390,5 +396,92 @@
 :where(.dark, .dark *) .search-input:focus {
   border-color: #CF4C16;
   box-shadow: 0 0 0 1px #CF4C16;
+}
+
+/* ==========================================================================
+   Splitty Design Language Helpers
+   ========================================================================== */
+
+.splitty-canvas {
+  background-color: #FAF8F5;
+}
+:where(.dark, .dark *) .splitty-canvas {
+  background-color: #121110;
+}
+
+.splitty-sheet {
+  background-color: #FAF8F5;
+}
+:where(.dark, .dark *) .splitty-sheet {
+  background-color: #161413;
+}
+
+.splitty-pill-owed {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.5rem 0.875rem;
+  border-radius: 9999px;
+  background-color: #E8F8EE;
+  color: #1B9C56;
+  font-size: 0.75rem;
+  font-weight: 700;
+  border: 1px solid rgba(27, 156, 86, 0.2);
+  transition: all 0.2s ease;
+}
+:where(.dark, .dark *) .splitty-pill-owed {
+  background-color: rgba(27, 156, 86, 0.2);
+  color: #6EE7B7;
+  border-color: rgba(27, 156, 86, 0.3);
+}
+
+.splitty-pill-owe {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.5rem 0.875rem;
+  border-radius: 9999px;
+  background-color: #FEECEB;
+  color: #E04F4F;
+  font-size: 0.75rem;
+  font-weight: 700;
+  border: 1px solid rgba(224, 79, 79, 0.2);
+  transition: all 0.2s ease;
+}
+:where(.dark, .dark *) .splitty-pill-owe {
+  background-color: rgba(224, 79, 79, 0.2);
+  color: #FDA4AF;
+  border-color: rgba(224, 79, 79, 0.3);
+}
+
+.splitty-pill-settled {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.5rem 0.875rem;
+  border-radius: 9999px;
+  background-color: #F3EFEA;
+  color: #7C766E;
+  font-size: 0.75rem;
+  font-weight: 700;
+  border: 1px solid rgba(124, 118, 110, 0.15);
+  transition: all 0.2s ease;
+}
+:where(.dark, .dark *) .splitty-pill-settled {
+  background-color: rgba(124, 118, 110, 0.25);
+  color: #D6D3D1;
+  border-color: rgba(124, 118, 110, 0.2);
+}
+
+.splitty-dark-card {
+  background-color: #1F1E1D;
+  color: #FFFFFF;
+}
+:where(.dark, .dark *) .splitty-dark-card {
+  background-color: #181716;
+  color: #FFFFFF;
 }
 

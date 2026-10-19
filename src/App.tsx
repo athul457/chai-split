@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { Header } from './components/Header'
 import { ChaiLoader } from './components/ChaiLoader'
+import { AddToHomeScreenModal } from './components/AddToHomeScreenModal'
 import { LandingPage } from './pages/LandingPage'
 import { LoginPage } from './pages/LoginPage'
 import { RegisterPage } from './pages/RegisterPage'
@@ -13,6 +14,35 @@ import type { PageRoute } from './types'
 const MainApp: React.FC = () => {
   const { isAuthenticated } = useAuth()
   const [isAppLoading, setIsAppLoading] = useState(true)
+  const [showAddToHomeModal, setShowAddToHomeModal] = useState(false)
+
+  // Prompt logged-in users to add app to home screen unless already installed or dismissed with "Don't show again"
+  useEffect(() => {
+    if (!isAuthenticated || isAppLoading) return
+
+    // Check if already running as standalone PWA or marked installed
+    const isStandalone =
+      window.matchMedia('(display-mode: standalone)').matches ||
+      (window.navigator as any).standalone === true ||
+      localStorage.getItem('chaisplit_pwa_installed') === 'true'
+
+    if (isStandalone) return
+
+    // Check if user previously marked "Don't show again"
+    const isDontShowAgain = localStorage.getItem('chaisplit_pwa_dont_show_again') === 'true'
+    if (isDontShowAgain) return
+
+    // Check if dismissed in current app session
+    const isDismissedThisSession = sessionStorage.getItem('chaisplit_pwa_dismissed_session') === 'true'
+    if (isDismissedThisSession) return
+
+    // Show modal after user lands on dashboard
+    const timer = setTimeout(() => {
+      setShowAddToHomeModal(true)
+    }, 800)
+
+    return () => clearTimeout(timer)
+  }, [isAuthenticated, isAppLoading])
 
   // Smooth initial tea brewing splash screen (3.5s per user request)
   useEffect(() => {
@@ -105,11 +135,15 @@ const MainApp: React.FC = () => {
 
   return (
     // Outer viewport: clean neutral in white/light mode, pitch black in dark mode
-    <div className="min-h-screen w-full bg-stone-100 dark:bg-black text-stone-900 dark:text-stone-100 flex justify-center items-start transition-colors">
-      {/* Mobile view frame: always max 430px wide, centered, full height */}
-      <div className="w-full max-w-[430px] min-h-screen bg-white dark:bg-stone-900 border-x border-stone-200/90 dark:border-stone-800 shadow-2xl flex flex-col relative transition-colors">
+    <div className="min-h-screen min-h-[100dvh] w-full bg-stone-100 dark:bg-black text-stone-900 dark:text-stone-100 flex justify-center items-start transition-colors">
+      {/* Mobile view frame: always max 430px wide, centered, full dynamic height */}
+      <div className="w-full max-w-[430px] min-h-screen min-h-[100dvh] bg-[#FAF8F5] dark:bg-[#121110] text-stone-900 dark:text-stone-100 border-x border-stone-200/60 dark:border-stone-850 shadow-2xl flex flex-col relative transition-colors overflow-x-hidden">
         <Header currentPage={currentPage} onNavigate={handleNavigate} />
         <main className="flex-1 w-full flex flex-col">{renderCurrentPage()}</main>
+        <AddToHomeScreenModal
+          isOpen={showAddToHomeModal}
+          onClose={() => setShowAddToHomeModal(false)}
+        />
       </div>
     </div>
   )

@@ -9,10 +9,10 @@ import {
     Coffee,
     Crown,
     CreditCard,
-    Flame,
     Minus,
     Plus,
     Receipt,
+    Search,
     Share2,
     ShoppingBag,
     Sparkles,
@@ -26,6 +26,9 @@ import React, { useMemo, useState, useEffect } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { useExpense } from '../context/ExpenseContext'
 import { ChaiLoader } from '../components/ChaiLoader'
+import { getItemIconConfig } from '../utils/itemIcons'
+import { OrderSuccessModal } from '../components/OrderSuccessModal'
+import { FunnyMalayalamAlertModal } from '../components/FunnyMalayalamAlertModal'
 import type { Group, MenuItem, User, MemberExpense } from '../types'
 
 interface TeaBreakPageProps {
@@ -76,6 +79,7 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
   const activeSession = (group?.id ? getActiveSessionForGroup(group.id) : undefined) ||
     (globalActiveSession?.groupId === group?.id ? globalActiveSession : undefined)
 
+
   const [toastNotice, setToastNotice] = useState<string | null>(null)
   const [showCancelConfirm, setShowCancelConfirm] = useState(false)
   const [showCannotCloseModal, setShowCannotCloseModal] = useState(false)
@@ -84,6 +88,10 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
   const [isSettling, setIsSettling] = useState(false)
   const [isDeletingBreak, setIsDeletingBreak] = useState(false)
   const [isConfirming, setIsConfirming] = useState(false)
+  const [showOrderSuccessModal, setShowOrderSuccessModal] = useState(false)
+  const [showOrderConfirmAlertModal, setShowOrderConfirmAlertModal] = useState(false)
+  const [showSettleAlertModal, setShowSettleAlertModal] = useState(false)
+  const [isCupDrawerOpen, setIsCupDrawerOpen] = useState(false)
   const [showAllMembersList, setShowAllMembersList] = useState(false)
 
   // Accordion state: other users' items only appear when clicked
@@ -185,8 +193,8 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
 
   const allMembersConfirmed = membersWithItems.length > 0 && unconfirmedMembers.length === 0
 
-  // User confirms their own order/items
-  const handleConfirmMyOrder = async () => {
+  // User initiates confirming their own order/items - shows 3s countdown funny alert modal
+  const handleInitiateConfirmMyOrder = () => {
     const targetUserId =
       currentUserExpense?.memberId ||
       effectiveUserId ||
@@ -202,10 +210,27 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
       return
     }
 
+    // Show popup alert first with cancel and confirm button (unlocked after 3s countdown)
+    setShowOrderConfirmAlertModal(true)
+  }
+
+  // Executed when user confirms after countdown in the alert modal
+  const handleExecuteConfirmMyOrder = async () => {
+    setShowOrderConfirmAlertModal(false)
+    const targetUserId =
+      currentUserExpense?.memberId ||
+      effectiveUserId ||
+      effectiveUser?.id
+
+    if (!targetUserId || !currentUserExpense || currentUserExpense.items.length === 0) {
+      return
+    }
+
     setIsConfirming(true)
     try {
       await confirmMemberOrder(targetUserId, activeSession?.id)
       showToast('Order confirmed! Your items are now locked.')
+      setShowOrderSuccessModal(true)
     } catch {
       showToast('Could not confirm order. Please try again.')
     } finally {
@@ -279,8 +304,8 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
     showToast(`Assigned ${item.name} to ${selectedAssignee?.name || 'teammate'}!`)
   }
 
-  // Settle break (strictly only creator can close/settle the break, AND every member with items must confirm)
-  const handleSettleBreak = () => {
+  // Settle break: show funny Malayalam alert modal with 3s countdown before settling
+  const handleInitiateSettleBreak = () => {
     if (!canCloseBreak) {
       setShowCannotCloseModal(true)
       return
@@ -296,6 +321,11 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
       return
     }
 
+    setShowSettleAlertModal(true)
+  }
+
+  const handleExecuteSettleBreak = () => {
+    setShowSettleAlertModal(false)
     if (isSettling) return
     setIsSettling(true)
     setTimeout(() => {
@@ -427,8 +457,22 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
     return getMenuItemsForShop(breakShopId)
   }, [getMenuItemsForShop, breakShopId, menuItems])
 
-  // Menu items for this break
-  const sortedMenuItems = shopMenuItems
+  // Menu items search and filter (alphabetical)
+  const [menuSearchQuery, setMenuSearchQuery] = useState('')
+  const sortedMenuItems = useMemo(() => {
+    return [...shopMenuItems].sort((a, b) =>
+      a.name.localeCompare(b.name, undefined, { sensitivity: 'base' })
+    )
+  }, [shopMenuItems])
+
+  const filteredMenuItems = useMemo(() => {
+    if (!menuSearchQuery.trim()) return sortedMenuItems
+    const q = menuSearchQuery.toLowerCase().trim()
+    return sortedMenuItems.filter(item =>
+      item.name.toLowerCase().includes(q) ||
+      (item.category && item.category.toLowerCase().includes(q))
+    )
+  }, [sortedMenuItems, menuSearchQuery])
 
   if (!activeSession) {
     return (
@@ -485,7 +529,7 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
   }
 
   return (
-    <div className="space-y-4 animate-in fade-in pb-28">
+    <div className="space-y-4 animate-in fade-in pb-4">
       {/* Toast Notice */}
       {toastNotice && (
         <div className="p-2.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/80 border border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-200 text-xs flex items-center justify-between shadow-xs">
@@ -499,68 +543,76 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
         </div>
       )}
 
-      {/* Top Navigation Bar - Clean back to group */}
-      <div className="flex items-center justify-between p-3 rounded-2xl bg-white dark:bg-stone-900 border border-stone-200/80 dark:border-stone-800 shadow-2xs">
-        <button
-          onClick={onBack}
-          id="back-to-group-from-break-btn"
-          className="flex items-center gap-1.5 text-xs font-semibold text-stone-600 dark:text-stone-300 hover:text-amber-700 dark:hover:text-amber-400 cursor-pointer active:scale-95 transition-all"
-        >
-          <ArrowLeft className="w-4 h-4" />
-          <span>Back to Group</span>
-        </button>
-
-        <div className="flex items-center gap-2">
-          {group && (
-            <span className="font-mono text-[11px] font-bold text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/60 px-2 py-0.5 rounded-md border border-amber-200/50 dark:border-amber-900/50">
-              ID: {group.code || group.id}
-            </span>
-          )}
-          <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
-            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping inline-block" />
-            <span>Live Tea Break</span>
-          </span>
-        </div>
-      </div>
-
-      {/* Active Session Overview Banner (PURE BREAK DATA - NO GROUP DETAILS) */}
-      <div className="p-4 rounded-2xl bg-gradient-to-br from-amber-600 via-orange-600 to-amber-700 text-white shadow-md space-y-3 relative overflow-hidden">
-        <div className="flex items-center justify-between">
-          <span className="px-2 py-0.5 rounded-full bg-white/20 text-white text-[10px] font-bold tracking-wide uppercase backdrop-blur-xs flex items-center gap-1">
-            <Flame className="w-3 h-3 text-amber-200" />
-            <span>Live Session</span>
-          </span>
-
-          <span className="text-amber-100 text-[11px] flex items-center gap-1">
-            <Clock className="w-3 h-3" />
-            <span>{activeSession.createdAt}</span>
-          </span>
-        </div>
-
-        <div>
-          <h2 className="font-heading text-xl font-black tracking-tight">
-            {activeSession.title}
-          </h2>
-          <p className="text-amber-100 text-xs font-medium mt-0.5">
-            {activeSession.shopName}
-          </p>
-        </div>
-
-        <div className="flex items-center justify-between gap-2 pt-2 border-t border-white/20">
-          <div className="flex items-baseline gap-1">
-            <span className="text-[11px] text-amber-200 font-medium">Shop:</span>
-            <span className="font-heading text-sm font-bold">{activeSession.shopName}</span>
+      {/* Single Unified Top Order Card - Compact & Balanced */}
+      <div className="bg-white dark:bg-stone-900 rounded-2xl p-3.5 shadow-xs space-y-2.5 border border-stone-200/60 dark:border-stone-800">
+        {/* Row 1: Group Name & Meta + Actions */}
+        <div className="flex items-center justify-between gap-2">
+          <div className="min-w-0">
+            <h2 className="font-heading font-black text-base text-stone-900 dark:text-stone-100 truncate tracking-tight">
+              {group?.name || activeSession.title}
+            </h2>
+            <p className="text-[11px] text-stone-400 font-medium truncate">
+              {activeSession.shopName} • ID: {group.code || group.id}
+            </p>
           </div>
 
-          <button
-            onClick={handleShareWhatsApp}
-            id="share-break-whatsapp-btn"
-            title="Share order on WhatsApp"
-            className="px-2.5 py-1.5 rounded-xl bg-white/20 hover:bg-white/30 text-white text-xs font-semibold cursor-pointer transition-colors flex items-center gap-1.5"
-          >
-            <Share2 className="w-3.5 h-3.5" />
-            <span>Share Bill</span>
-          </button>
+          <div className="flex items-center gap-1.5 shrink-0">
+            <button
+              type="button"
+              onClick={handleShareWhatsApp}
+              id="share-break-whatsapp-btn"
+              title="Share order on WhatsApp"
+              className="bg-stone-900 hover:bg-black text-white px-3 py-1 rounded-full font-bold text-xs shadow-2xs cursor-pointer active:scale-95 transition-all flex items-center gap-1"
+            >
+              <Share2 className="w-3 h-3" />
+              <span>Share</span>
+            </button>
+            {canCloseBreak && (
+              <button
+                type="button"
+                onClick={() => setShowCancelConfirm(true)}
+                className="bg-[#FF7043] hover:bg-[#F4511E] text-white px-3 py-1 rounded-full font-bold text-xs shadow-2xs cursor-pointer active:scale-95 transition-all"
+              >
+                End Break
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Row 2: Bill Amount + Who Owes Whom in a clean balanced 2-column layout */}
+        <div className="pt-2 border-t border-stone-100 dark:border-stone-800 flex items-center justify-between gap-3">
+          <div>
+            <div className="text-[10px] font-bold text-stone-400 uppercase tracking-wider">
+              {isDesignatedPayer || isAdmin ? 'Total break bill' : 'Your order total'}
+            </div>
+            <div className="font-heading font-black text-2xl text-[#1B9C56] tracking-tight leading-tight mt-0.5">
+              ₹{isDesignatedPayer || isAdmin ? activeSession.totalAmount : myTotal}
+            </div>
+          </div>
+
+          {/* Member debts breakdown right alongside */}
+          {membersWithItems.length > 0 && (
+            <div className="text-right min-w-0 max-w-[55%]">
+              <div className="text-[10px] font-bold text-stone-400 uppercase tracking-wider">
+                Who owes whom?
+              </div>
+              <div className="space-y-0.5 mt-0.5 max-h-12 overflow-y-auto">
+                {membersWithItems.map(m => (
+                  <div key={m.memberId} className="flex items-center justify-end gap-1.5 text-xs">
+                    <div className="w-4 h-4 rounded-full bg-stone-200 dark:bg-stone-700 text-[9px] font-bold flex items-center justify-center shrink-0">
+                      {m.memberName?.slice(0, 1).toUpperCase()}
+                    </div>
+                    <span className="truncate text-stone-600 dark:text-stone-300 text-[11px]">
+                      {m.memberName} {m.memberId === effectiveUser?.id ? '(You)' : ''}
+                    </span>
+                    <span className="font-bold text-stone-900 dark:text-stone-100 text-[11px] shrink-0">
+                      ₹{m.total}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
@@ -608,11 +660,11 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
       {/* ---------------- 1. MY ORDERS VIEW ---------------- */}
       {activeSubView === 'my-orders' && (
         <div className="space-y-4 animate-in fade-in">
-          {/* 1. ITEMS SELECTION OPTION */}
-          <div className="p-4 rounded-2xl bg-white dark:bg-stone-900 border border-stone-200/80 dark:border-stone-800 shadow-2xs space-y-3">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <div className="p-1.5 rounded-xl bg-amber-100 dark:bg-amber-950 text-amber-700 dark:text-amber-300">
+          {/* 1. ITEMS SELECTION OPTION - FULL SCREEN EXTENDED */}
+          <div className="p-4 rounded-3xl bg-white dark:bg-stone-900 border border-stone-200/80 dark:border-stone-800 shadow-2xs space-y-3.5">
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2 shrink-0">
+                <div className="p-1.5 rounded-xl bg-orange-100 dark:bg-orange-950/70 text-[#FF7043]">
                   <ShoppingBag className="w-4 h-4" />
                 </div>
                 <div>
@@ -621,250 +673,103 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
                   </h3>
                 </div>
               </div>
+
+              {/* Searchbar on the right near heading without border lines */}
+              <div className="relative w-36 sm:w-48 shrink-0">
+                <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-stone-400 pointer-events-none" />
+                <input
+                  type="text"
+                  value={menuSearchQuery}
+                  onChange={(e) => setMenuSearchQuery(e.target.value)}
+                  placeholder="Search items..."
+                  id="menu-item-search-input"
+                  className="w-full pl-7 pr-6 py-1.5 rounded-full text-xs bg-stone-100 dark:bg-stone-800 text-stone-900 dark:text-stone-100 placeholder-stone-400 border-0 outline-none focus:outline-none focus:ring-0 transition-all shadow-none"
+                />
+                {menuSearchQuery && (
+                  <button
+                    onClick={() => setMenuSearchQuery('')}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-stone-400 hover:text-stone-600 dark:hover:text-stone-200 cursor-pointer"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                )}
+              </div>
             </div>
 
             {isMyOrderConfirmed && !canEditConfirmed ? (
-              <div className="p-2.5 text-center text-xs text-stone-500 bg-stone-50 dark:bg-stone-800/40 rounded-xl border border-stone-200 dark:border-stone-800 flex items-center justify-center gap-1.5">
+              <div className="p-3 text-center text-xs text-stone-500 bg-stone-50 dark:bg-stone-800/40 rounded-2xl border border-stone-200 dark:border-stone-800 flex items-center justify-center gap-1.5">
                 <Lock className="w-3.5 h-3.5 text-amber-600" />
                 <span>Ordering is locked</span>
               </div>
-            ) : shopMenuItems.length === 0 ? (
-              <div className="p-4 text-center text-xs text-stone-400 bg-stone-50 dark:bg-stone-800/40 rounded-xl border border-dashed border-stone-200 dark:border-stone-800">
-                No items available in {activeSession.shopName} menu yet.
+            ) : filteredMenuItems.length === 0 ? (
+              <div className="p-4 text-center text-xs text-stone-400 bg-stone-50 dark:bg-stone-800/40 rounded-2xl border border-dashed border-stone-200 dark:border-stone-800">
+                {menuSearchQuery ? `No items found matching "${menuSearchQuery}"` : `No items available in ${activeSession.shopName} menu yet.`}
               </div>
             ) : (
-              <div className="grid grid-cols-2 gap-2 max-h-56 overflow-y-auto pr-0.5">
-                {sortedMenuItems.map(item => (
-                  <button
-                    key={item.id}
-                    onClick={() => handleSelfAddItem(item)}
-                    className="p-2 rounded-xl border border-stone-200/80 dark:border-stone-800 bg-stone-50/60 dark:bg-stone-800/40 hover:border-amber-500 hover:bg-amber-50/50 dark:hover:bg-amber-950/20 text-left transition-all cursor-pointer active:scale-95 group flex items-center justify-between"
-                  >
-                    <div className="truncate pr-1">
-                      <div className="flex items-center gap-1.5 truncate">
-                        <span className="font-semibold text-xs text-stone-900 dark:text-stone-100 truncate group-hover:text-amber-700 dark:group-hover:text-amber-300">
-                          {item.name}
-                        </span>
+              /* Extended to full screen: no max-height restriction, natural native scroll */
+              <div className="space-y-2">
+                {filteredMenuItems.map(item => {
+                  const iconCfg = getItemIconConfig(item.name, item.category, item.emoji)
+                  return (
+                    <button
+                      key={item.id}
+                      onClick={() => handleSelfAddItem(item)}
+                      className="w-full py-2 px-3 rounded-2xl border border-stone-100 dark:border-stone-800/80 bg-[#FAF8F5]/90 dark:bg-stone-850 hover:border-[#FF7043]/40 hover:bg-white dark:hover:bg-stone-800 text-left transition-all cursor-pointer active:scale-[0.98] group flex items-center justify-between gap-2.5 shadow-2xs"
+                    >
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <div className={`w-9 h-9 rounded-xl ${iconCfg.bgLight} ${iconCfg.bgDark} flex items-center justify-center text-lg shrink-0 shadow-2xs`}>
+                          {iconCfg.emoji}
+                        </div>
+                        <div className="min-w-0">
+                          <span className="font-bold text-xs text-stone-900 dark:text-stone-100 truncate block group-hover:text-[#CF4C16]">
+                            {item.name}
+                          </span>
+                          <span className="text-[10px] text-stone-400 capitalize block">
+                            {item.category || 'Tapri Special'}
+                          </span>
+                        </div>
                       </div>
-                      <div className="text-[11px] font-bold text-amber-700 dark:text-amber-400 pl-5">
-                        ₹{item.price}
-                      </div>
-                    </div>
 
-                    <div className="w-5 h-5 rounded-full bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300 flex items-center justify-center shrink-0 group-hover:bg-amber-600 group-hover:text-white transition-colors">
-                      <Plus className="w-3 h-3" />
-                    </div>
-                  </button>
-                ))}
+                      <div className="flex items-center gap-2 shrink-0">
+                        <div className="font-heading font-extrabold text-xs text-stone-900 dark:text-stone-100">
+                          ₹{item.price}
+                        </div>
+                        <div className="w-6 h-6 rounded-full bg-stone-200/70 dark:bg-stone-750 text-stone-700 dark:text-stone-200 group-hover:bg-[#FF7043] group-hover:text-white flex items-center justify-center transition-colors">
+                          <Plus className="w-3 h-3 stroke-[2.5]" />
+                        </div>
+                      </div>
+                    </button>
+                  )
+                })}
               </div>
             )}
           </div>
 
-          {/* 2. ADDED ITEMS (UNDER THE ITEMS SELECTION OPTION) */}
-          <div className="p-4 rounded-2xl bg-white dark:bg-stone-900 border border-stone-200/80 dark:border-stone-800 shadow-2xs space-y-3.5">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <div className="p-1.5 rounded-xl bg-amber-100 dark:bg-amber-950 text-amber-700 dark:text-amber-300">
-                  <Coffee className="w-4 h-4" />
+          {/* CONFIRMED ORDER STATUS BANNER (Compact & clean, no long scrolling needed) */}
+          {isMyOrderConfirmed && (
+            <div className="p-3.5 rounded-2xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 flex items-center justify-between shadow-2xs animate-in fade-in">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-xl bg-emerald-100 dark:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300 flex items-center justify-center shrink-0">
+                  <CheckCircle2 className="w-4 h-4" />
                 </div>
                 <div>
-                  <h3 className="font-heading font-bold text-sm text-stone-900 dark:text-stone-100">
-                    In Your Cup
-                  </h3>
-                </div>
-              </div>
-
-              <span className="text-xs font-semibold text-stone-500 dark:text-stone-400">
-                {myItemCount} {myItemCount === 1 ? 'item' : 'items'}
-              </span>
-            </div>
-
-            {/* Admin audit notification banner */}
-            {currentUserExpense?.adminEdits && currentUserExpense.adminEdits.length > 0 && (
-              <div className="p-3 rounded-xl bg-amber-50 dark:bg-amber-950/50 border border-amber-300 dark:border-amber-700/80 text-amber-950 dark:text-amber-100 space-y-2 shadow-xs animate-in fade-in">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-1.5 font-bold text-xs text-amber-900 dark:text-amber-300">
-                    <span className="p-1 rounded-md bg-amber-200 dark:bg-amber-900/80 text-amber-900 dark:text-amber-200">
-                      <AlertTriangle className="w-3.5 h-3.5" />
-                    </span>
-                    <span>Admin modified your confirmed order:</span>
-                  </div>
-                  <span className="text-[10px] font-bold text-amber-800 dark:text-amber-300 bg-amber-200/80 dark:bg-amber-900/60 px-2 py-0.5 rounded-full border border-amber-300 dark:border-amber-800">
-                    {currentUserExpense.adminEdits.length} {currentUserExpense.adminEdits.length === 1 ? 'change' : 'changes'}
-                  </span>
-                </div>
-                <div className="space-y-1.5 pt-0.5 divide-y divide-amber-200/60 dark:divide-amber-800/60">
-                  {currentUserExpense.adminEdits.map((edit, idx) => (
-                    <div key={idx} className="pt-1.5 first:pt-0 text-xs flex items-start justify-between gap-2">
-                      <div className="space-y-0.5">
-                        <div className="text-stone-800 dark:text-stone-200">
-                          Admin <strong className="text-amber-700 dark:text-amber-400">{edit.adminName}</strong>{' '}
-                          {edit.action === 'added' ? 'added' : edit.action === 'removed' ? 'removed' : 'adjusted'}{' '}
-                          <strong className="font-bold underline decoration-amber-500">{edit.itemName}</strong>
-                        </div>
-                        <div className="text-[11px] text-stone-600 dark:text-stone-400 font-mono">
-                          Quantity: <span className="line-through text-stone-400">{edit.oldQuantity ?? 0}</span> → <strong className="text-amber-700 dark:text-amber-300 font-bold">{edit.newQuantity ?? 0}</strong>
-                        </div>
-                      </div>
-                      <span className="text-[10px] text-stone-400 shrink-0 font-medium pt-0.5">{edit.editedAt}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* List of added items */}
-            {currentUserExpense && currentUserExpense.items.length > 0 ? (
-              <div className="space-y-1.5 p-2.5 rounded-xl bg-stone-50 dark:bg-stone-800/50 border border-stone-200/60 dark:border-stone-700/60">
-                <div className="text-[10px] font-bold text-stone-500 uppercase tracking-wider mb-1">
-                  In Your Cup ({myItemCount} items):
-                </div>
-                {currentUserExpense.items.map(item => (
-                  <div
-                    key={item.id}
-                    className="flex items-center justify-between text-xs py-1.5 px-2 rounded-lg bg-white dark:bg-stone-800 shadow-2xs"
-                  >
-                    <div className="flex items-center gap-1.5 truncate">
-                      <span className="font-medium text-stone-900 dark:text-stone-100 truncate">
-                        {item.name}
-                      </span>
-                      <span className="text-[10px] text-stone-400">
-                        (₹{item.price} each)
-                      </span>
-                    </div>
-
-                    <div className="flex items-center gap-2 shrink-0">
-                      <span className="font-bold text-stone-800 dark:text-stone-200 text-xs">
-                        ₹{item.price * item.quantity}
-                      </span>
-                      <div className="flex items-center gap-1 bg-stone-100 dark:bg-stone-700 p-0.5 rounded-md">
-                        {(!isMyOrderConfirmed || canEditConfirmed) ? (
-                          <>
-                            <button
-                              onClick={() => handleSelfRemoveItem(item.id || item.menuItemId || item.name)}
-                              className="w-5 h-5 rounded flex items-center justify-center hover:bg-stone-200 dark:hover:bg-stone-600 text-stone-600 dark:text-stone-300 cursor-pointer"
-                              title="Decrease quantity"
-                            >
-                              <Minus className="w-3 h-3" />
-                            </button>
-                            <span className="font-bold text-[11px] px-1">{item.quantity}</span>
-                            <button
-                              onClick={() => {
-                                const mi =
-                                  shopMenuItems.find(m => m.id === item.menuItemId) ||
-                                  menuItems.find(m => m.id === item.menuItemId) || {
-                                    id: item.menuItemId || item.id,
-                                    name: item.name,
-                                    price: item.price,
-                                    category: 'snacks',
-                                    emoji: item.emoji || ''
-                                  }
-                                handleSelfAddItem(mi)
-                              }}
-                              className="w-5 h-5 rounded flex items-center justify-center hover:bg-stone-200 dark:hover:bg-stone-600 text-stone-600 dark:text-stone-300 cursor-pointer"
-                              title="Increase quantity"
-                            >
-                              <Plus className="w-3 h-3" />
-                            </button>
-                          </>
-                        ) : (
-                          <div className="flex items-center gap-1 px-1.5 py-0.5 text-[11px] font-bold text-stone-600 dark:text-stone-300">
-                            <Lock className="w-3 h-3 text-stone-400" />
-                            <span>Qty: {item.quantity}</span>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="p-3.5 text-center text-xs text-stone-400 bg-stone-50 dark:bg-stone-800/40 rounded-xl border border-dashed border-stone-200 dark:border-stone-800">
-                Your cup is empty. Select items from the menu above to add.
-              </div>
-            )}
-
-            {/* 3. CONFIRM OPTION (UNDER ADDED ITEMS) */}
-            <div className="pt-1">
-              {isMyOrderConfirmed ? (
-                <div className="p-3 rounded-xl bg-emerald-50/90 dark:bg-emerald-950/40 border border-emerald-200/90 dark:border-emerald-800/80 text-emerald-900 dark:text-emerald-200 text-xs flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
-                    <div>
-                      <span className="font-bold">Your order is confirmed and locked.</span>
-                      <span className="text-[11px] text-emerald-700 dark:text-emerald-300 ml-1">
-                        ({currentUserExpense?.confirmedAt || 'Earlier'})
-                      </span>
-                    </div>
+                  <div className="text-xs font-bold text-emerald-900 dark:text-emerald-100">Order Locked &amp; Confirmed</div>
+                  <div className="text-[11px] text-emerald-700 dark:text-emerald-300">
+                    ₹{myTotal} • {myItemCount} {myItemCount === 1 ? 'item' : 'items'}
                   </div>
                 </div>
-              ) : (
-                <button
-                  type="button"
-                  onClick={handleConfirmMyOrder}
-                  disabled={isConfirming || !currentUserExpense || currentUserExpense.items.length === 0}
-                  id="confirm-my-order-btn"
-                  className="w-full py-3 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold text-xs shadow-xs cursor-pointer transition-all active:scale-[0.98] flex items-center justify-center gap-2"
-                  title="Confirm and lock your items"
-                >
-                  <CheckCircle2 className="w-4 h-4" />
-                  <span>{isConfirming ? 'Confirming...' : 'Confirm Items'}</span>
-                </button>
-              )}
-            </div>
-
-            {/* 4. PRICE AS BIG (UNDER CONFIRM OPTION) */}
-            <div className="p-4 rounded-xl bg-gradient-to-r from-amber-500/15 via-orange-500/10 to-amber-500/5 border border-amber-500/25 flex items-center justify-between">
-              <div>
-                <div className="text-[10px] font-bold uppercase tracking-wider text-amber-800 dark:text-amber-400">
-                  Total Amount
-                </div>
-                <div className="text-3xl font-black font-heading text-stone-900 dark:text-stone-100 flex items-baseline gap-2">
-                  <span>₹{myTotal}</span>
-                  <span className="text-xs font-semibold text-stone-500 dark:text-stone-400 font-sans">
-                    ({myItemCount} {myItemCount === 1 ? 'item' : 'items'})
-                  </span>
-                </div>
               </div>
-
-              {isMyOrderConfirmed ? (
-                <span className="px-2.5 py-1 rounded-xl bg-emerald-100 dark:bg-emerald-950/80 text-emerald-800 dark:text-emerald-300 font-bold text-xs flex items-center gap-1 border border-emerald-300 dark:border-emerald-800 shadow-2xs">
-                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-                  <span>Confirmed</span>
-                </span>
-              ) : (
-                <span className="text-xs font-bold text-amber-700 dark:text-amber-300 bg-amber-100 dark:bg-amber-950/70 px-2.5 py-1 rounded-lg">
-                  Unconfirmed
-                </span>
-              )}
-            </div>
-
-            {/* 5. AFTER CONFIRMED: OPTION TO SEE OTHERS' ORDERS */}
-            {isMyOrderConfirmed && (
               <button
                 type="button"
                 onClick={() => handleSubViewChange('others-orders')}
                 id="view-others-orders-after-confirmed-btn"
-                className="w-full py-3.5 px-4 rounded-xl bg-gradient-to-r from-amber-600 via-amber-700 to-orange-600 hover:from-amber-700 hover:to-orange-700 active:scale-[0.98] text-white font-bold text-sm shadow-md shadow-amber-900/10 transition-all cursor-pointer flex items-center justify-between group animate-in fade-in"
+                className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer shadow-xs"
               >
-                <div className="flex items-center gap-2.5">
-                  <div className="w-7 h-7 rounded-lg bg-white/20 flex items-center justify-center shrink-0">
-                    <Users className="w-4 h-4 text-white" />
-                  </div>
-                  <div className="text-left">
-                    <div className="text-xs font-bold leading-tight">See Others' Orders</div>
-                    <div className="text-[10px] text-amber-100/90 font-medium leading-tight">
-                      Check what colleagues have ordered
-                    </div>
-                  </div>
-                </div>
-                <div className="flex items-center gap-1 text-xs font-semibold bg-white/15 px-3 py-1.5 rounded-lg group-hover:translate-x-0.5 transition-transform shrink-0">
-                  <span>View</span>
-                  <ArrowRight className="w-3.5 h-3.5" />
-                </div>
+                <span>Others' Orders</span>
+                <ArrowRight className="w-3.5 h-3.5" />
               </button>
-            )}
-          </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -915,34 +820,42 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
 
           {aggregatedItems.length > 0 ? (
             <div className="rounded-xl border border-stone-200/70 dark:border-stone-800 divide-y divide-stone-100 dark:divide-stone-800/80 overflow-hidden bg-stone-50/50 dark:bg-stone-900/50">
-              {aggregatedItems.map(item => (
-                <div
-                  key={item.menuItemId}
-                  className="p-2.5 flex items-center justify-between hover:bg-stone-50 dark:hover:bg-stone-800/30 transition-colors"
-                >
-                  <div className="space-y-0.5">
-                    <div className="flex items-center gap-1.5">
-                      <span className="font-semibold text-xs text-stone-900 dark:text-stone-100">
-                        {item.name}
-                      </span>
-                      <span className="text-[10px] text-stone-400 font-medium">
-                        @ ₹{item.price} each
-                      </span>
+              {aggregatedItems.map(item => {
+                const iconCfg = getItemIconConfig(item.name)
+                return (
+                  <div
+                    key={item.menuItemId}
+                    className="p-2.5 flex items-center justify-between hover:bg-stone-50 dark:hover:bg-stone-800/30 transition-colors"
+                  >
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <div className={`w-8 h-8 rounded-xl ${iconCfg.bgLight} ${iconCfg.bgDark} flex items-center justify-center text-sm shrink-0`}>
+                        {iconCfg.emoji}
+                      </div>
+                      <div className="space-y-0.5 min-w-0">
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-semibold text-xs text-stone-900 dark:text-stone-100 truncate">
+                            {item.name}
+                          </span>
+                          <span className="text-[10px] text-stone-400 font-medium">
+                            @ ₹{item.price} each
+                          </span>
+                        </div>
+                      </div>
                     </div>
-                  </div>
 
-                  <div className="text-right shrink-0 pl-2">
-                    <div className="flex items-center gap-1.5 justify-end">
-                      <span className="px-1.5 py-0.5 rounded-md bg-amber-100 dark:bg-amber-950/80 text-amber-800 dark:text-amber-300 font-bold text-[11px]">
-                        ×{item.quantity}
-                      </span>
-                      <span className="font-heading font-black text-xs text-stone-900 dark:text-stone-100 min-w-10 text-right">
-                        ₹{item.totalPrice}
-                      </span>
+                    <div className="text-right shrink-0 pl-2">
+                      <div className="flex items-center gap-1.5 justify-end">
+                        <span className="px-2 py-0.5 rounded-full bg-stone-100 dark:bg-stone-800 text-stone-700 dark:text-stone-200 font-bold text-[11px]">
+                          ×{item.quantity}
+                        </span>
+                        <span className="font-heading font-black text-xs text-stone-900 dark:text-stone-100 min-w-10 text-right">
+                          ₹{item.totalPrice}
+                        </span>
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))}
+                )
+              })}
 
               {/* Aggregated Total Row */}
               <div className="p-2.5 bg-amber-50/60 dark:bg-amber-950/20 flex items-center justify-between text-xs font-bold border-t border-amber-200/50 dark:border-amber-900/40">
@@ -1044,7 +957,7 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
                           </span>
                         )}
                         {isConfirmed && (
-                          <span className="px-1.5 py-0.2 rounded text-[9px] bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 font-bold flex items-center gap-0.5 border border-emerald-300 dark:border-emerald-800">
+                          <span className="px-1.5 py-0.2 rounded text-[9px] bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 font-bold flex items-center gap-0.5 border-0">
                             <CheckCircle2 className="w-2.5 h-2.5 text-emerald-600" />
                             <span>Confirmed</span>
                           </span>
@@ -1179,10 +1092,14 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
                               type="button"
                               onClick={async (e) => {
                                 e.stopPropagation()
-                                await confirmMemberOrder(expense.memberId, activeSession?.id)
-                                showToast(`Confirmed items for ${expense.memberName}`)
+                                if (isUser) {
+                                  handleInitiateConfirmMyOrder()
+                                } else {
+                                  await confirmMemberOrder(expense.memberId, activeSession?.id)
+                                  showToast(`Confirmed items for ${expense.memberName}`)
+                                }
                               }}
-                              className="text-[10px] font-bold text-emerald-700 dark:text-emerald-300 hover:text-emerald-800 bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-300 dark:border-emerald-800 px-2 py-0.5 rounded-lg cursor-pointer hover:bg-emerald-100 dark:hover:bg-emerald-900 transition-colors flex items-center gap-1"
+                              className="text-[10px] font-bold text-emerald-700 dark:text-emerald-300 hover:text-emerald-800 bg-emerald-100/90 dark:bg-emerald-950/80 px-2.5 py-0.5 rounded-lg cursor-pointer hover:bg-emerald-200 dark:hover:bg-emerald-900 transition-colors flex items-center gap-1 border-0 border-none outline-none"
                             >
                               <CheckCircle2 className="w-2.5 h-2.5 text-emerald-600" />
                               <span>Confirm Items</span>
@@ -1271,7 +1188,7 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
 
               <button
                 type="button"
-                onClick={handleSettleBreak}
+                onClick={handleInitiateSettleBreak}
                 disabled={isSettling}
                 id="settle-and-end-task-btn"
                 className={`flex-1 py-2.5 px-3 rounded-xl ${
@@ -1699,6 +1616,237 @@ export const TeaBreakPage: React.FC<TeaBreakPageProps> = ({
           </div>
         </div>
       )}
+
+      {/* ---------------- FLOATING BOTTOM POPUP BAR FOR ADDED ITEMS ---------------- */}
+      {myItemCount > 0 && (
+        <div
+          className="fixed left-1/2 -translate-x-1/2 w-full max-w-[430px] px-3 z-40 pointer-events-none animate-in slide-in-from-bottom-4 duration-200"
+          style={{
+            bottom: 'calc(4.85rem + env(safe-area-inset-bottom, 0px))'
+          }}
+        >
+          <div className="pointer-events-auto flex flex-col items-center">
+            {/* Expandable popup drawer above the bar */}
+            {isCupDrawerOpen && (
+              <div className="w-full mb-2 p-3.5 rounded-3xl bg-white dark:bg-stone-900 border border-stone-200 dark:border-stone-800 shadow-2xl space-y-3 animate-in slide-in-from-bottom-2 duration-150 max-h-[50vh] overflow-y-auto">
+                {/* Drawer Header */}
+                <div className="flex items-center justify-between pb-2 border-b border-stone-100 dark:border-stone-800">
+                  <div className="flex items-center gap-1.5">
+                    <div className="p-1 rounded-xl bg-orange-100 dark:bg-orange-950/80 text-[#FF7043]">
+                      <Coffee className="w-3.5 h-3.5" />
+                    </div>
+                    <h4 className="font-heading font-bold text-xs text-stone-900 dark:text-stone-100">
+                      In Your Cup ({myItemCount} {myItemCount === 1 ? 'item' : 'items'})
+                    </h4>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setIsCupDrawerOpen(false)}
+                    className="p-1 rounded-lg hover:bg-stone-100 dark:hover:bg-stone-800 text-stone-400 hover:text-stone-600 dark:hover:text-stone-200 cursor-pointer"
+                  >
+                    <ChevronDown className="w-4 h-4" />
+                  </button>
+                </div>
+
+                {/* Admin audit notification banner */}
+                {currentUserExpense?.adminEdits && currentUserExpense.adminEdits.length > 0 && (
+                  <div className="p-2.5 rounded-xl bg-amber-50 dark:bg-amber-950/50 border border-amber-300 dark:border-amber-700/80 text-amber-950 dark:text-amber-100 space-y-1.5 shadow-xs text-xs">
+                    <div className="flex items-center gap-1.5 font-bold text-[11px] text-amber-900 dark:text-amber-300">
+                      <AlertTriangle className="w-3.5 h-3.5 text-amber-600" />
+                      <span>Admin modified your confirmed order:</span>
+                    </div>
+                    {currentUserExpense.adminEdits.map((edit, idx) => (
+                      <div key={idx} className="text-[11px] text-stone-700 dark:text-stone-300 flex items-center justify-between">
+                        <span>
+                          <strong>{edit.adminName}</strong> {edit.action} <strong>{edit.itemName}</strong>
+                        </span>
+                        <span className="font-mono text-amber-700 dark:text-amber-400">
+                          {edit.oldQuantity ?? 0} → {edit.newQuantity ?? 0}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Item List */}
+                <div className="space-y-1.5">
+                  {currentUserExpense?.items.map(item => {
+                    const iconCfg = getItemIconConfig(item.name, undefined, item.emoji)
+                    return (
+                      <div
+                        key={item.id}
+                        className="flex items-center justify-between text-xs py-2 px-2.5 rounded-2xl bg-stone-50 dark:bg-stone-850 border border-stone-200/60 dark:border-stone-700/50"
+                      >
+                        <div className="flex items-center gap-2 truncate">
+                          <div className={`w-8 h-8 rounded-xl ${iconCfg.bgLight} ${iconCfg.bgDark} flex items-center justify-center text-sm shrink-0`}>
+                            {iconCfg.emoji}
+                          </div>
+                          <div className="truncate">
+                            <span className="font-semibold text-stone-900 dark:text-stone-100 truncate block">
+                              {item.name}
+                            </span>
+                            <span className="text-[10px] text-stone-400">
+                              ₹{item.price} each
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2 shrink-0">
+                          <span className="font-bold text-stone-800 dark:text-stone-200 text-xs">
+                            ₹{item.price * item.quantity}
+                          </span>
+                        <div className="flex items-center gap-1 bg-stone-200/70 dark:bg-stone-700 p-0.5 rounded-md">
+                          {(!isMyOrderConfirmed || canEditConfirmed) ? (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => handleSelfRemoveItem(item.id || item.menuItemId || item.name)}
+                                className="w-5 h-5 rounded flex items-center justify-center hover:bg-stone-300 dark:hover:bg-stone-600 text-stone-700 dark:text-stone-200 cursor-pointer"
+                                title="Decrease quantity"
+                              >
+                                <Minus className="w-3 h-3" />
+                              </button>
+                              <span className="font-bold text-[11px] px-1">{item.quantity}</span>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const mi =
+                                    shopMenuItems.find(m => m.id === item.menuItemId) ||
+                                    menuItems.find(m => m.id === item.menuItemId) || {
+                                      id: item.menuItemId || item.id,
+                                      name: item.name,
+                                      price: item.price,
+                                      category: 'snacks',
+                                      emoji: item.emoji || ''
+                                    }
+                                  handleSelfAddItem(mi)
+                                }}
+                                className="w-5 h-5 rounded flex items-center justify-center hover:bg-stone-300 dark:hover:bg-stone-600 text-stone-700 dark:text-stone-200 cursor-pointer"
+                                title="Increase quantity"
+                              >
+                                <Plus className="w-3 h-3" />
+                              </button>
+                            </>
+                          ) : (
+                            <div className="flex items-center gap-1 px-1.5 py-0.5 text-[11px] font-bold text-stone-600 dark:text-stone-300">
+                              <Lock className="w-3 h-3 text-stone-400" />
+                              <span>Qty: {item.quantity}</span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  )
+                })}
+                </div>
+
+                {/* Subtotal in drawer */}
+                <div className="pt-2 border-t border-stone-100 dark:border-stone-800 flex items-center justify-between text-xs">
+                  <span className="font-bold text-stone-600 dark:text-stone-400">Total</span>
+                  <span className="font-heading font-black text-sm text-stone-900 dark:text-stone-100">₹{myTotal}</span>
+                </div>
+              </div>
+            )}
+
+            {/* Docked Floating Bar - elevated cleanly above BottomNav */}
+            <div className="w-full bg-white/95 dark:bg-[#1C1917]/95 backdrop-blur-md border border-stone-200/90 dark:border-stone-800 rounded-3xl p-2.5 shadow-2xl shadow-stone-950/20 flex items-center justify-between gap-2 transition-all">
+              {/* Left: Summary & Drawer Toggle */}
+              <button
+                type="button"
+                onClick={() => setIsCupDrawerOpen(prev => !prev)}
+                id="toggle-cup-drawer-btn"
+                className="flex items-center gap-2 cursor-pointer text-left hover:opacity-85 transition-opacity py-0.5 px-1 rounded-xl"
+              >
+                <div className="w-9 h-9 rounded-2xl bg-[#FF7043] text-white flex items-center justify-center font-bold text-xs shrink-0 shadow-2xs">
+                  <Coffee className="w-4 h-4" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="font-heading font-black text-sm text-stone-900 dark:text-stone-100">
+                      ₹{myTotal}
+                    </span>
+                    <span className="text-[10px] font-bold text-[#FF7043] dark:text-[#FF8A65] bg-orange-100/80 dark:bg-orange-950/80 px-2 py-0.5 rounded-full">
+                      {myItemCount} {myItemCount === 1 ? 'item' : 'items'}
+                    </span>
+                  </div>
+                  <div className="text-[10px] text-stone-500 dark:text-stone-400 flex items-center gap-0.5">
+                    <span>{isCupDrawerOpen ? 'Hide cup' : 'View cup'}</span>
+                    {isCupDrawerOpen ? <ChevronDown className="w-3 h-3" /> : <ChevronUp className="w-3 h-3" />}
+                  </div>
+                </div>
+              </button>
+
+              {/* Right: Confirm Action / Confirmed Badge */}
+              <div className="flex items-center gap-1.5">
+                {isMyOrderConfirmed ? (
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => setShowOrderSuccessModal(true)}
+                      id="view-confirmed-summary-btn"
+                      className="px-3.5 py-1.5 rounded-full bg-emerald-100 hover:bg-emerald-200 dark:bg-emerald-950/80 dark:hover:bg-emerald-900 text-emerald-800 dark:text-emerald-300 font-bold text-xs flex items-center gap-1.5 border-0 border-none outline-none focus:outline-none focus:ring-0 shadow-2xs cursor-pointer transition-colors"
+                      title="View order summary & nutrition insights"
+                    >
+                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                      <span>Confirmed</span>
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={handleInitiateConfirmMyOrder}
+                    disabled={isConfirming || !currentUserExpense || currentUserExpense.items.length === 0}
+                    id="confirm-my-order-popup-btn"
+                    className="py-2 px-4 rounded-full bg-[#1B9C56] hover:bg-[#158045] disabled:opacity-50 text-white font-bold text-xs shadow-xs cursor-pointer transition-all active:scale-95 flex items-center gap-1.5 border-0 border-none outline-none focus:outline-none focus:ring-0"
+                    title="Confirm and lock your items"
+                  >
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    <span>{isConfirming ? 'Confirming...' : 'Confirm'}</span>
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Order Confirmation Success Modal with Nutrition & Health Insights */}
+      <OrderSuccessModal
+        isOpen={showOrderSuccessModal}
+        onClose={() => setShowOrderSuccessModal(false)}
+        items={currentUserExpense?.items || []}
+        totalAmount={myTotal}
+        sessionTitle={activeSession?.title}
+      />
+
+      {/* Funny Malayalam Alert Modal on Confirming Items (3-second countdown) */}
+      <FunnyMalayalamAlertModal
+        isOpen={showOrderConfirmAlertModal}
+        onClose={() => setShowOrderConfirmAlertModal(false)}
+        onConfirm={handleExecuteConfirmMyOrder}
+        items={currentUserExpense?.items || []}
+        totalAmount={myTotal}
+        context="confirm_order"
+        isConfirming={isConfirming}
+        confirmLabel="Confirm Order"
+      />
+
+      {/* Funny Malayalam Alert Modal on Settle & Split Bill (3-second countdown) */}
+      <FunnyMalayalamAlertModal
+        isOpen={showSettleAlertModal}
+        onClose={() => setShowSettleAlertModal(false)}
+        onConfirm={handleExecuteSettleBreak}
+        items={activeSession?.expenses.flatMap(e => e.items) || []}
+        totalAmount={activeSession?.totalAmount || 0}
+        perPersonAmount={
+          membersWithItems.length > 0
+            ? Math.round((activeSession?.totalAmount || 0) / membersWithItems.length)
+            : activeSession?.totalAmount || 0
+        }
+        context="split_bill"
+        isConfirming={isSettling}
+        confirmLabel="Settle & Close"
+      />
     </div>
   )
 }
