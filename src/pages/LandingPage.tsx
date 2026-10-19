@@ -61,7 +61,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onNavigate }) => {
 
       {/* Footer */}
       <footer className="w-full border-t border-stone-200/60 dark:border-stone-800/80 pt-3 text-[11px] text-stone-400 flex items-center justify-between">
-        <span>Nibru-Tea • Office Khata</span>
+        <span>NibruTea • Office Khata</span>
         <div className="flex items-center gap-3">
           <button
             onClick={toggleTheme}

@@ -1733,7 +1733,7 @@ export const ExpenseProvider: React.FC<{ children: React.ReactNode }> = ({ child
     })
 
     text += `\n──────────────────\n`
-    text += `_Sent via Nibru-Tea ☕_`
+    text += `_Sent via NibruTea ☕_`
     return text
   }
 

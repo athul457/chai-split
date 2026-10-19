@@ -26,7 +26,7 @@ export const Header: React.FC<HeaderProps> = ({ currentPage: _currentPage, onNav
           </div>
 
           <span className="font-heading text-lg font-black tracking-tight text-stone-900 dark:text-white">
-            ChaiSplit
+            NibruTea
           </span>
         </button>
 
